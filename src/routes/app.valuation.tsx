@@ -62,16 +62,16 @@ function Valuation() {
         <div className="mt-4 flex items-center gap-6 text-sm flex-wrap">
           <div>
             <span className="text-[var(--text-muted)]">Current:</span>{" "}
-            <span className="font-display text-lg">{fmtGBP(220000)}</span> at
-            1.6x
+            <span className="font-display text-lg">{fmtGBP(mockBusiness.fairMarket)}</span> at
+            {" "}{mockBusiness.currentMultiple}x
           </div>
           <ArrowRight className="w-4 h-4 text-[var(--text-muted)]" />
           <div>
             <span className="text-[var(--text-muted)]">Potential:</span>{" "}
             <span className="font-display text-lg text-[var(--accent)]">
-              {fmtGBP(300000)}
+              {fmtGBP(mockBusiness.optimised)}
             </span>{" "}
-            at 2.4x
+            at {mockBusiness.optimisedMultiple}x
           </div>
         </div>
         <div className="mt-6 h-3 bg-[var(--bg-secondary)] rounded-sm relative overflow-hidden">
@@ -106,22 +106,22 @@ function Valuation() {
         <div className="mt-5 grid md:grid-cols-3 gap-5">
           <Scenario
             label="Quick Sale"
-            v={90000}
-            m="0.9x"
+            v={mockBusiness.quickSale}
+            m={`${(mockBusiness.quickSale / mockBusiness.adjustedEarnings).toFixed(1)}x`}
             desc="Conservative market conditions"
             muted
           />
           <Scenario
             label="Fair Market"
-            v={160000}
-            m="1.6x"
+            v={mockBusiness.fairMarket}
+            m={`${(mockBusiness.fairMarket / mockBusiness.adjustedEarnings).toFixed(1)}x`}
             desc="Current realistic expectation"
             gold
           />
           <Scenario
             label="Optimised"
-            v={240000}
-            m="2.4x"
+            v={mockBusiness.optimised}
+            m={`${(mockBusiness.optimised / mockBusiness.adjustedEarnings).toFixed(1)}x`}
             desc="After implementing optimization plan"
             accent
           />

@@ -38,18 +38,6 @@ const groups = [
     ],
   },
   {
-    label: "Exit Preparation",
-    items: [
-      {
-        to: "/app/financial-normalizer",
-        label: "Financial Normalizer",
-        icon: BarChart3,
-      },
-      { to: "/app/investment-memo", label: "Investment Memo", icon: FileText },
-      { to: "/app/data-room", label: "Data Room", icon: Folder },
-    ],
-  },
-  {
     label: "Reports",
     items: [
       { to: "/app/reports", label: "Saved Reports", icon: Bookmark },
@@ -116,6 +104,16 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      <div className="px-4 py-4">
+        <Link
+          to="/app/buyer-matching"
+          className="flex items-center justify-between w-full px-4 py-3 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-md text-sm font-medium transition-colors"
+        >
+          <span>Find a Buyer</span>
+          <span>→</span>
+        </Link>
+      </div>
 
       <div className="border-t border-[var(--border-warm)] px-4 py-4 flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-[var(--sidebar-active)] flex items-center justify-center text-[var(--accent)] font-display text-sm">

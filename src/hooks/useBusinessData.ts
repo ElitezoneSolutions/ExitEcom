@@ -91,14 +91,27 @@ export function useBusinessData() {
   const [error, setError] = useState<Error | null>(null);
 
   // States
-  const [business, setBusiness] = useState<BusinessData>(
-    mockBusiness as unknown as BusinessData,
-  );
-  const [risks, setRisks] = useState<RiskItem[]>([
-    ...topRisks,
-    ...additionalRisks,
-  ]);
-  const [actions, setActions] = useState<ActionItem[]>(topActions);
+  const [business, setBusiness] = useState<BusinessData>(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("exitecom_business");
+      if (cached) return JSON.parse(cached);
+    }
+    return mockBusiness as unknown as BusinessData;
+  });
+  const [risks, setRisks] = useState<RiskItem[]>(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("exitecom_risks");
+      if (cached) return JSON.parse(cached);
+    }
+    return [...topRisks, ...additionalRisks];
+  });
+  const [actions, setActions] = useState<ActionItem[]>(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("exitecom_actions");
+      if (cached) return JSON.parse(cached);
+    }
+    return topActions;
+  });
   const [documents, setDocuments] = useState<DocumentItem[]>(() => {
     const list: DocumentItem[] = [];
     dataRoomCategories.forEach((cat) => {
@@ -247,12 +260,19 @@ export function useBusinessData() {
 
       setBusiness(mappedBusiness);
 
+      // Cache live DB fetch to localStorage too
+      localStorage.setItem("exitecom_business", JSON.stringify(mappedBusiness));
+
       if (risksData && risksData.length > 0) {
-        setRisks(risksData as RiskItem[]);
+        const mappedRisks = risksData as RiskItem[];
+        setRisks(mappedRisks);
+        localStorage.setItem("exitecom_risks", JSON.stringify(mappedRisks));
       }
 
       if (actionsData && actionsData.length > 0) {
-        setActions(actionsData as ActionItem[]);
+        const mappedActions = actionsData as ActionItem[];
+        setActions(mappedActions);
+        localStorage.setItem("exitecom_actions", JSON.stringify(mappedActions));
       }
 
       if (docsData && docsData.length > 0) {
@@ -270,9 +290,11 @@ export function useBusinessData() {
   }, [user]);
 
   const updateBusiness = async (updatedFields: Partial<BusinessData>) => {
+    const updated = { ...business, ...updatedFields };
+    setBusiness(updated);
+    localStorage.setItem("exitecom_business", JSON.stringify(updated));
+
     if (!isSupabaseConfigured || !user || !business.id) {
-      // Fallback update in state only
-      setBusiness((prev) => ({ ...prev, ...updatedFields }));
       toast.success("Updated business details (local state)");
       return true;
     }
@@ -291,7 +313,6 @@ export function useBusinessData() {
 
       if (updateError) throw updateError;
 
-      // Update valuation if metrics change
       if (
         updatedFields.exitScore !== undefined ||
         updatedFields.valuationMid !== undefined
@@ -312,13 +333,142 @@ export function useBusinessData() {
         if (valUpdateError) throw valUpdateError;
       }
 
-      setBusiness((prev) => ({ ...prev, ...updatedFields }));
       toast.success("Successfully synced business details to database!");
       return true;
     } catch (err: unknown) {
       console.error("Failed to update business in Supabase:", err);
       toast.error("Failed to sync updates to the cloud database.");
       return false;
+    }
+  };
+
+  const syncShopifyData = async (normalizedData: any) => {
+    const { businessUpdate, risks: newRisks, actions: newActions } = normalizedData;
+
+    const updatedBusiness: BusinessData = {
+      ...business,
+      ...businessUpdate,
+      connectedSources: Array.from(new Set([...business.connectedSources, "shopify"])),
+      missingSources: business.missingSources.filter((s) => s.toLowerCase() !== "shopify"),
+    };
+
+    setBusiness(updatedBusiness);
+
+    const mappedRisks: RiskItem[] = newRisks.map((r: any) => ({
+      title: r.title,
+      severity: r.severity as "high" | "medium" | "low",
+      description: r.description,
+      impact: r.impact,
+      buyerSees: r.buyerSees,
+      buyerFears: r.buyerFears,
+      buyerDoes: r.buyerDoes,
+      recommendation: r.recommendation,
+    }));
+    setRisks(mappedRisks);
+
+    const mappedActions: ActionItem[] = newActions.map((a: any) => ({
+      title: a.title,
+      priority: a.priority as "high" | "medium" | "low",
+      uplift: a.uplift,
+      time: a.time,
+      problem: a.problem,
+      steps: a.steps,
+    }));
+    setActions(mappedActions);
+
+    localStorage.setItem("exitecom_business", JSON.stringify(updatedBusiness));
+    localStorage.setItem("exitecom_risks", JSON.stringify(mappedRisks));
+    localStorage.setItem("exitecom_actions", JSON.stringify(mappedActions));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Successfully synchronized Shopify data (local sandbox)");
+      return true;
+    }
+
+    try {
+      setLoading(true);
+
+      const { error: bizErr } = await supabase
+        .from("businesses")
+        .update({
+          name: updatedBusiness.name,
+          industry: updatedBusiness.industry,
+          primary_channel: "Shopify Connect",
+          country: updatedBusiness.country,
+        })
+        .eq("id", business.id);
+
+      if (bizErr) throw bizErr;
+
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .update({
+          exit_score: updatedBusiness.exitScore,
+          valuation_low: updatedBusiness.valuationLow,
+          valuation_mid: updatedBusiness.valuationMid,
+          valuation_high: updatedBusiness.valuationHigh,
+          valuation_optimised: updatedBusiness.valuationOptimised,
+          current_multiple: updatedBusiness.currentMultiple,
+          optimised_multiple: updatedBusiness.optimisedMultiple,
+          quick_sale: updatedBusiness.quickSale,
+          fair_market: updatedBusiness.fairMarket,
+          optimised: updatedBusiness.optimised,
+          adjusted_earnings: updatedBusiness.adjustedEarnings,
+          value_gap: updatedBusiness.valueGap,
+          repeat_rate: updatedBusiness.repeatRate,
+          avg_order_value: updatedBusiness.avgOrderValue,
+          roas: updatedBusiness.roas,
+          top_product_share: updatedBusiness.topProductShare,
+          risk_score: updatedBusiness.riskScore,
+          total_value_lost: updatedBusiness.totalValueLost,
+          data_confidence: updatedBusiness.dataConfidence,
+          connected_sources: updatedBusiness.connectedSources,
+          missing_sources: updatedBusiness.missingSources,
+        })
+        .eq("business_id", business.id);
+
+      if (valErr) throw valErr;
+
+      // Clean old risks and insert new
+      await supabase.from("risks").delete().eq("business_id", business.id);
+      const { error: riskErr } = await supabase.from("risks").insert(
+        mappedRisks.map((r) => ({
+          business_id: business.id,
+          title: r.title,
+          severity: r.severity,
+          description: r.description,
+          impact: r.impact,
+          buyer_sees: r.buyerSees,
+          buyer_fears: r.buyerFears,
+          buyer_does: r.buyerDoes,
+          recommendation: r.recommendation,
+        }))
+      );
+      if (riskErr) throw riskErr;
+
+      // Clean old actions and insert new
+      await supabase.from("actions").delete().eq("business_id", business.id);
+      const { error: actErr } = await supabase.from("actions").insert(
+        mappedActions.map((a) => ({
+          business_id: business.id,
+          title: a.title,
+          priority: a.priority,
+          uplift: a.uplift,
+          time: a.time,
+          problem: a.problem,
+          steps: a.steps,
+        }))
+      );
+      if (actErr) throw actErr;
+
+      toast.success("Successfully saved Shopify and Gemini reports to Supabase!");
+      return true;
+    } catch (err) {
+      console.error("Failed to sync Shopify data to Supabase:", err);
+      toast.error("Synced locally, but failed to save to Supabase cloud.");
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -335,5 +485,7 @@ export function useBusinessData() {
     error,
     refetch: fetchData,
     updateBusiness,
+    syncShopifyData,
   };
 }
+

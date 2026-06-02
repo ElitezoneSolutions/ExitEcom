@@ -19,7 +19,7 @@ const map: Record<Status, { bg: string; fg: string; label?: string }> = {
     fg: "var(--positive)",
     label: "CONNECTED",
   },
-  missing: { bg: "#EFF1F5", fg: "var(--text-muted)", label: "NOT CONNECTED" },
+  missing: { bg: "rgba(217,119,6,0.12)", fg: "var(--risk-medium)", label: "MISSING - AFFECTS SCORE" },
   partial: {
     bg: "rgba(217,119,6,0.12)",
     fg: "var(--risk-medium)",

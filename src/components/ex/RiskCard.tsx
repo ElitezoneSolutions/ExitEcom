@@ -70,7 +70,7 @@ export function RiskCard({
             onClick={() => setOpen((o) => !o)}
             className="mt-4 text-xs font-medium text-[var(--accent)] inline-flex items-center gap-1 transition-colors hover:text-[var(--accent-muted)]"
           >
-            View Buyer Psychology{" "}
+            Why buyers walk away{" "}
             <ChevronDown
               className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`}
             />

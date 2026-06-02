@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppValuationRouteImport } from './routes/app.valuation'
+import { Route as AppShopifyConnectRouteImport } from './routes/app.shopify-connect'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppRiskScannerRouteImport } from './routes/app.risk-scanner'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
@@ -56,6 +57,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppValuationRoute = AppValuationRouteImport.update({
   id: '/valuation',
   path: '/valuation',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppShopifyConnectRoute = AppShopifyConnectRouteImport.update({
+  id: '/shopify-connect',
+  path: '/shopify-connect',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/app/reports': typeof AppReportsRoute
   '/app/risk-scanner': typeof AppRiskScannerRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/shopify-connect': typeof AppShopifyConnectRoute
   '/app/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesByTo {
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/app/reports': typeof AppReportsRoute
   '/app/risk-scanner': typeof AppRiskScannerRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/shopify-connect': typeof AppShopifyConnectRoute
   '/app/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesById {
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/app/reports': typeof AppReportsRoute
   '/app/risk-scanner': typeof AppRiskScannerRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/shopify-connect': typeof AppShopifyConnectRoute
   '/app/valuation': typeof AppValuationRoute
 }
 export interface FileRouteTypes {
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/risk-scanner'
     | '/app/settings'
+    | '/app/shopify-connect'
     | '/app/valuation'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/risk-scanner'
     | '/app/settings'
+    | '/app/shopify-connect'
     | '/app/valuation'
   id:
     | '__root__'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/risk-scanner'
     | '/app/settings'
+    | '/app/shopify-connect'
     | '/app/valuation'
   fileRoutesById: FileRoutesById
 }
@@ -293,6 +305,13 @@ declare module '@tanstack/react-router' {
       path: '/valuation'
       fullPath: '/app/valuation'
       preLoaderRoute: typeof AppValuationRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/shopify-connect': {
+      id: '/app/shopify-connect'
+      path: '/shopify-connect'
+      fullPath: '/app/shopify-connect'
+      preLoaderRoute: typeof AppShopifyConnectRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/settings': {
@@ -395,6 +414,7 @@ interface AppRouteChildren {
   AppReportsRoute: typeof AppReportsRoute
   AppRiskScannerRoute: typeof AppRiskScannerRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppShopifyConnectRoute: typeof AppShopifyConnectRoute
   AppValuationRoute: typeof AppValuationRoute
 }
 
@@ -411,6 +431,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppReportsRoute: AppReportsRoute,
   AppRiskScannerRoute: AppRiskScannerRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppShopifyConnectRoute: AppShopifyConnectRoute,
   AppValuationRoute: AppValuationRoute,
 }
 
