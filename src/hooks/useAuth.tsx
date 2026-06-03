@@ -19,6 +19,11 @@ interface AuthContextType {
   ) => Promise<{ error: Error | null; data: unknown }>;
   signOut: () => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null; data: unknown }>;
+  verifyEmailOtp: (
+    email: string,
+    token: string,
+  ) => Promise<{ error: Error | null; data: unknown }>;
+  resendSignupOtp: (email: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -192,6 +197,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Verify the 6-digit email code sent on sign-up. On success Supabase returns a
+  // session, so the user is fully authenticated afterwards.
+  const verifyEmailOtp = async (email: string, token: string) => {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "signup",
+        });
+        return { error: error ? new Error(error.message) : null, data };
+      } catch (err: unknown) {
+        const errorVal = err instanceof Error ? err : new Error(String(err));
+        return { error: errorVal, data: null };
+      }
+    } else {
+      // Demo mode: accept any code and create a mock session.
+      const u = getMockUser(email, "Demo User");
+      localStorage.setItem(
+        "exitecom_demo_user",
+        JSON.stringify({ email, fullName: "Demo User" }),
+      );
+      setUser(u);
+      setSession(getMockSession(u));
+      return { error: null, data: { user: u, session: getMockSession(u) } };
+    }
+  };
+
+  const resendSignupOtp = async (email: string) => {
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.auth.resend({ type: "signup", email });
+        return { error: error ? new Error(error.message) : null };
+      } catch (err: unknown) {
+        const errorVal = err instanceof Error ? err : new Error(String(err));
+        return { error: errorVal };
+      }
+    } else {
+      return { error: null };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -203,6 +250,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         signInWithGoogle,
+        verifyEmailOtp,
+        resendSignupOtp,
       }}
     >
       {children}
