@@ -18,7 +18,7 @@ This repository is a server-rendered React app built on **TanStack Start**.
 | UI                 | React 19, Tailwind CSS v4, [shadcn/ui](https://ui.shadcn.com) (Radix) |
 | Data fetching      | TanStack Query                                                 |
 | Auth & database    | [Supabase](https://supabase.com) (Postgres + Auth + RLS)       |
-| AI normalization   | Google Gemini (`@google/generative-ai`)                        |
+| AI / intelligence  | Google Gemini (`@google/generative-ai`) — app-wide AI provider |
 | Charts / motion    | Recharts, Framer Motion                                         |
 | Build / deploy     | Vite 7, Nitro → Vercel (Cloudflare-compatible)                 |
 | Language / tooling | TypeScript, ESLint, Prettier                                   |
@@ -69,7 +69,7 @@ Create a `.env` file in the project root:
 | ------------------------ | -------- | ----------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`      | No\*     | Supabase project URL. Exposed to the client.                            |
 | `VITE_SUPABASE_ANON_KEY` | No\*     | Supabase anon key. Exposed to the client.                               |
-| `GEMINI_API_KEY`         | No       | Server-side Gemini key used by the Shopify Connect normalizer.          |
+| `GEMINI_API_KEY`         | No       | Server-side Google Gemini key — the app-wide AI provider (intelligence features + the Shopify normalizer). |
 | `VITE_GEMINI_API_KEY`    | No       | Alternate Gemini key name (checked as a fallback).                      |
 
 \* **Demo Mode:** if Supabase vars are missing or left as placeholders, the app

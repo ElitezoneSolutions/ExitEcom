@@ -181,6 +181,11 @@ enforced via an `exists (... where businesses.owner_id = auth.uid())` subquery.
   tsconfig-paths, env injection) — duplicates break the build.
 - **Demo Mode is a first-class path**, not an error state. New data features
   should degrade gracefully to mock data + `localStorage` when Supabase is absent.
+- **Gemini is the app-wide AI provider**, not Shopify-only. The Shopify
+  normalizer (`src/lib/shopify.ts`) is just its first consumer; new AI /
+  intelligence features across the app should use the same `GEMINI_API_KEY`.
+  Worth centralising a shared server-side Gemini client when the second feature
+  lands so the model name and key resolution live in one place.
 - **Server-only secrets** (Shopify token, Gemini key) belong inside server
   functions / `process.env`, never in `VITE_`-prefixed client code (except the
   Supabase anon key, which is public by design).
