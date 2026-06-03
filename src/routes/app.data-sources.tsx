@@ -13,13 +13,7 @@ function DataSources() {
   const { business } = useBusinessData();
 
   const isShopifyConnected = business.connectedSources.some((s) =>
-    s.toLowerCase().includes("shopify")
-  );
-  const isMetaConnected = business.connectedSources.some((s) =>
-    s.toLowerCase().includes("meta")
-  );
-  const isGoogleConnected = business.connectedSources.some((s) =>
-    s.toLowerCase().includes("google")
+    s.toLowerCase().includes("shopify"),
   );
 
   const platforms = [
@@ -29,55 +23,54 @@ function DataSources() {
       status: isShopifyConnected ? "connected" : "missing",
       sync: isShopifyConnected ? "Synced live" : "—",
       impact: "Valuation range narrowed by £15k",
-      explanation: "Connects your core revenue engine.",
+      explanation:
+        "Your core revenue engine — orders, products and customers. This is all we need to build your Exit Score.",
     },
     {
       name: "Meta Ads",
-      section: "Marketing",
-      status: isMetaConnected ? "connected" : "missing",
-      sync: isMetaConnected ? "12 min ago" : "—",
-      impact: "Score increased by 3 pts",
-      explanation: "Allows buyers to verify acquisition costs.",
+      section: "Coming Soon",
+      status: "missing",
+      sync: "—",
+      explanation: "Verify acquisition costs and blended ROAS.",
     },
     {
       name: "Google Ads",
-      section: "Marketing",
-      status: isGoogleConnected ? "connected" : "missing",
-      sync: isGoogleConnected ? "1 hour ago" : "—",
-      impact: "Score increased by 2 pts",
-      explanation: "Verifies ROAS on high-intent channels.",
+      section: "Coming Soon",
+      status: "missing",
+      sync: "—",
+      explanation: "Verify ROAS on high-intent channels.",
     },
     {
       name: "P&L Upload",
-      section: "Financial",
+      section: "Coming Soon",
       status: "missing",
       sync: "—",
-      explanation: "Without this, your valuation range is £40k wider than it needs to be.",
+      explanation: "Tighten your valuation range with verified financials.",
     },
     {
       name: "Triple Whale",
-      section: "Financial",
+      section: "Coming Soon",
       status: "missing",
       sync: "—",
-      explanation: "Validates blended CPA and margin metrics.",
+      explanation: "Validate blended CPA and margin metrics.",
     },
     {
       name: "Google Analytics 4",
-      section: "Analytics",
+      section: "Coming Soon",
       status: "missing",
       sync: "—",
-      explanation: "Without this, buyers discount your traffic quality.",
+      explanation: "Give buyers confidence in your traffic quality.",
     },
     {
       name: "TikTok Ads",
-      section: "More Platforms",
+      section: "Coming Soon",
       status: "missing",
       sync: "—",
       explanation: "Optional platform connection.",
     },
     {
       name: "Snapchat Ads",
-      section: "More Platforms",
+      section: "Coming Soon",
       status: "missing",
       sync: "—",
       explanation: "Optional platform connection.",
@@ -105,20 +98,13 @@ function DataSources() {
     },
   ] as const;
 
-  const sections = [
-    "Store",
-    "Marketing",
-    "Financial",
-    "Analytics",
-    "More Platforms",
-    "Coming Soon",
-  ] as const;
+  const sections = ["Store", "Coming Soon"] as const;
 
   return (
     <>
       <PageHeader
         title="Data Sources"
-        subtitle="The more data you connect, the more accurate your Exit Score."
+        subtitle="Connect your Shopify store to generate your Exit Score. More integrations are on the way."
         right={
           <div className="card-light p-5 flex items-center gap-4">
             <ScoreRing
@@ -143,7 +129,9 @@ function DataSources() {
       {sections.map((sec) => (
         <div key={sec} className="mb-10">
           <SectionLabel>
-            {sec} {sec === "Coming Soon" ? "" : "Platforms"}
+            {sec === "Coming Soon"
+              ? "More Integrations — Coming Soon"
+              : "Connect Your Store"}
           </SectionLabel>
           <div className="mt-4 grid sm:grid-cols-2 gap-3">
             {platforms
@@ -163,24 +151,20 @@ function DataSources() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <StatusBadge status={p.status as "connected" | "missing"} />
+                      <StatusBadge
+                        status={p.status as "connected" | "missing"}
+                      />
                       {sec !== "Coming Soon" && (
-                        p.name === "Shopify" ? (
-                          <Link
-                            to="/app/shopify-connect"
-                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
-                          >
-                            {p.status === "connected" ? "Manage" : "Connect"}
-                          </Link>
-                        ) : (
-                          <button className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium cursor-pointer">
-                            {p.status === "connected" ? "Manage" : "Connect"}
-                          </button>
-                        )
+                        <Link
+                          to="/app/shopify-connect"
+                          className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                        >
+                          {p.status === "connected" ? "Manage" : "Connect"}
+                        </Link>
                       )}
                     </div>
                   </div>
-                  {p.impact && p.status === "connected" && (
+                  {"impact" in p && p.impact && p.status === "connected" && (
                     <div className="mt-3 pt-3 border-t border-[var(--border-warm)] text-[11px] text-[var(--positive)] font-medium">
                       ✓ {p.impact}
                     </div>
@@ -191,7 +175,8 @@ function DataSources() {
         </div>
       ))}
       <div className="mt-8 pt-6 border-t border-[var(--border-warm)] text-center text-sm text-[var(--text-muted)]">
-        🔒 Bank-grade encryption. Your data is never shared with buyers without your permission.
+        🔒 Bank-grade encryption. Your data is never shared with buyers without
+        your permission.
       </div>
     </>
   );

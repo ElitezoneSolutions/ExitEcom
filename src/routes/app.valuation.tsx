@@ -62,8 +62,10 @@ function Valuation() {
         <div className="mt-4 flex items-center gap-6 text-sm flex-wrap">
           <div>
             <span className="text-[var(--text-muted)]">Current:</span>{" "}
-            <span className="font-display text-lg">{fmtGBP(mockBusiness.fairMarket)}</span> at
-            {" "}{mockBusiness.currentMultiple}x
+            <span className="font-display text-lg">
+              {fmtGBP(mockBusiness.fairMarket)}
+            </span>{" "}
+            at {mockBusiness.currentMultiple}x
           </div>
           <ArrowRight className="w-4 h-4 text-[var(--text-muted)]" />
           <div>

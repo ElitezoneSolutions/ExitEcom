@@ -139,17 +139,28 @@ function Dashboard() {
       <div className="grid md:grid-cols-2 gap-5 mt-5">
         <div className="surface-accent-muted p-5 rounded-lg flex items-center justify-between border border-[var(--accent)]/20">
           <div>
-            <div className="font-medium text-[var(--text-primary)]">12 buyers are looking for businesses like yours</div>
-            <div className="text-xs text-[var(--text-muted)] mt-1">In your specific category and revenue range.</div>
+            <div className="font-medium text-[var(--text-primary)]">
+              12 buyers are looking for businesses like yours
+            </div>
+            <div className="text-xs text-[var(--text-muted)] mt-1">
+              In your specific category and revenue range.
+            </div>
           </div>
-          <Link to="/app/buyer-matching" className="px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-md hover:bg-[var(--accent-hover)] transition-colors">
+          <Link
+            to="/app/buyer-matching"
+            className="px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-md hover:bg-[var(--accent-hover)] transition-colors"
+          >
             See Matched Buyers
           </Link>
         </div>
         <div className="card-light p-5 rounded-lg flex items-center justify-between">
           <div>
-            <div className="font-medium text-[var(--text-primary)]">Book a 30-min Exit Strategy Session</div>
-            <div className="text-xs text-[var(--text-muted)] mt-1">Review your score with an M&A expert.</div>
+            <div className="font-medium text-[var(--text-primary)]">
+              Book a 30-min Exit Strategy Session
+            </div>
+            <div className="text-xs text-[var(--text-muted)] mt-1">
+              Review your score with an M&A expert.
+            </div>
           </div>
           <button className="px-4 py-2 border border-[var(--border-warm)] text-[var(--text-primary)] text-sm font-medium rounded-md hover:bg-[var(--sidebar-active)] transition-colors">
             Book Session
@@ -212,7 +223,9 @@ function Dashboard() {
         </div>
 
         <div className="lg:col-span-2">
-          <SectionLabel>Your personalised roadmap to a higher exit</SectionLabel>
+          <SectionLabel>
+            Your personalised roadmap to a higher exit
+          </SectionLabel>
           <div className="mt-4 space-y-3">
             {displayActions.map((a) => (
               <div key={a.title} className="card-light px-5 py-4">

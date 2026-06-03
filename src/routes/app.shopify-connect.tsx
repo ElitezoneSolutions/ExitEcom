@@ -17,7 +17,7 @@ import {
   Package,
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
-import { useBusinessData } from "@/hooks/useBusinessData";
+import { useBusinessData, type BusinessData } from "@/hooks/useBusinessData";
 import { connectShopifyFn } from "@/lib/shopify";
 import { toast } from "sonner";
 
@@ -34,9 +34,11 @@ function ShopifyConnect() {
   const [accessToken, setAccessToken] = useState("");
 
   // Sync state
-  const [syncStatus, setSyncStatus] = useState<"idle" | "connecting" | "fetching" | "normalizing" | "success" | "error">("idle");
+  const [syncStatus, setSyncStatus] = useState<
+    "idle" | "connecting" | "fetching" | "normalizing" | "success" | "error"
+  >("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [syncedData, setSyncedData] = useState<any>(null);
+  const [syncedData, setSyncedData] = useState<BusinessData | null>(null);
 
   const handleSync = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,9 +65,11 @@ function ShopifyConnect() {
       }, 3500);
 
       const result = await connectShopifyFn({
-        shopDomain,
-        accessToken,
-        industry: business.industry,
+        data: {
+          shopDomain,
+          accessToken,
+          industry: business.industry,
+        },
       });
 
       if (!result || !result.businessUpdate) {
@@ -81,10 +85,13 @@ function ShopifyConnect() {
       } else {
         throw new Error("Failed to save synced data to local state/database.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setSyncStatus("error");
-      setErrorMessage(err.message || "Could not connect to Shopify. Please check your credentials.");
+      setErrorMessage(
+        (err instanceof Error && err.message) ||
+          "Could not connect to Shopify. Please check your credentials.",
+      );
       toast.error("Sync failed. Check credentials and scopes.");
     }
   };
@@ -114,8 +121,12 @@ function ShopifyConnect() {
                 S
               </div>
               <div>
-                <h3 className="text-lg font-semibold leading-tight">API Credentials</h3>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">Secure, read-only API connection</p>
+                <h3 className="text-lg font-semibold leading-tight">
+                  API Credentials
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Secure, read-only API connection
+                </p>
               </div>
             </div>
 
@@ -123,7 +134,9 @@ function ShopifyConnect() {
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2 flex items-center justify-between">
                   Shop Domain
-                  <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">e.g. store.myshopify.com</span>
+                  <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
+                    e.g. store.myshopify.com
+                  </span>
                 </label>
                 <input
                   type="text"
@@ -149,10 +162,6 @@ function ShopifyConnect() {
                 />
               </div>
 
-
-
-
-
               <button
                 type="submit"
                 className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
@@ -162,7 +171,8 @@ function ShopifyConnect() {
             </form>
 
             <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-2">
-              <Lock className="w-3.5 h-3.5" /> Credentials are encrypted and never stored in plain text.
+              <Lock className="w-3.5 h-3.5" /> Credentials are encrypted and
+              never stored in plain text.
             </div>
           </div>
 
@@ -178,10 +188,14 @@ function ShopifyConnect() {
                   1
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">Open Developer Settings</h4>
+                  <h4 className="font-semibold text-sm">
+                    Open Developer Settings
+                  </h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Log in to your Shopify Admin page. Navigate to <strong>Settings</strong> (bottom-left gear icon) &rarr;{" "}
-                    <strong>Apps and sales channels</strong> &rarr; <strong>Develop apps</strong>.
+                    Log in to your Shopify Admin page. Navigate to{" "}
+                    <strong>Settings</strong> (bottom-left gear icon) &rarr;{" "}
+                    <strong>Apps and sales channels</strong> &rarr;{" "}
+                    <strong>Develop apps</strong>.
                   </p>
                 </div>
               </div>
@@ -191,9 +205,13 @@ function ShopifyConnect() {
                   2
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">Create the App Instance</h4>
+                  <h4 className="font-semibold text-sm">
+                    Create the App Instance
+                  </h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Click <strong>Create an app</strong>. Enter an App Name (e.g., <code>ExitEcom Analytics</code>) and select your App developer account. Click <strong>Create app</strong>.
+                    Click <strong>Create an app</strong>. Enter an App Name
+                    (e.g., <code>ExitEcom Analytics</code>) and select your App
+                    developer account. Click <strong>Create app</strong>.
                   </p>
                 </div>
               </div>
@@ -203,9 +221,13 @@ function ShopifyConnect() {
                   3
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">Configure Required Permissions (API Scopes)</h4>
+                  <h4 className="font-semibold text-sm">
+                    Configure Required Permissions (API Scopes)
+                  </h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Click <strong>Configure Admin API integration</strong>. Under Admin API access scopes, you MUST select read permissions for:
+                    Click <strong>Configure Admin API integration</strong>.
+                    Under Admin API access scopes, you MUST select read
+                    permissions for:
                   </p>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-warm)] rounded text-[11px] font-mono text-[var(--text-primary)]">
@@ -225,7 +247,10 @@ function ShopifyConnect() {
                       read_customers
                     </div>
                   </div>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-2">Click <strong>Save</strong> at the top right to commit these scopes.</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                    Click <strong>Save</strong> at the top right to commit these
+                    scopes.
+                  </p>
                 </div>
               </div>
 
@@ -234,14 +259,21 @@ function ShopifyConnect() {
                   4
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">Install App & Copy Access Token</h4>
+                  <h4 className="font-semibold text-sm">
+                    Install App & Copy Access Token
+                  </h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Navigate to the <strong>API credentials</strong> tab. Click <strong>Install app</strong> and confirm. Copy the generated <strong>Admin API Access Token</strong> (starts with <code>shpat_</code>).
+                    Navigate to the <strong>API credentials</strong> tab. Click{" "}
+                    <strong>Install app</strong> and confirm. Copy the generated{" "}
+                    <strong>Admin API Access Token</strong> (starts with{" "}
+                    <code>shpat_</code>).
                   </p>
                   <div className="mt-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>Important:</strong> The access token is revealed only ONCE. Store it securely. If lost, you will need to uninstall and reinstall the app to generate a new one.
+                      <strong>Important:</strong> The access token is revealed
+                      only ONCE. Store it securely. If lost, you will need to
+                      uninstall and reinstall the app to generate a new one.
                     </div>
                   </div>
                 </div>
@@ -252,7 +284,9 @@ function ShopifyConnect() {
       )}
 
       {/* Syncing Progress View */}
-      {(syncStatus === "connecting" || syncStatus === "fetching" || syncStatus === "normalizing") && (
+      {(syncStatus === "connecting" ||
+        syncStatus === "fetching" ||
+        syncStatus === "normalizing") && (
         <div className="card-light max-w-xl mx-auto p-10 flex flex-col items-center justify-center text-center gap-8 shadow-lg my-12 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-[var(--bg-secondary)]">
             <div
@@ -262,8 +296,8 @@ function ShopifyConnect() {
                   syncStatus === "connecting"
                     ? "20%"
                     : syncStatus === "fetching"
-                    ? "55%"
-                    : "85%",
+                      ? "55%"
+                      : "85%",
               }}
             ></div>
           </div>
@@ -284,9 +318,12 @@ function ShopifyConnect() {
               {syncStatus === "normalizing" && "Synthesizing M&A Insights..."}
             </h3>
             <p className="text-xs text-[var(--text-muted)] mt-2.5 max-w-sm mx-auto leading-relaxed">
-              {syncStatus === "connecting" && "Establishing SSL handshakes with Shopify API secure gateway..."}
-              {syncStatus === "fetching" && "Pulling order metrics, line-item arrays, and product catalog variants..."}
-              {syncStatus === "normalizing" && "Gemini AI is normalizing currency values, calculating product concentration, cohort repeat rates, and valuing assets..."}
+              {syncStatus === "connecting" &&
+                "Establishing SSL handshakes with Shopify API secure gateway..."}
+              {syncStatus === "fetching" &&
+                "Pulling order metrics, line-item arrays, and product catalog variants..."}
+              {syncStatus === "normalizing" &&
+                "Gemini AI is normalizing currency values, calculating product concentration, cohort repeat rates, and valuing assets..."}
             </p>
           </div>
 
@@ -294,7 +331,9 @@ function ShopifyConnect() {
           <div className="w-full max-w-sm flex flex-col gap-2 mt-2 text-left text-xs bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] font-medium">
             <div className="flex items-center justify-between text-[var(--text-secondary)]">
               <span>🚀 Shopify Gateway Handshake</span>
-              <span className="font-mono text-[10px] text-[var(--positive)]">DONE</span>
+              <span className="font-mono text-[10px] text-[var(--positive)]">
+                DONE
+              </span>
             </div>
             <div className="flex items-center justify-between text-[var(--text-secondary)]">
               <span>📦 Fetching Product Catalog</span>
@@ -308,8 +347,8 @@ function ShopifyConnect() {
                 {syncStatus === "connecting"
                   ? "PENDING"
                   : syncStatus === "fetching"
-                  ? "SYNCING"
-                  : "DONE"}
+                    ? "SYNCING"
+                    : "DONE"}
               </span>
             </div>
             <div className="flex items-center justify-between text-[var(--text-secondary)]">
@@ -331,9 +370,13 @@ function ShopifyConnect() {
             </div>
 
             <div>
-              <h3 className="text-2xl font-bold font-display">Shopify Connected & Normalized</h3>
+              <h3 className="text-2xl font-bold font-display">
+                Shopify Connected & Normalized
+              </h3>
               <p className="text-sm text-[var(--text-muted)] mt-1.5">
-                Gemini successfully normalized metrics for <strong>{syncedData.name}</strong>. Your Exit Score and valuation range are updated.
+                Gemini successfully normalized metrics for{" "}
+                <strong>{syncedData.name}</strong>. Your Exit Score and
+                valuation range are updated.
               </p>
             </div>
 
@@ -341,7 +384,8 @@ function ShopifyConnect() {
               <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left flex flex-col justify-between">
                 <div>
                   <div className="label-caps flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-[var(--accent)]" /> Exit Readiness Score
+                    <Activity className="w-3.5 h-3.5 text-[var(--accent)]" />{" "}
+                    Exit Readiness Score
                   </div>
                   <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
                     {syncedData.exitScore} / 100
@@ -355,7 +399,8 @@ function ShopifyConnect() {
               <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left flex flex-col justify-between">
                 <div>
                   <div className="label-caps flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-[var(--accent)]" /> Projected SDE
+                    <DollarSign className="w-3.5 h-3.5 text-[var(--accent)]" />{" "}
+                    Projected SDE
                   </div>
                   <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
                     £{(syncedData.sde / 1000).toFixed(0)}k
@@ -369,7 +414,8 @@ function ShopifyConnect() {
               <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left flex flex-col justify-between">
                 <div>
                   <div className="label-caps flex items-center gap-1.5">
-                    <TrendingUp className="w-3.5 h-3.5 text-[var(--accent)]" /> Valuation Midpoint
+                    <TrendingUp className="w-3.5 h-3.5 text-[var(--accent)]" />{" "}
+                    Valuation Midpoint
                   </div>
                   <div className="font-display text-3xl font-bold text-[var(--accent)] mt-3">
                     £{(syncedData.valuationMid / 1000).toFixed(0)}k
@@ -384,25 +430,39 @@ function ShopifyConnect() {
             <div className="w-full grid sm:grid-cols-2 gap-4">
               <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left">
                 <div className="label-caps flex items-center gap-1.5 mb-2">
-                  <User className="w-3.5 h-3.5 text-[var(--accent)]" /> Customer Economics
+                  <User className="w-3.5 h-3.5 text-[var(--accent)]" /> Customer
+                  Economics
                 </div>
                 <div className="text-sm font-medium mt-1">
-                  Repeat Purchase Rate: <span className="text-[var(--accent)] font-semibold">{(syncedData.repeatRate * 100).toFixed(0)}%</span>
+                  Repeat Purchase Rate:{" "}
+                  <span className="text-[var(--accent)] font-semibold">
+                    {(syncedData.repeatRate * 100).toFixed(0)}%
+                  </span>
                 </div>
                 <div className="text-sm font-medium mt-1">
-                  Average Order Value (AOV): <span className="text-[var(--accent)] font-semibold">£{syncedData.avgOrderValue.toFixed(2)}</span>
+                  Average Order Value (AOV):{" "}
+                  <span className="text-[var(--accent)] font-semibold">
+                    £{syncedData.avgOrderValue.toFixed(2)}
+                  </span>
                 </div>
               </div>
 
               <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left">
                 <div className="label-caps flex items-center gap-1.5 mb-2">
-                  <Package className="w-3.5 h-3.5 text-[var(--accent)]" /> SKU Logistics
+                  <Package className="w-3.5 h-3.5 text-[var(--accent)]" /> SKU
+                  Logistics
                 </div>
                 <div className="text-sm font-medium mt-1">
-                  Product Concentration: <span className="text-[var(--accent)] font-semibold">{(syncedData.topProductShare * 100).toFixed(0)}%</span>
+                  Product Concentration:{" "}
+                  <span className="text-[var(--accent)] font-semibold">
+                    {(syncedData.topProductShare * 100).toFixed(0)}%
+                  </span>
                 </div>
                 <div className="text-sm font-medium mt-1">
-                  Data Confidence Level: <span className="text-[var(--positive)] font-semibold">{syncedData.dataConfidence}%</span>
+                  Data Confidence Level:{" "}
+                  <span className="text-[var(--positive)] font-semibold">
+                    {syncedData.dataConfidence}%
+                  </span>
                 </div>
               </div>
             </div>
@@ -433,9 +493,12 @@ function ShopifyConnect() {
           </div>
 
           <div>
-            <h3 className="text-xl font-bold font-display">Connection Sync Failed</h3>
+            <h3 className="text-xl font-bold font-display">
+              Connection Sync Failed
+            </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
-              We encountered an issue while communicating with your Shopify store or normalizing the data.
+              We encountered an issue while communicating with your Shopify
+              store or normalizing the data.
             </p>
           </div>
 

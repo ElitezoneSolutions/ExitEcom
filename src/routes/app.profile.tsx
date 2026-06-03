@@ -14,7 +14,7 @@ function Profile() {
     ["Business Age", mockBusiness.age],
     ["Primary URL", mockBusiness.url],
   ];
-  
+
   const isYoungBusiness = parseFloat(mockBusiness.age) < 3;
   return (
     <>
@@ -36,14 +36,17 @@ function Profile() {
                 />
                 {l === "Business Age" && isYoungBusiness && (
                   <p className="text-xs text-[var(--risk-medium)]">
-                    ⚠️ Business age below 3 years may compress your multiple. See Risk Scanner.
+                    ⚠️ Business age below 3 years may compress your multiple.
+                    See Risk Scanner.
                   </p>
                 )}
               </div>
             </div>
           ))}
           <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>Description</div>
+            <div className="label-caps" style={{ fontSize: 10 }}>
+              Description
+            </div>
             <textarea
               placeholder="Tell buyers what makes this business unique. What is the brand story? What would a new owner be acquiring?"
               className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
@@ -52,9 +55,13 @@ function Profile() {
           </div>
 
           <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>Seller Intent</div>
+            <div className="label-caps" style={{ fontSize: 10 }}>
+              Seller Intent
+            </div>
             <select className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)] text-[var(--text-primary)] appearance-none">
-              <option value="" disabled selected>What is your timeline for exit?</option>
+              <option value="" disabled selected>
+                What is your timeline for exit?
+              </option>
               <option value="0-6">0–6 months</option>
               <option value="6-12">6–12 months</option>
               <option value="12-24">12–24 months</option>
@@ -63,7 +70,9 @@ function Profile() {
           </div>
 
           <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>Target Asking Price</div>
+            <div className="label-caps" style={{ fontSize: 10 }}>
+              Target Asking Price
+            </div>
             <input
               placeholder="Do you have a target price in mind?"
               type="text"
@@ -72,7 +81,9 @@ function Profile() {
           </div>
 
           <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>Seller Strengths</div>
+            <div className="label-caps" style={{ fontSize: 10 }}>
+              Seller Strengths
+            </div>
             <textarea
               placeholder="What are the 3 strongest things about this business?"
               className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
@@ -82,7 +93,10 @@ function Profile() {
 
           <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-warm)] flex items-center justify-between">
             <span>Last updated: 2 hours ago</span>
-            <span className="text-[var(--accent)]">Buyers verify your profile details during due diligence. Keep this up to date.</span>
+            <span className="text-[var(--accent)]">
+              Buyers verify your profile details during due diligence. Keep this
+              up to date.
+            </span>
           </div>
         </div>
         <div className="card-dark p-7 h-fit">

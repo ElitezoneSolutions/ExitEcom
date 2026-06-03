@@ -127,18 +127,35 @@ function ExitScore() {
         </div>
         <div className="space-y-4">
           {[
-            { l: "Quick Sale", v: mockBusiness.quickSale, m: Number((mockBusiness.quickSale / mockBusiness.adjustedEarnings).toFixed(1)), w: 30 },
+            {
+              l: "Quick Sale",
+              v: mockBusiness.quickSale,
+              m: Number(
+                (
+                  mockBusiness.quickSale / mockBusiness.adjustedEarnings
+                ).toFixed(1),
+              ),
+              w: 30,
+            },
             {
               l: "Fair Market",
               v: mockBusiness.fairMarket,
-              m: Number((mockBusiness.fairMarket / mockBusiness.adjustedEarnings).toFixed(1)),
+              m: Number(
+                (
+                  mockBusiness.fairMarket / mockBusiness.adjustedEarnings
+                ).toFixed(1),
+              ),
               w: 60,
               gold: true,
             },
             {
               l: "Optimised",
               v: mockBusiness.optimised,
-              m: Number((mockBusiness.optimised / mockBusiness.adjustedEarnings).toFixed(1)),
+              m: Number(
+                (
+                  mockBusiness.optimised / mockBusiness.adjustedEarnings
+                ).toFixed(1),
+              ),
               w: 100,
               accent: true,
             },
@@ -174,7 +191,8 @@ function ExitScore() {
         style={{ borderLeft: "3px solid var(--accent)" }}
       >
         <h3 className="font-display text-2xl text-[var(--text-primary)]">
-          You are leaving {fmtGBP(mockBusiness.valueGap)} on the table. We know exactly why.
+          You are leaving {fmtGBP(mockBusiness.valueGap)} on the table. We know
+          exactly why.
         </h3>
         <div className="mt-5 flex flex-wrap gap-2">
           {[

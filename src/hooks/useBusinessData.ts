@@ -85,6 +85,13 @@ export interface DocumentItem {
   uploaded: boolean;
 }
 
+// Payload returned by the Shopify Connect server function (Gemini or fallback).
+export interface NormalizedShopifyReport {
+  businessUpdate: Partial<BusinessData>;
+  risks: RiskItem[];
+  actions: ActionItem[];
+}
+
 export function useBusinessData() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -212,7 +219,7 @@ export function useBusinessData() {
         netRevenue: Number(valData?.net_revenue ?? mockBusiness.netRevenue),
         exitScore: Number(valData?.exit_score ?? mockBusiness.exitScore),
         scoreTier: mockBusiness.scoreTier,
-        scoreBreakdown: mockBusiness.scoreBreakdown as unknown[],
+        scoreBreakdown: mockBusiness.scoreBreakdown as unknown as unknown[],
         valuationLow: Number(
           valData?.valuation_low ?? mockBusiness.valuationLow,
         ),
@@ -342,19 +349,27 @@ export function useBusinessData() {
     }
   };
 
-  const syncShopifyData = async (normalizedData: any) => {
-    const { businessUpdate, risks: newRisks, actions: newActions } = normalizedData;
+  const syncShopifyData = async (normalizedData: NormalizedShopifyReport) => {
+    const {
+      businessUpdate,
+      risks: newRisks,
+      actions: newActions,
+    } = normalizedData;
 
     const updatedBusiness: BusinessData = {
       ...business,
       ...businessUpdate,
-      connectedSources: Array.from(new Set([...business.connectedSources, "shopify"])),
-      missingSources: business.missingSources.filter((s) => s.toLowerCase() !== "shopify"),
+      connectedSources: Array.from(
+        new Set([...business.connectedSources, "shopify"]),
+      ),
+      missingSources: business.missingSources.filter(
+        (s) => s.toLowerCase() !== "shopify",
+      ),
     };
 
     setBusiness(updatedBusiness);
 
-    const mappedRisks: RiskItem[] = newRisks.map((r: any) => ({
+    const mappedRisks: RiskItem[] = newRisks.map((r) => ({
       title: r.title,
       severity: r.severity as "high" | "medium" | "low",
       description: r.description,
@@ -366,7 +381,7 @@ export function useBusinessData() {
     }));
     setRisks(mappedRisks);
 
-    const mappedActions: ActionItem[] = newActions.map((a: any) => ({
+    const mappedActions: ActionItem[] = newActions.map((a) => ({
       title: a.title,
       priority: a.priority as "high" | "medium" | "low",
       uplift: a.uplift,
@@ -442,7 +457,7 @@ export function useBusinessData() {
           buyer_fears: r.buyerFears,
           buyer_does: r.buyerDoes,
           recommendation: r.recommendation,
-        }))
+        })),
       );
       if (riskErr) throw riskErr;
 
@@ -457,11 +472,13 @@ export function useBusinessData() {
           time: a.time,
           problem: a.problem,
           steps: a.steps,
-        }))
+        })),
       );
       if (actErr) throw actErr;
 
-      toast.success("Successfully saved Shopify and Gemini reports to Supabase!");
+      toast.success(
+        "Successfully saved Shopify and Gemini reports to Supabase!",
+      );
       return true;
     } catch (err) {
       console.error("Failed to sync Shopify data to Supabase:", err);
@@ -488,4 +505,3 @@ export function useBusinessData() {
     syncShopifyData,
   };
 }
-

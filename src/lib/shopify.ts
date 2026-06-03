@@ -7,191 +7,280 @@ interface ConnectShopifyInput {
   industry?: string;
 }
 
-export const connectShopifyFn = createServerFn({
-  method: "POST",
-})<ConnectShopifyInput, any>(async (input) => {
-  const { shopDomain: rawShopDomain, accessToken, industry = "Beauty & Skincare" } = input;
+// Raw shapes pulled from the Shopify Admin API (or the sandbox simulator).
+interface ShopifyLineItem {
+  title: string;
+  quantity: number;
+  price: string;
+}
+interface ShopifyOrder {
+  total_price: string;
+  created_at: string;
+  customer?: { id: string | number } | null;
+  line_items?: ShopifyLineItem[];
+}
+interface ShopifyProduct {
+  id: number;
+  title: string;
+  variants?: unknown[];
+}
+interface ShopifyShop {
+  name: string;
+  domain: string;
+  myshopify_domain: string;
+  currency: string;
+  country_name: string;
+  created_at: string;
+}
 
-  // 1. Sanitize Shop Domain
-  let shopDomain = rawShopDomain.trim().replace(/^https?:\/\//, "");
-  if (!shopDomain.includes(".")) {
-    shopDomain = `${shopDomain}.myshopify.com`;
-  }
+// Condensed payloads handed to Gemini / the rule-based fallback normalizer.
+interface ShopSummary {
+  name: string;
+  domain: string;
+  myshopify_domain: string;
+  currency: string;
+  country: string;
+  created_at: string;
+  industry: string;
+}
+interface OrderSummary {
+  total_price: string;
+  created_at: string;
+  customer_id: string | number | null;
+  line_items: ShopifyLineItem[];
+}
+interface ProductSummary {
+  id: number;
+  title: string;
+  variants_count: number;
+}
 
-  const apiKey = 
-    process.env.VITE_GEMINI_API_KEY || 
-    process.env.GEMINI_API_KEY || 
-    (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-    (import.meta as any).env?.GEMINI_API_KEY;
+export const connectShopifyFn = createServerFn({ method: "POST" })
+  .inputValidator((input: ConnectShopifyInput) => input)
+  .handler(async ({ data }) => {
+    const {
+      shopDomain: rawShopDomain,
+      accessToken,
+      industry = "Beauty & Skincare",
+    } = data;
 
-  // Sandbox mock generators
-  const getSandboxOrders = () => {
-    const products = ["Hero Serum", "Glow Moisturizer", "Hydrating Cleanser", "Sunscreen SPF 50", "Exfoliating Toner"];
-    const ordersList = [];
-    const now = new Date();
-    
-    // Generate 45 realistic orders over the last 30 days
-    for (let i = 0; i < 45; i++) {
-      const orderDate = new Date(now.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000);
-      const customerId = `cust_${10000 + Math.floor(i % 12)}`; // 12 unique customers -> high repeat rate!
-      const product1 = products[Math.floor(Math.random() * products.length)];
-      const product2 = products[Math.floor(Math.random() * products.length)];
-      const isMultiItem = Math.random() > 0.6;
-      
-      const items = [{ title: product1, quantity: 1, price: "45.00" }];
-      let totalPrice = 45.00;
-      
-      if (isMultiItem && product1 !== product2) {
-        items.push({ title: product2, quantity: 1, price: "35.00" });
-        totalPrice += 35.00;
-      }
-      
-      ordersList.push({
-        total_price: totalPrice.toFixed(2),
-        created_at: orderDate.toISOString(),
-        customer: { id: customerId },
-        line_items: items
-      });
+    // 1. Sanitize Shop Domain
+    let shopDomain = rawShopDomain.trim().replace(/^https?:\/\//, "");
+    if (!shopDomain.includes(".")) {
+      shopDomain = `${shopDomain}.myshopify.com`;
     }
-    return ordersList;
-  };
 
-  const getSandboxProducts = () => {
-    return [
-      { id: 101, title: "Hero Serum", variants: [1, 2] },
-      { id: 102, title: "Glow Moisturizer", variants: [1] },
-      { id: 103, title: "Hydrating Cleanser", variants: [1] },
-      { id: 104, title: "Sunscreen SPF 50", variants: [1, 2] },
-      { id: 105, title: "Exfoliating Toner", variants: [1] }
-    ];
-  };
+    const importMetaEnv = (
+      import.meta as unknown as { env?: Record<string, string | undefined> }
+    ).env;
+    const apiKey =
+      process.env.VITE_GEMINI_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      importMetaEnv?.VITE_GEMINI_API_KEY ||
+      importMetaEnv?.GEMINI_API_KEY;
 
-  try {
-    // 2. Fetch Data from Shopify
-    console.log(`[Shopify Sync] Fetching data for ${shopDomain}`);
-    
-    let shop: any;
-    let orders: any[] = [];
-    let products: any[] = [];
-    
-    // Check if sandbox / test mode is requested explicitly
-    const isSandbox = 
-      shopDomain.toLowerCase().includes("test") || 
-      shopDomain.toLowerCase().includes("demo") || 
-      shopDomain.toLowerCase().includes("sandbox") || 
-      accessToken.toLowerCase().includes("test") || 
-      accessToken.toLowerCase().includes("demo") || 
-      accessToken.toLowerCase().includes("sandbox");
+    // Sandbox mock generators
+    const getSandboxOrders = () => {
+      const products = [
+        "Hero Serum",
+        "Glow Moisturizer",
+        "Hydrating Cleanser",
+        "Sunscreen SPF 50",
+        "Exfoliating Toner",
+      ];
+      const ordersList = [];
+      const now = new Date();
 
-    if (isSandbox) {
-      console.log("[Shopify Sync] Sandbox credentials detected. Using high-fidelity sandbox data.");
-      shop = {
-        name: shopDomain.split(".")[0].toUpperCase() + " Store",
-        domain: shopDomain,
-        myshopify_domain: shopDomain,
-        currency: "GBP",
-        country_name: "United Kingdom",
-        created_at: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
-      };
-      orders = getSandboxOrders();
-      products = getSandboxProducts();
-    } else {
-      try {
-        // Fetch Shop details
-        const shopRes = await fetch(`https://${shopDomain}/admin/api/2024-01/shop.json`, {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Accept": "application/json",
-          },
-        });
+      // Generate 45 realistic orders over the last 30 days
+      for (let i = 0; i < 45; i++) {
+        const orderDate = new Date(
+          now.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000,
+        );
+        const customerId = `cust_${10000 + Math.floor(i % 12)}`; // 12 unique customers -> high repeat rate!
+        const product1 = products[Math.floor(Math.random() * products.length)];
+        const product2 = products[Math.floor(Math.random() * products.length)];
+        const isMultiItem = Math.random() > 0.6;
 
-        if (!shopRes.ok) {
-          throw new Error(`Shopify API returned status ${shopRes.status}`);
+        const items = [{ title: product1, quantity: 1, price: "45.00" }];
+        let totalPrice = 45.0;
+
+        if (isMultiItem && product1 !== product2) {
+          items.push({ title: product2, quantity: 1, price: "35.00" });
+          totalPrice += 35.0;
         }
-        const shopData = await shopRes.json();
-        shop = shopData.shop;
 
-        // Fetch Recent Orders (limit to 50 for API performance and token limitations)
-        const ordersRes = await fetch(
-          `https://${shopDomain}/admin/api/2024-01/orders.json?status=any&limit=50&fields=total_price,created_at,customer,line_items`,
-          {
-            headers: {
-              "X-Shopify-Access-Token": accessToken,
-              "Accept": "application/json",
-            },
-          }
-        );
-        const ordersData = ordersRes.ok ? await ordersRes.json() : { orders: [] };
-        orders = ordersData.orders || [];
+        ordersList.push({
+          total_price: totalPrice.toFixed(2),
+          created_at: orderDate.toISOString(),
+          customer: { id: customerId },
+          line_items: items,
+        });
+      }
+      return ordersList;
+    };
 
-        // Fetch Products (limit to 50)
-        const productsRes = await fetch(
-          `https://${shopDomain}/admin/api/2024-01/products.json?limit=50&fields=id,title,variants`,
-          {
-            headers: {
-              "X-Shopify-Access-Token": accessToken,
-              "Accept": "application/json",
-            },
-          }
+    const getSandboxProducts = () => {
+      return [
+        { id: 101, title: "Hero Serum", variants: [1, 2] },
+        { id: 102, title: "Glow Moisturizer", variants: [1] },
+        { id: 103, title: "Hydrating Cleanser", variants: [1] },
+        { id: 104, title: "Sunscreen SPF 50", variants: [1, 2] },
+        { id: 105, title: "Exfoliating Toner", variants: [1] },
+      ];
+    };
+
+    try {
+      // 2. Fetch Data from Shopify
+      console.log(`[Shopify Sync] Fetching data for ${shopDomain}`);
+
+      let shop: ShopifyShop;
+      let orders: ShopifyOrder[] = [];
+      let products: ShopifyProduct[] = [];
+
+      // Check if sandbox / test mode is requested explicitly
+      const isSandbox =
+        shopDomain.toLowerCase().includes("test") ||
+        shopDomain.toLowerCase().includes("demo") ||
+        shopDomain.toLowerCase().includes("sandbox") ||
+        accessToken.toLowerCase().includes("test") ||
+        accessToken.toLowerCase().includes("demo") ||
+        accessToken.toLowerCase().includes("sandbox");
+
+      if (isSandbox) {
+        console.log(
+          "[Shopify Sync] Sandbox credentials detected. Using high-fidelity sandbox data.",
         );
-        const productsData = productsRes.ok ? await productsRes.json() : { products: [] };
-        products = productsData.products || [];
-      } catch (fetchError) {
-        console.warn("[Shopify Sync] Real API connection failed, falling back to Sandbox simulation for testing:", fetchError);
         shop = {
           name: shopDomain.split(".")[0].toUpperCase() + " Store",
           domain: shopDomain,
           myshopify_domain: shopDomain,
           currency: "GBP",
           country_name: "United Kingdom",
-          created_at: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()
+          created_at: new Date(
+            Date.now() - 365 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
         };
         orders = getSandboxOrders();
         products = getSandboxProducts();
+      } else {
+        try {
+          // Fetch Shop details
+          const shopRes = await fetch(
+            `https://${shopDomain}/admin/api/2024-01/shop.json`,
+            {
+              headers: {
+                "X-Shopify-Access-Token": accessToken,
+                Accept: "application/json",
+              },
+            },
+          );
+
+          if (!shopRes.ok) {
+            throw new Error(`Shopify API returned status ${shopRes.status}`);
+          }
+          const shopData = await shopRes.json();
+          shop = shopData.shop;
+
+          // Fetch Recent Orders (limit to 50 for API performance and token limitations)
+          const ordersRes = await fetch(
+            `https://${shopDomain}/admin/api/2024-01/orders.json?status=any&limit=50&fields=total_price,created_at,customer,line_items`,
+            {
+              headers: {
+                "X-Shopify-Access-Token": accessToken,
+                Accept: "application/json",
+              },
+            },
+          );
+          const ordersData = ordersRes.ok
+            ? await ordersRes.json()
+            : { orders: [] };
+          orders = ordersData.orders || [];
+
+          // Fetch Products (limit to 50)
+          const productsRes = await fetch(
+            `https://${shopDomain}/admin/api/2024-01/products.json?limit=50&fields=id,title,variants`,
+            {
+              headers: {
+                "X-Shopify-Access-Token": accessToken,
+                Accept: "application/json",
+              },
+            },
+          );
+          const productsData = productsRes.ok
+            ? await productsRes.json()
+            : { products: [] };
+          products = productsData.products || [];
+        } catch (fetchError) {
+          console.warn(
+            "[Shopify Sync] Real API connection failed, falling back to Sandbox simulation for testing:",
+            fetchError,
+          );
+          shop = {
+            name: shopDomain.split(".")[0].toUpperCase() + " Store",
+            domain: shopDomain,
+            myshopify_domain: shopDomain,
+            currency: "GBP",
+            country_name: "United Kingdom",
+            created_at: new Date(
+              Date.now() - 365 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
+          };
+          orders = getSandboxOrders();
+          products = getSandboxProducts();
+        }
       }
-    }
 
-    // 3. Prepare payload for Gemini
-    const shopDataSummary = {
-      name: shop.name,
-      domain: shop.domain,
-      myshopify_domain: shop.myshopify_domain,
-      currency: shop.currency,
-      country: shop.country_name,
-      created_at: shop.created_at,
-      industry: industry,
-    };
+      // 3. Prepare payload for Gemini
+      const shopDataSummary = {
+        name: shop.name,
+        domain: shop.domain,
+        myshopify_domain: shop.myshopify_domain,
+        currency: shop.currency,
+        country: shop.country_name,
+        created_at: shop.created_at,
+        industry: industry,
+      };
 
-    const ordersSummary = orders.map((o: any) => ({
-      total_price: o.total_price,
-      created_at: o.created_at,
-      customer_id: o.customer?.id || null,
-      line_items: o.line_items?.map((li: any) => ({
-        title: li.title,
-        quantity: li.quantity,
-        price: li.price,
-      })) || [],
-    }));
+      const ordersSummary: OrderSummary[] = orders.map((o) => ({
+        total_price: o.total_price,
+        created_at: o.created_at,
+        customer_id: o.customer?.id ?? null,
+        line_items:
+          o.line_items?.map((li) => ({
+            title: li.title,
+            quantity: li.quantity,
+            price: li.price,
+          })) || [],
+      }));
 
-    const productsSummary = products.map((p: any) => ({
-      id: p.id,
-      title: p.title,
-      variants_count: p.variants?.length || 0,
-    }));
+      const productsSummary: ProductSummary[] = products.map((p) => ({
+        id: p.id,
+        title: p.title,
+        variants_count: p.variants?.length || 0,
+      }));
 
-    console.log(`[Shopify Sync] Fetched/Simulated shop: ${shop.name}. Orders: ${orders.length}. Products: ${products.length}.`);
+      console.log(
+        `[Shopify Sync] Fetched/Simulated shop: ${shop.name}. Orders: ${orders.length}. Products: ${products.length}.`,
+      );
 
-    // 4. If Gemini API Key is missing, run fallback high-fidelity client-side or server-side math
-    if (!apiKey) {
-      console.warn("[Shopify Sync] No Gemini API key provided. Using rule-based fallback normalization.");
-      return getFallbackNormalization({ shopDataSummary, ordersSummary, productsSummary, industry });
-    }
+      // 4. If Gemini API Key is missing, run fallback high-fidelity client-side or server-side math
+      if (!apiKey) {
+        console.warn(
+          "[Shopify Sync] No Gemini API key provided. Using rule-based fallback normalization.",
+        );
+        return getFallbackNormalization({
+          shopDataSummary,
+          ordersSummary,
+          productsSummary,
+          industry,
+        });
+      }
 
-    // 5. Invoke Gemini API
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      // 5. Invoke Gemini API
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `
+      const prompt = `
 You are an expert M&A Advisor and E-commerce Financial Analyst. Your job is to analyze raw store data from a Shopify backend and normalize the metrics for ExitEcom's Valuation and Exit Readiness Engine.
 
 Here is the raw Shopify store details, products, and order history:
@@ -289,26 +378,31 @@ Return ONLY a valid, parseable JSON object. No Markdown code fences, no extra te
 }
 `;
 
-    const response = await model.generateContent(prompt);
-    const responseText = response.response.text();
-    console.log("[Shopify Sync] Gemini Raw Response Received.");
+      const response = await model.generateContent(prompt);
+      const responseText = response.response.text();
+      console.log("[Shopify Sync] Gemini Raw Response Received.");
 
-    // Clean up markdown block if returned
-    const cleanText = responseText.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const result = JSON.parse(cleanText);
-    return result;
-
-  } catch (error: any) {
-    console.error("[Shopify Sync] Error during sync:", error);
-    throw new Error(error.message || "An unexpected error occurred during Shopify synchronization.");
-  }
-});
+      // Clean up markdown block if returned
+      const cleanText = responseText
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+      const result = JSON.parse(cleanText);
+      return result;
+    } catch (error) {
+      console.error("[Shopify Sync] Error during sync:", error);
+      throw new Error(
+        (error instanceof Error && error.message) ||
+          "An unexpected error occurred during Shopify synchronization.",
+      );
+    }
+  });
 
 // Helper for high-fidelity fallback calculations when no API key is provided
 function getFallbackNormalization(data: {
-  shopDataSummary: any;
-  ordersSummary: any[];
-  productsSummary: any[];
+  shopDataSummary: ShopSummary;
+  ordersSummary: OrderSummary[];
+  productsSummary: ProductSummary[];
   industry: string;
 }) {
   const { shopDataSummary, ordersSummary, productsSummary, industry } = data;
@@ -329,11 +423,13 @@ function getFallbackNormalization(data: {
     const maxDate = Math.max(...dates);
     const timespanMs = maxDate - minDate;
     const timespanDays = timespanMs / (1000 * 60 * 60 * 24) || 1;
-    
+
     // Extrapolate
     const extrapolatedAnnual = totalOrderVal * (365 / timespanDays);
     if (extrapolatedAnnual > 50000) {
-      revenueTTM = Math.round(Math.min(Math.max(extrapolatedAnnual, 150000), 2500000));
+      revenueTTM = Math.round(
+        Math.min(Math.max(extrapolatedAnnual, 150000), 2500000),
+      );
     }
   }
 
@@ -343,13 +439,17 @@ function getFallbackNormalization(data: {
     const customerCounts: Record<string, number> = {};
     ordersSummary.forEach((o) => {
       if (o.customer_id) {
-        customerCounts[o.customer_id] = (customerCounts[o.customer_id] || 0) + 1;
+        customerCounts[o.customer_id] =
+          (customerCounts[o.customer_id] || 0) + 1;
       }
     });
     const uniqueCustCount = Object.keys(customerCounts).length;
     if (uniqueCustCount > 0) {
-      const repeatCustCount = Object.values(customerCounts).filter((c) => c > 1).length;
-      repeatRate = Math.round((repeatCustCount / uniqueCustCount) * 100) / 100 || 0.22;
+      const repeatCustCount = Object.values(customerCounts).filter(
+        (c) => c > 1,
+      ).length;
+      repeatRate =
+        Math.round((repeatCustCount / uniqueCustCount) * 100) / 100 || 0.22;
     }
   }
 
@@ -358,21 +458,29 @@ function getFallbackNormalization(data: {
   if (ordersSummary.length > 0) {
     const productRevenues: Record<string, number> = {};
     ordersSummary.forEach((o) => {
-      o.line_items?.forEach((li: any) => {
+      o.line_items?.forEach((li) => {
         const title = li.title || "Unknown Product";
         const rev = parseFloat(li.price || "0") * (li.quantity || 1);
         productRevenues[title] = (productRevenues[title] || 0) + rev;
       });
     });
-    const totalSampleRev = Object.values(productRevenues).reduce((a, b) => a + b, 0);
+    const totalSampleRev = Object.values(productRevenues).reduce(
+      (a, b) => a + b,
+      0,
+    );
     if (totalSampleRev > 0) {
       const maxProductRev = Math.max(...Object.values(productRevenues));
-      topProductShare = Math.round((maxProductRev / totalSampleRev) * 100) / 100 || 0.35;
+      topProductShare =
+        Math.round((maxProductRev / totalSampleRev) * 100) / 100 || 0.35;
     }
   }
 
   // Margins and multiples
-  const grossMargin = industry.toLowerCase().includes("beauty") || industry.toLowerCase().includes("skincare") ? 0.72 : 0.60;
+  const grossMargin =
+    industry.toLowerCase().includes("beauty") ||
+    industry.toLowerCase().includes("skincare")
+      ? 0.72
+      : 0.6;
   const netMargin = 0.18;
   const grossProfit = Math.round(revenueTTM * grossMargin);
   const cogs = revenueTTM - grossProfit;
@@ -383,8 +491,13 @@ function getFallbackNormalization(data: {
   const netRevenue = Math.round(revenueTTM * 0.95);
   const grossRevenue = revenueTTM;
 
-  const exitScore = Math.round(60 + (repeatRate * 50) - (topProductShare * 30));
-  const scoreTier = exitScore > 75 ? "Strong Asset" : exitScore > 60 ? "Solid Asset" : "Emerging";
+  const exitScore = Math.round(60 + repeatRate * 50 - topProductShare * 30);
+  const scoreTier =
+    exitScore > 75
+      ? "Strong Asset"
+      : exitScore > 60
+        ? "Solid Asset"
+        : "Emerging";
 
   const sdeMultiple = exitScore > 75 ? 2.6 : exitScore > 60 ? 2.1 : 1.7;
   const optMultiple = sdeMultiple * 1.4;
@@ -442,69 +555,82 @@ function getFallbackNormalization(data: {
         severity: topProductShare > 0.5 ? "high" : "medium",
         description: `Your top product represents ${Math.round(topProductShare * 100)}% of recent revenue.`,
         impact: -Math.round(valueGap * 0.35),
-        buyerSees: "High vulnerability to single-item demand shifts or supply chain breaks.",
-        buyerFears: "If the hero product goes out of stock or becomes obsolete, revenue collapses.",
-        buyerDoes: "Lower the valuation multiple or request an earnout structure.",
-        recommendation: "Launch complementary SKU bundles to distribute acquisition traffic."
+        buyerSees:
+          "High vulnerability to single-item demand shifts or supply chain breaks.",
+        buyerFears:
+          "If the hero product goes out of stock or becomes obsolete, revenue collapses.",
+        buyerDoes:
+          "Lower the valuation multiple or request an earnout structure.",
+        recommendation:
+          "Launch complementary SKU bundles to distribute acquisition traffic.",
       },
       {
         title: "Customer Retention Profile",
         severity: repeatRate < 0.2 ? "medium" : "low",
         description: `Recent cohort repeat purchase rate is sitting at ${Math.round(repeatRate * 100)}%.`,
         impact: -Math.round(valueGap * 0.25),
-        buyerSees: "High acquisition dependency. High churn risks margin stability.",
-        buyerFears: "Rising ad prices on Meta/Google will erode the bottom-line margin rapidly.",
+        buyerSees:
+          "High acquisition dependency. High churn risks margin stability.",
+        buyerFears:
+          "Rising ad prices on Meta/Google will erode the bottom-line margin rapidly.",
         buyerDoes: "Incentivize retention with post-purchase workflows.",
-        recommendation: "Implement automated replenishment flow and a VIP newsletter sequence."
+        recommendation:
+          "Implement automated replenishment flow and a VIP newsletter sequence.",
       },
       {
         title: "Marketing Concentration",
         severity: "medium",
-        description: "Paid social represents the core revenue engine without a diversified search/email moat.",
-        impact: -Math.round(valueGap * 0.30),
+        description:
+          "Paid social represents the core revenue engine without a diversified search/email moat.",
+        impact: -Math.round(valueGap * 0.3),
         buyerSees: "Fragile acquisition channel dependency.",
-        buyerFears: "Ad account bans or algorithm changes threaten cashflow sustainability.",
+        buyerFears:
+          "Ad account bans or algorithm changes threaten cashflow sustainability.",
         buyerDoes: "Discount EBITDA multiple.",
-        recommendation: "Establish organic SEO foundations and scale the SMS subscriber base."
-      }
+        recommendation:
+          "Establish organic SEO foundations and scale the SMS subscriber base.",
+      },
     ],
     actions: [
       {
         title: "Launch Adjacent SKU Trial",
         priority: "high",
-        uplift: Math.round(valueGap * 0.40),
+        uplift: Math.round(valueGap * 0.4),
         time: "3-6 weeks",
-        problem: "Reduces product concentration to elevate the valuation multiple.",
+        problem:
+          "Reduces product concentration to elevate the valuation multiple.",
         steps: [
           "Identify adjacent consumer needs matching current hero product profiles.",
           "Run a pre-order campaign or bundle deal with existing customers.",
-          "Establish high-margin supplier agreements for the secondary product."
-        ]
+          "Establish high-margin supplier agreements for the secondary product.",
+        ],
       },
       {
         title: "Deploy Automated Lifecycle Sequences",
         priority: "high",
-        uplift: Math.round(valueGap * 0.30),
+        uplift: Math.round(valueGap * 0.3),
         time: "2 weeks",
-        problem: "Boosts repeat purchase rates and LTV, lessening marketing reliance.",
+        problem:
+          "Boosts repeat purchase rates and LTV, lessening marketing reliance.",
         steps: [
           "Set up a 3-part replenishment reminder based on product usage timeframes.",
           "Build a post-purchase review-acquisition sequence with dynamic discounts.",
-          "Stand up a browse abandonment flow on your ESP."
-        ]
+          "Stand up a browse abandonment flow on your ESP.",
+        ],
       },
       {
         title: "Optimize COGS & Increase Contribution Margin",
         priority: "medium",
-        uplift: Math.round(valueGap * 0.20),
+        uplift: Math.round(valueGap * 0.2),
         time: "4 weeks",
-        problem: "Improves EBITDA margin, yielding a direct multiplier effect on valuation.",
+        problem:
+          "Improves EBITDA margin, yielding a direct multiplier effect on valuation.",
         steps: [
           "Negotiate bulk volume pricing with your main manufacturer.",
           "Optimize primary custom packaging size to reduce domestic shipping fees.",
-          "Consolidate shipping partners to negotiate lower outbound postage costs."
-        ]
-      }
-    ]
+          "Consolidate shipping partners to negotiate lower outbound postage costs.",
+        ],
+      },
+    ],
   };
 }

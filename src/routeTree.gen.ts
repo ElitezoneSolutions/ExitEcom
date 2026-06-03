@@ -27,6 +27,7 @@ import { Route as AppExitScoreRouteImport } from './routes/app.exit-score'
 import { Route as AppDataSourcesRouteImport } from './routes/app.data-sources'
 import { Route as AppDataRoomRouteImport } from './routes/app.data-room'
 import { Route as AppDashboardRouteImport } from './routes/app.dashboard'
+import { Route as AppBuyerMatchingRouteImport } from './routes/app.buyer-matching'
 import { Route as AppBillingRouteImport } from './routes/app.billing'
 
 const SignupRoute = SignupRouteImport.update({
@@ -119,6 +120,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBuyerMatchingRoute = AppBuyerMatchingRouteImport.update({
+  id: '/buyer-matching',
+  path: '/buyer-matching',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBillingRoute = AppBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -132,6 +138,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/app/billing': typeof AppBillingRoute
+  '/app/buyer-matching': typeof AppBuyerMatchingRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/data-room': typeof AppDataRoomRoute
   '/app/data-sources': typeof AppDataSourcesRoute
@@ -153,6 +160,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/app/billing': typeof AppBillingRoute
+  '/app/buyer-matching': typeof AppBuyerMatchingRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/data-room': typeof AppDataRoomRoute
   '/app/data-sources': typeof AppDataSourcesRoute
@@ -175,6 +183,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/app/billing': typeof AppBillingRoute
+  '/app/buyer-matching': typeof AppBuyerMatchingRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/data-room': typeof AppDataRoomRoute
   '/app/data-sources': typeof AppDataSourcesRoute
@@ -198,6 +207,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/app/billing'
+    | '/app/buyer-matching'
     | '/app/dashboard'
     | '/app/data-room'
     | '/app/data-sources'
@@ -219,6 +229,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/app/billing'
+    | '/app/buyer-matching'
     | '/app/dashboard'
     | '/app/data-room'
     | '/app/data-sources'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/signup'
     | '/app/billing'
+    | '/app/buyer-matching'
     | '/app/dashboard'
     | '/app/data-room'
     | '/app/data-sources'
@@ -391,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/buyer-matching': {
+      id: '/app/buyer-matching'
+      path: '/buyer-matching'
+      fullPath: '/app/buyer-matching'
+      preLoaderRoute: typeof AppBuyerMatchingRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/billing': {
       id: '/app/billing'
       path: '/billing'
@@ -403,6 +422,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
+  AppBuyerMatchingRoute: typeof AppBuyerMatchingRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppDataRoomRoute: typeof AppDataRoomRoute
   AppDataSourcesRoute: typeof AppDataSourcesRoute
@@ -420,6 +440,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
+  AppBuyerMatchingRoute: AppBuyerMatchingRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppDataRoomRoute: AppDataRoomRoute,
   AppDataSourcesRoute: AppDataSourcesRoute,
