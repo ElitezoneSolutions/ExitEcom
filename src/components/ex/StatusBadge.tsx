@@ -8,7 +8,8 @@ type Status =
   | "strong"
   | "premium"
   | "ready"
-  | "pending";
+  | "pending"
+  | "coming-soon";
 
 const map: Record<Status, { bg: string; fg: string; label?: string }> = {
   high: { bg: "#DC2626", fg: "#FFFFFF", label: "HIGH" },
@@ -36,6 +37,11 @@ const map: Record<Status, { bg: string; fg: string; label?: string }> = {
     bg: "rgba(217,119,6,0.12)",
     fg: "var(--risk-medium)",
     label: "PENDING",
+  },
+  "coming-soon": {
+    bg: "var(--sidebar-active)",
+    fg: "var(--text-muted)",
+    label: "COMING SOON",
   },
 };
 

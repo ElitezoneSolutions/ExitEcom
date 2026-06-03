@@ -13,6 +13,8 @@ import {
 } from "recharts";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import { mockBusiness, addBacks, fmtGBP } from "@/lib/mock";
 
 export const Route = createFileRoute("/app/financial-normalizer")({
@@ -33,6 +35,15 @@ const COLORS = [
 ];
 
 function Financial() {
+  const { isShopifyConnected } = useBusinessData();
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate
+        title="Financial Normalizer"
+        feature="your normalized financials"
+      />
+    );
+  }
   return (
     <>
       <PageHeader

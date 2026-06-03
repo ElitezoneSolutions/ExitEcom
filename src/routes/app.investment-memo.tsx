@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import { mockBusiness, fmtGBP } from "@/lib/mock";
 
 export const Route = createFileRoute("/app/investment-memo")({
@@ -9,7 +11,16 @@ export const Route = createFileRoute("/app/investment-memo")({
 });
 
 function Memo() {
+  const { isShopifyConnected } = useBusinessData();
   const [tone, setTone] = useState("Institutional");
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate
+        title="Investment Memo"
+        feature="your investment memo"
+      />
+    );
+  }
   return (
     <>
       <PageHeader

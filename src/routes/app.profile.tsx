@@ -1,40 +1,110 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
-import { mockBusiness } from "@/lib/mock";
+import { useBusinessData } from "@/hooks/useBusinessData";
 
 export const Route = createFileRoute("/app/profile")({ component: Profile });
 
-function Profile() {
-  const fields = [
-    ["Business Name", mockBusiness.name],
-    ["Trading Name", mockBusiness.name],
-    ["Industry", mockBusiness.industry],
-    ["Country", mockBusiness.country],
-    ["Business Age", mockBusiness.age],
-    ["Primary URL", mockBusiness.url],
-  ];
+type ProfileForm = {
+  name: string;
+  industry: string;
+  channel: string;
+  country: string;
+  age: string;
+  monthlyRevenue: string;
+  exitTimeframe: string;
+};
 
-  const isYoungBusiness = parseFloat(mockBusiness.age) < 3;
+const FIELDS: { key: keyof ProfileForm; label: string }[] = [
+  { key: "name", label: "Business Name" },
+  { key: "industry", label: "Industry" },
+  { key: "channel", label: "Primary Channel" },
+  { key: "country", label: "Country" },
+  { key: "age", label: "Business Age" },
+  { key: "monthlyRevenue", label: "Monthly Revenue" },
+  { key: "exitTimeframe", label: "Exit Timeframe" },
+];
+
+function Profile() {
+  const { business, loading, isShopifyConnected, updateBusiness } =
+    useBusinessData();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<ProfileForm>({
+    name: "",
+    industry: "",
+    channel: "",
+    country: "",
+    age: "",
+    monthlyRevenue: "",
+    exitTimeframe: "",
+  });
+
+  // Sync local form when the business loads/changes from Supabase.
+  useEffect(() => {
+    setForm({
+      name: business.name,
+      industry: business.industry,
+      channel: business.channel,
+      country: business.country,
+      age: business.age,
+      monthlyRevenue: business.monthlyRevenue,
+      exitTimeframe: business.exitTimeframe,
+    });
+  }, [business]);
+
+  const set =
+    (key: keyof ProfileForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    await updateBusiness(form);
+    setSaving(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center gap-4">
+        <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin" />
+        <p className="text-sm text-[var(--text-muted)]">Loading profile...</p>
+      </div>
+    );
+  }
+
+  const isYoungBusiness = parseFloat(business.age) < 3;
+
   return (
     <>
       <PageHeader
         title="Business Profile"
         subtitle="Core information used to benchmark and value your business."
+        right={
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary text-sm disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        }
       />
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 card-light p-8 space-y-5">
-          {fields.map(([l, v]) => (
-            <div key={l} className="grid grid-cols-3 gap-4 items-center">
+          {FIELDS.map(({ key, label }) => (
+            <div key={key} className="grid grid-cols-3 gap-4 items-center">
               <div className="label-caps" style={{ fontSize: 10 }}>
-                {l}
+                {label}
               </div>
               <div className="col-span-2 space-y-1">
                 <input
-                  defaultValue={v}
+                  value={form[key]}
+                  onChange={set(key)}
+                  placeholder="—"
                   className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
                 />
-                {l === "Business Age" && isYoungBusiness && (
+                {key === "age" && isYoungBusiness && (
                   <p className="text-xs text-[var(--risk-medium)]">
                     ⚠️ Business age below 3 years may compress your multiple.
                     See Risk Scanner.
@@ -43,70 +113,31 @@ function Profile() {
               </div>
             </div>
           ))}
-          <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>
-              Description
-            </div>
-            <textarea
-              placeholder="Tell buyers what makes this business unique. What is the brand story? What would a new owner be acquiring?"
-              className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
-              rows={4}
-            />
-          </div>
 
-          <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>
-              Seller Intent
-            </div>
-            <select className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)] text-[var(--text-primary)] appearance-none">
-              <option value="" disabled selected>
-                What is your timeline for exit?
-              </option>
-              <option value="0-6">0–6 months</option>
-              <option value="6-12">6–12 months</option>
-              <option value="12-24">12–24 months</option>
-              <option value="exploring">Just exploring</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>
-              Target Asking Price
-            </div>
-            <input
-              placeholder="Do you have a target price in mind?"
-              type="text"
-              className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="label-caps" style={{ fontSize: 10 }}>
-              Seller Strengths
-            </div>
-            <textarea
-              placeholder="What are the 3 strongest things about this business?"
-              className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
-              rows={3}
-            />
-          </div>
-
-          <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-warm)] flex items-center justify-between">
-            <span>Last updated: 2 hours ago</span>
-            <span className="text-[var(--accent)]">
-              Buyers verify your profile details during due diligence. Keep this
-              up to date.
-            </span>
+          <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-warm)]">
+            Buyers verify your profile details during due diligence. Keep this
+            up to date.
           </div>
         </div>
+
         <div className="card-dark p-7 h-fit">
           <SectionLabel dark>Store Snapshot</SectionLabel>
           <div className="mt-5 space-y-4 text-sm text-[var(--text-on-dark)]">
-            <Row l="Shopify" v="Connected" ok />
-            <Row l="Meta Ads" v="Connected" ok />
-            <Row l="Monthly Revenue" v="£35k–£45k" />
-            <Row l="Channel" v={mockBusiness.channel} />
+            <Row
+              l="Shopify"
+              v={isShopifyConnected ? "Connected" : "Not connected"}
+              ok={isShopifyConnected}
+            />
+            <Row l="Monthly Revenue" v={business.monthlyRevenue || "—"} />
+            <Row l="Primary Channel" v={business.channel || "—"} />
+            <Row l="Exit Timeframe" v={business.exitTimeframe || "—"} />
           </div>
+          {!isShopifyConnected && (
+            <p className="mt-5 text-xs text-[var(--text-on-dark-secondary)]">
+              Connect Shopify from Data Sources to generate your valuation and
+              results.
+            </p>
+          )}
         </div>
       </div>
     </>

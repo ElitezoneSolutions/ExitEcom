@@ -1,11 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, RefreshCw } from "lucide-react";
 import { Logo } from "@/components/ex/Logo";
 import { SectionLabel } from "@/components/ex/SectionLabel";
-import { ScoreRing } from "@/components/ex/ScoreRing";
-import { ProgressBar } from "@/components/ex/ProgressBar";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -19,7 +17,6 @@ interface OnboardingData {
   country: string;
   monthlyRevenue: string;
   businessAge: string;
-  connectedSources: string[];
   paidAdManager: string;
   supplierRelationshipManager: string;
   hasDocumentedSops: string;
@@ -37,7 +34,6 @@ function Onboarding() {
     country: "",
     monthlyRevenue: "< £10k",
     businessAge: "Under 12 months",
-    connectedSources: [],
     paidAdManager: "Me",
     supplierRelationshipManager: "Me",
     hasDocumentedSops: "Yes, fully documented",
@@ -234,33 +230,23 @@ function Step1({ data, onChange, onNext }: StepProps) {
   );
 }
 
-function Step2({ data, onChange, onNext }: StepProps) {
-  const toggleSource = (source: string) => {
-    const isConnected = data.connectedSources.includes(source);
-    const updated = isConnected
-      ? data.connectedSources.filter((s) => s !== source)
-      : [...data.connectedSources, source];
-    onChange({ connectedSources: updated });
-  };
-
-  const calculateProgress = () => {
-    let score = 20; // base financials upload slot
-    if (data.connectedSources.includes("shopify")) score += 30;
-    if (data.connectedSources.includes("meta")) score += 15;
-    if (data.connectedSources.includes("google")) score += 15;
-    if (data.connectedSources.includes("tiktok")) score += 10;
-    if (data.connectedSources.includes("snap")) score += 10;
-    return Math.min(score, 100);
-  };
-
-  const progress = calculateProgress();
+function Step2({ onNext }: StepProps) {
+  const comingSoon = [
+    "Meta Ads",
+    "Google Ads",
+    "TikTok Ads",
+    "Snapchat Ads",
+    "P&L Upload",
+    "Google Analytics 4",
+  ];
 
   return (
     <StepCard>
       <SectionLabel>Step 02</SectionLabel>
-      <h2 className="font-display mt-3 text-3xl">Connect your data sources</h2>
+      <h2 className="font-display mt-3 text-3xl">Connect your store</h2>
       <p className="text-sm text-[var(--text-secondary)] mt-2">
-        The more data you connect, the more accurate your Exit Score.
+        ExitEcom builds your Exit Score directly from your Shopify store. You'll
+        connect it right after setup — nothing is analysed until you do.
       </p>
 
       <div className="mt-8 space-y-6">
@@ -272,83 +258,36 @@ function Step2({ data, onChange, onNext }: StepProps) {
                 Shopify
               </div>
               <div className="text-xs text-[var(--text-muted)] mt-1">
-                Pulls revenue, orders, products, customers
+                Pulls revenue, orders, products and customers
               </div>
             </div>
-            <button
-              onClick={() => toggleSource("shopify")}
-              className={`btn-ghost-light text-sm ${data.connectedSources.includes("shopify") ? "border-[var(--accent)] text-[var(--accent)]" : ""}`}
-            >
-              {data.connectedSources.includes("shopify")
-                ? "Connected"
-                : "Connect"}
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-[var(--text-muted)]">
-            Amazon, WooCommerce & others coming soon.
-          </p>
-        </div>
-
-        <div>
-          <SectionLabel>Marketing</SectionLabel>
-          <div className="mt-3 grid sm:grid-cols-2 gap-3">
-            {[
-              { id: "meta", label: "Meta Ads" },
-              { id: "google", label: "Google Ads" },
-              { id: "tiktok", label: "TikTok Ads" },
-              { id: "snap", label: "Snapchat Ads" },
-            ].map((p) => {
-              const connected = data.connectedSources.includes(p.id);
-              return (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between border border-[var(--border-warm)] rounded-lg px-4 py-3"
-                >
-                  <span className="text-sm text-[var(--text-primary)]">
-                    {p.label}
-                  </span>
-                  <button
-                    onClick={() => toggleSource(p.id)}
-                    className={`text-xs ${connected ? "text-[var(--accent)] font-semibold" : "text-[var(--text-secondary)] hover:text-[var(--accent)]"}`}
-                  >
-                    {connected ? "Connected" : "Connect"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <SectionLabel>Financials</SectionLabel>
-          <div className="mt-3 border border-dashed border-[var(--border-warm)] rounded-lg p-8 text-center">
-            <p className="text-sm text-[var(--text-secondary)]">
-              Drop P&L (CSV / PDF) or{" "}
-              <span className="text-[var(--accent)] cursor-pointer">
-                browse
-              </span>
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <SectionLabel>Data Completeness</SectionLabel>
-          <div className="mt-3 flex items-center gap-4">
-            <ProgressBar value={progress} />
-            <span className="font-display text-[var(--accent)] text-xl">
-              {progress}%
+            <span className="text-xs px-2.5 py-1 rounded-sm bg-[var(--sidebar-active)] text-[var(--accent)] font-medium">
+              Connect after setup
             </span>
           </div>
-          <p className="mt-2 text-xs text-[var(--text-muted)]">
-            More connections = more accurate score.
-          </p>
+        </div>
+
+        <div>
+          <SectionLabel>More integrations — Coming soon</SectionLabel>
+          <div className="mt-3 grid sm:grid-cols-2 gap-3">
+            {comingSoon.map((label) => (
+              <div
+                key={label}
+                className="flex items-center justify-between border border-[var(--border-warm)] rounded-lg px-4 py-3 opacity-60"
+              >
+                <span className="text-sm text-[var(--text-primary)]">
+                  {label}
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  Coming soon
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="mt-10 flex justify-between">
-        <button onClick={onNext} className="btn-ghost-light">
-          Skip for Now
-        </button>
+      <div className="mt-10 flex justify-end">
         <button onClick={onNext} className="btn-primary">
           Continue <ArrowRight className="w-4 h-4" />
         </button>
@@ -409,37 +348,54 @@ function Step3({ data, onChange, onNext }: StepProps) {
 
 function Step4({ data }: { data: OnboardingData }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const messages = [
-    "Analyzing revenue quality...",
-    "Assessing buyer risk factors...",
-    "Calculating valuation range...",
-    "Building your Exit Score...",
+    "Saving your business profile...",
+    "Setting up your workspace...",
+    "Almost there...",
   ];
   const messageCount = messages.length;
   const [i, setI] = useState(0);
   const [done, setDone] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const t = setInterval(() => setI((p) => (p + 1) % messageCount), 1500);
-    const d = setTimeout(() => setDone(true), 5500);
-    return () => {
-      clearInterval(t);
-      clearTimeout(d);
-    };
+    return () => clearInterval(t);
   }, [messageCount]);
 
-  // Sync to database in background
+  // Persist the onboarding answers to Supabase. This is the source of truth for
+  // the business profile. Results (Exit Score, valuation, risks) come later from
+  // Shopify, so we store ONLY the qualitative profile here — no fabricated or
+  // placeholder numbers.
   useEffect(() => {
-    const syncData = async () => {
+    let cancelled = false;
+
+    const save = async () => {
+      const minDelay = new Promise((r) => setTimeout(r, 2500));
+
       if (!isSupabaseConfigured || !user) {
-        console.log("Supabase not active, skipping onboarding DB save.");
+        await minDelay;
+        if (!cancelled) setDone(true);
         return;
       }
 
       try {
-        // Fetch the user's active business record (seeded automatically)
-        const { data: businessRecord, error: fetchErr } = await supabase
+        const profileFields = {
+          owner_id: user.id,
+          name: data.businessName || "My Business",
+          industry: data.industry,
+          primary_channel: data.primaryChannel,
+          country: data.country,
+          monthly_revenue: data.monthlyRevenue,
+          age: data.businessAge,
+          paid_ad_manager: data.paidAdManager,
+          supplier_relationship_manager: data.supplierRelationshipManager,
+          has_documented_sops: data.hasDocumentedSops,
+          exit_timeframe: data.exitTimeframe,
+        };
+
+        // Reuse an existing business for this user if present, else insert one.
+        const { data: existing } = await supabase
           .from("businesses")
           .select("id")
           .eq("owner_id", user.id)
@@ -447,118 +403,78 @@ function Step4({ data }: { data: OnboardingData }) {
           .limit(1)
           .maybeSingle();
 
-        if (fetchErr) throw fetchErr;
+        let businessId: string | undefined = existing?.id;
 
-        if (businessRecord) {
-          // Update the existing record with real details
-          const { error: updateErr } = await supabase
+        if (businessId) {
+          const { error } = await supabase
             .from("businesses")
-            .update({
-              name: data.businessName || "My Business",
-              industry: data.industry,
-              primary_channel: data.primaryChannel,
-              country: data.country || "United Kingdom",
-              age: data.businessAge,
-              paid_ad_manager: data.paidAdManager,
-              supplier_relationship_manager: data.supplierRelationshipManager,
-              has_documented_sops: data.hasDocumentedSops,
-              exit_timeframe: data.exitTimeframe,
-            })
-            .eq("id", businessRecord.id);
-
-          if (updateErr) throw updateErr;
-
-          // Parse mapped revenue bounds and exit score
-          let exitScoreVal = 62;
-          let multiple = 1.6;
-          let low = 180000;
-          let mid = 220000;
-          let high = 260000;
-
-          if (data.monthlyRevenue === "£100k+") {
-            exitScoreVal = 75;
-            multiple = 2.8;
-            low = 1000000;
-            mid = 1200000;
-            high = 1400000;
-          } else if (data.monthlyRevenue === "£50k–£100k") {
-            exitScoreVal = 68;
-            multiple = 2.2;
-            low = 500000;
-            mid = 600000;
-            high = 700000;
-          } else if (data.monthlyRevenue === "< £10k") {
-            exitScoreVal = 50;
-            multiple = 1.2;
-            low = 50000;
-            mid = 70000;
-            high = 90000;
-          }
-
-          // Update valuation metrics in DB
-          const { error: valErr } = await supabase
-            .from("valuation_data")
-            .update({
-              exit_score: exitScoreVal,
-              current_multiple: multiple,
-              valuation_low: low,
-              valuation_mid: mid,
-              valuation_high: high,
-              fair_market: mid,
-              optimised: Math.round(mid * 1.5),
-              value_gap: Math.round(mid * 1.5 - mid),
-            })
-            .eq("business_id", businessRecord.id);
-
-          if (valErr) throw valErr;
+            .update(profileFields)
+            .eq("id", businessId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await supabase
+            .from("businesses")
+            .insert(profileFields)
+            .select("id")
+            .single();
+          if (error) throw error;
+          businessId = inserted.id;
         }
+
+        // Ensure a zeroed valuation row exists for this business so Shopify can
+        // populate it later. No placeholder values are written.
+        const { error: valErr } = await supabase.from("valuation_data").upsert(
+          {
+            business_id: businessId,
+            connected_sources: [],
+            missing_sources: [],
+          },
+          { onConflict: "business_id" },
+        );
+        if (valErr) throw valErr;
       } catch (err) {
-        console.error("Failed to sync onboarding details in background:", err);
+        console.error("Failed to save onboarding to Supabase:", err);
+        toast.error("We couldn't save your details. Please try again.");
+      } finally {
+        await minDelay;
+        if (!cancelled) setDone(true);
       }
     };
 
-    syncData();
-  }, [
-    user,
-    data.businessAge,
-    data.businessName,
-    data.country,
-    data.exitTimeframe,
-    data.hasDocumentedSops,
-    data.industry,
-    data.monthlyRevenue,
-    data.paidAdManager,
-    data.primaryChannel,
-    data.supplierRelationshipManager,
-  ]);
+    save();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, data]);
 
   return (
     <div className="card-dark p-12 md:p-16 text-center">
       {!done ? (
         <>
           <div className="flex justify-center">
-            <ScoreRing score={62} size={160} />
+            <RefreshCw className="w-12 h-12 text-[var(--accent)] animate-spin" />
           </div>
           <p className="mt-10 text-[var(--text-on-dark)] text-lg font-display">
             {messages[i]}
           </p>
           <p className="mt-3 text-xs text-[var(--text-on-dark-secondary)] tracking-[0.18em] uppercase">
-            This usually takes 5–10 seconds
+            This only takes a moment
           </p>
         </>
       ) : (
         <>
           <h3 className="font-display text-3xl text-[var(--text-on-dark)]">
-            Your Exit Score is ready.
+            You're all set.
           </h3>
           <p className="mt-3 text-sm text-[var(--text-on-dark-secondary)]">
-            We've identified £80k of value left on the table.
+            Connect your Shopify store to generate your Exit Score, valuation
+            and risk report.
           </p>
           <button
-            onClick={() => navigate({ to: "/app/dashboard" })}
+            onClick={() => navigate({ to: "/app/data-sources" })}
             className="btn-primary mt-8"
           >
-            View My Dashboard <ArrowRight className="w-4 h-4" />
+            Connect Shopify <ArrowRight className="w-4 h-4" />
           </button>
         </>
       )}

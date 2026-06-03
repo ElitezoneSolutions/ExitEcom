@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { RiskCard } from "@/components/ex/RiskCard";
 import { StatusBadge } from "@/components/ex/StatusBadge";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import {
   mockBusiness,
   topRisks,
@@ -18,7 +20,13 @@ export const Route = createFileRoute("/app/risk-scanner")({
 });
 
 function RiskScanner() {
+  const { isShopifyConnected } = useBusinessData();
   const [open, setOpen] = useState(false);
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate title="Risk Scanner" feature="your risk profile" />
+    );
+  }
   return (
     <>
       <PageHeader

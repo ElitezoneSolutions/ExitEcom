@@ -152,7 +152,11 @@ function DataSources() {
                     </div>
                     <div className="flex items-center gap-3">
                       <StatusBadge
-                        status={p.status as "connected" | "missing"}
+                        status={
+                          sec === "Coming Soon"
+                            ? "coming-soon"
+                            : (p.status as "connected" | "missing")
+                        }
                       />
                       {sec !== "Coming Soon" && (
                         <Link
