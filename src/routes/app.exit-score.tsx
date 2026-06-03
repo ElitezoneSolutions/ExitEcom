@@ -3,6 +3,8 @@ import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ProgressBar } from "@/components/ex/ProgressBar";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import { mockBusiness, fmtGBP, fmtGBPk } from "@/lib/mock";
 
 export const Route = createFileRoute("/app/exit-score")({
@@ -10,6 +12,15 @@ export const Route = createFileRoute("/app/exit-score")({
 });
 
 function ExitScore() {
+  const { isShopifyConnected } = useBusinessData();
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate
+        title="Exit Readiness Score"
+        feature="your Exit Readiness Score"
+      />
+    );
+  }
   return (
     <>
       <PageHeader

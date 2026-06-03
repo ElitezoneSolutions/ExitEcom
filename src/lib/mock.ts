@@ -292,14 +292,6 @@ export const dataRoomCategories = [
   },
 ];
 
-export const fmtGBP = (n: number) =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  }).format(n);
-
-export const fmtGBPk = (n: number) => {
-  if (Math.abs(n) >= 1000) return `£${(n / 1000).toFixed(0)}k`;
-  return fmtGBP(n);
-};
+// Currency formatters live in lib/utils now; re-exported here so the result
+// pages that still use this mock module for layout scaffolding keep working.
+export { fmtGBP, fmtGBPk } from "./utils";

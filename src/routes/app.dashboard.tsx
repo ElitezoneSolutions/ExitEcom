@@ -4,14 +4,16 @@ import { ScoreRing } from "@/components/ex/ScoreRing";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ProgressBar } from "@/components/ex/ProgressBar";
 import { useBusinessData } from "@/hooks/useBusinessData";
-import { fmtGBP, fmtGBPk } from "@/lib/mock";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { fmtGBP, fmtGBPk } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/dashboard")({
   component: Dashboard,
 });
 
 function Dashboard() {
-  const { business, risks, actions, loading, refetch } = useBusinessData();
+  const { business, risks, actions, loading, isShopifyConnected, refetch } =
+    useBusinessData();
 
   if (loading) {
     return (
@@ -24,14 +26,20 @@ function Dashboard() {
     );
   }
 
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate
+        title="Your Dashboard"
+        feature="your dashboard and Exit Score"
+      />
+    );
+  }
+
   // Get first 3 risks and actions
   const displayRisks = risks.slice(0, 3);
   const displayActions = actions.slice(0, 3);
 
   // Check data sources connection status
-  const isShopifyConnected = business.connectedSources.some((s) =>
-    s.toLowerCase().includes("shopify"),
-  );
   const isMetaConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("meta"),
   );

@@ -3,6 +3,8 @@ import { useState } from "react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ActionCard } from "@/components/ex/ActionCard";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import { topActions, fmtGBP } from "@/lib/mock";
 
 export const Route = createFileRoute("/app/optimization")({
@@ -28,8 +30,18 @@ const roadmap = {
 };
 
 function Optimization() {
+  const { isShopifyConnected } = useBusinessData();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setChecked((c) => ({ ...c, [k]: !c[k] }));
+
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate
+        title="Optimization Plan"
+        feature="your optimization plan"
+      />
+    );
+  }
 
   return (
     <>

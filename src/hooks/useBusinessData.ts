@@ -1,13 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "./useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import {
-  mockBusiness,
-  topRisks,
-  additionalRisks,
-  topActions,
-  dataRoomCategories,
-} from "@/lib/mock";
 import { toast } from "sonner";
 
 export interface BusinessData {
@@ -18,6 +11,8 @@ export interface BusinessData {
   channel: string;
   age: string;
   country: string;
+  monthlyRevenue: string;
+  exitTimeframe: string;
   url?: string;
   revenueTTM: number;
   revenueMonthly: { m: string; v: number }[];
@@ -92,46 +87,88 @@ export interface NormalizedShopifyReport {
   actions: ActionItem[];
 }
 
+// Empty state — what we show before any real data exists. NOT dummy/demo data:
+// every field is blank/zero until onboarding (business profile) or Shopify
+// (results) populates it. No placeholder business is ever shown to the user.
+const EMPTY_BUSINESS: BusinessData = {
+  name: "",
+  ownerName: "",
+  industry: "",
+  channel: "",
+  age: "",
+  country: "",
+  monthlyRevenue: "",
+  exitTimeframe: "",
+  url: "",
+  revenueTTM: 0,
+  revenueMonthly: [],
+  ebitda: 0,
+  sde: 0,
+  grossMargin: 0,
+  netMargin: 0,
+  adSpend: 0,
+  cogs: 0,
+  grossProfit: 0,
+  opex: 0,
+  grossRevenue: 0,
+  netRevenue: 0,
+  exitScore: 0,
+  scoreTier: "",
+  scoreBreakdown: [],
+  valuationLow: 0,
+  valuationMid: 0,
+  valuationHigh: 0,
+  valuationOptimised: 0,
+  currentMultiple: 0,
+  optimisedMultiple: 0,
+  quickSale: 0,
+  fairMarket: 0,
+  optimised: 0,
+  adjustedEarnings: 0,
+  valueGap: 0,
+  repeatRate: 0,
+  avgOrderValue: 0,
+  roas: 0,
+  topProductShare: 0,
+  riskScore: 0,
+  totalValueLost: 0,
+  dataConfidence: 0,
+  connectedSources: [],
+  missingSources: [],
+};
+
+// Bumped from earlier keys so any stale mock ("NovaSkin Co.") cache is ignored.
+const CACHE_BUSINESS = "exitecom_business_v2";
+const CACHE_RISKS = "exitecom_risks_v2";
+const CACHE_ACTIONS = "exitecom_actions_v2";
+
+function readCache<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  const cached = localStorage.getItem(key);
+  if (!cached) return fallback;
+  try {
+    return JSON.parse(cached) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export function useBusinessData() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // States
-  const [business, setBusiness] = useState<BusinessData>(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("exitecom_business");
-      if (cached) return JSON.parse(cached);
-    }
-    return mockBusiness as unknown as BusinessData;
-  });
-  const [risks, setRisks] = useState<RiskItem[]>(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("exitecom_risks");
-      if (cached) return JSON.parse(cached);
-    }
-    return [...topRisks, ...additionalRisks];
-  });
-  const [actions, setActions] = useState<ActionItem[]>(() => {
-    if (typeof window !== "undefined") {
-      const cached = localStorage.getItem("exitecom_actions");
-      if (cached) return JSON.parse(cached);
-    }
-    return topActions;
-  });
-  const [documents, setDocuments] = useState<DocumentItem[]>(() => {
-    const list: DocumentItem[] = [];
-    dataRoomCategories.forEach((cat) => {
-      cat.items.forEach((item) => {
-        list.push({
-          category: cat.name,
-          name: item.name,
-          uploaded: item.uploaded,
-        });
-      });
-    });
-    return list;
-  });
+  // States (seeded only from real cached data, never from mock/demo data)
+  const [business, setBusiness] = useState<BusinessData>(() =>
+    readCache(CACHE_BUSINESS, EMPTY_BUSINESS),
+  );
+  const [risks, setRisks] = useState<RiskItem[]>(() =>
+    readCache<RiskItem[]>(CACHE_RISKS, []),
+  );
+  const [actions, setActions] = useState<ActionItem[]>(() =>
+    readCache<ActionItem[]>(CACHE_ACTIONS, []),
+  );
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
@@ -155,7 +192,15 @@ export function useBusinessData() {
       if (bizError) throw bizError;
 
       if (!bizData) {
-        // No business found, we will stick to mockBusiness but clear loading
+        // No business yet (account created but onboarding not completed).
+        // Show empty state — never stale/mock data.
+        setBusiness(EMPTY_BUSINESS);
+        setRisks([]);
+        setActions([]);
+        setDocuments([]);
+        localStorage.removeItem(CACHE_BUSINESS);
+        localStorage.removeItem(CACHE_RISKS);
+        localStorage.removeItem(CACHE_ACTIONS);
         setLoading(false);
         return;
       }
@@ -193,94 +238,57 @@ export function useBusinessData() {
 
       if (docsError) throw docsError;
 
-      // Map DB fields back to the front-end BusinessData shape
+      // Map DB fields onto the front-end BusinessData shape. Profile fields come
+      // from the businesses row (onboarding); result metrics come from
+      // valuation_data (Shopify-derived). Anything absent stays empty/zero —
+      // no mock/placeholder fallbacks.
       const mappedBusiness: BusinessData = {
+        ...EMPTY_BUSINESS,
         id: bizData.id,
-        name: bizData.name,
-        ownerName: user.user_metadata?.full_name || "Founder",
-        industry: bizData.industry || "Beauty & Skincare",
-        channel: bizData.primary_channel || "Shopify",
-        age: bizData.age || "2.4 years",
-        country: bizData.country || "United Kingdom",
-        url: bizData.url || "novaskin.co",
-        revenueTTM: Number(valData?.revenue_low || mockBusiness.revenueTTM),
-        revenueMonthly: mockBusiness.revenueMonthly, // Keep monthly chart mock for visual display
-        ebitda: Number(valData?.ebitda ?? mockBusiness.ebitda),
-        sde: Number(valData?.sde ?? mockBusiness.sde),
-        grossMargin: Number(valData?.gross_margin ?? mockBusiness.grossMargin),
-        netMargin: Number(valData?.net_margin ?? mockBusiness.netMargin),
-        adSpend: Number(valData?.ad_spend ?? mockBusiness.adSpend),
-        cogs: Number(valData?.cogs ?? mockBusiness.cogs),
-        grossProfit: Number(valData?.gross_profit ?? mockBusiness.grossProfit),
-        opex: Number(valData?.opex ?? mockBusiness.opex),
-        grossRevenue: Number(
-          valData?.gross_revenue ?? mockBusiness.grossRevenue,
-        ),
-        netRevenue: Number(valData?.net_revenue ?? mockBusiness.netRevenue),
-        exitScore: Number(valData?.exit_score ?? mockBusiness.exitScore),
-        scoreTier: mockBusiness.scoreTier,
-        scoreBreakdown: mockBusiness.scoreBreakdown as unknown as unknown[],
-        valuationLow: Number(
-          valData?.valuation_low ?? mockBusiness.valuationLow,
-        ),
-        valuationMid: Number(
-          valData?.valuation_mid ?? mockBusiness.valuationMid,
-        ),
-        valuationHigh: Number(
-          valData?.valuation_high ?? mockBusiness.valuationHigh,
-        ),
-        valuationOptimised: Number(
-          valData?.valuation_optimised ?? mockBusiness.valuationOptimised,
-        ),
-        currentMultiple: Number(
-          valData?.current_multiple ?? mockBusiness.currentMultiple,
-        ),
-        optimisedMultiple: Number(
-          valData?.optimised_multiple ?? mockBusiness.optimisedMultiple,
-        ),
-        quickSale: Number(valData?.quick_sale ?? mockBusiness.quickSale),
-        fairMarket: Number(valData?.fair_market ?? mockBusiness.fairMarket),
-        optimised: Number(valData?.optimised ?? mockBusiness.optimised),
-        adjustedEarnings: Number(
-          valData?.adjusted_earnings ?? mockBusiness.adjustedEarnings,
-        ),
-        valueGap: Number(valData?.value_gap ?? mockBusiness.valueGap),
-        repeatRate: Number(valData?.repeat_rate ?? mockBusiness.repeatRate),
-        avgOrderValue: Number(
-          valData?.avg_order_value ?? mockBusiness.avgOrderValue,
-        ),
-        roas: Number(valData?.roas ?? mockBusiness.roas),
-        topProductShare: Number(
-          valData?.top_product_share ?? mockBusiness.topProductShare,
-        ),
-        riskScore: Number(valData?.risk_score ?? mockBusiness.riskScore),
-        totalValueLost: Number(
-          valData?.total_value_lost ?? mockBusiness.totalValueLost,
-        ),
-        dataConfidence: Number(
-          valData?.data_confidence ?? mockBusiness.dataConfidence,
-        ),
-        connectedSources:
-          valData?.connected_sources || mockBusiness.connectedSources,
-        missingSources: valData?.missing_sources || mockBusiness.missingSources,
+        name: bizData.name ?? "",
+        ownerName: user.user_metadata?.full_name ?? "",
+        industry: bizData.industry ?? "",
+        channel: bizData.primary_channel ?? "",
+        age: bizData.age ?? "",
+        country: bizData.country ?? "",
+        monthlyRevenue: bizData.monthly_revenue ?? "",
+        exitTimeframe: bizData.exit_timeframe ?? "",
+        url: bizData.url ?? "",
+        exitScore: Number(valData?.exit_score ?? 0),
+        valuationLow: Number(valData?.valuation_low ?? 0),
+        valuationMid: Number(valData?.valuation_mid ?? 0),
+        valuationHigh: Number(valData?.valuation_high ?? 0),
+        valuationOptimised: Number(valData?.valuation_optimised ?? 0),
+        currentMultiple: Number(valData?.current_multiple ?? 0),
+        optimisedMultiple: Number(valData?.optimised_multiple ?? 0),
+        quickSale: Number(valData?.quick_sale ?? 0),
+        fairMarket: Number(valData?.fair_market ?? 0),
+        optimised: Number(valData?.optimised ?? 0),
+        adjustedEarnings: Number(valData?.adjusted_earnings ?? 0),
+        valueGap: Number(valData?.value_gap ?? 0),
+        repeatRate: Number(valData?.repeat_rate ?? 0),
+        avgOrderValue: Number(valData?.avg_order_value ?? 0),
+        roas: Number(valData?.roas ?? 0),
+        topProductShare: Number(valData?.top_product_share ?? 0),
+        riskScore: Number(valData?.risk_score ?? 0),
+        totalValueLost: Number(valData?.total_value_lost ?? 0),
+        dataConfidence: Number(valData?.data_confidence ?? 0),
+        connectedSources: valData?.connected_sources ?? [],
+        missingSources: valData?.missing_sources ?? [],
       };
 
       setBusiness(mappedBusiness);
 
       // Cache live DB fetch to localStorage too
-      localStorage.setItem("exitecom_business", JSON.stringify(mappedBusiness));
+      localStorage.setItem(CACHE_BUSINESS, JSON.stringify(mappedBusiness));
 
-      if (risksData && risksData.length > 0) {
-        const mappedRisks = risksData as RiskItem[];
-        setRisks(mappedRisks);
-        localStorage.setItem("exitecom_risks", JSON.stringify(mappedRisks));
-      }
+      const mappedRisks = (risksData ?? []) as RiskItem[];
+      setRisks(mappedRisks);
+      localStorage.setItem(CACHE_RISKS, JSON.stringify(mappedRisks));
 
-      if (actionsData && actionsData.length > 0) {
-        const mappedActions = actionsData as ActionItem[];
-        setActions(mappedActions);
-        localStorage.setItem("exitecom_actions", JSON.stringify(mappedActions));
-      }
+      const mappedActions = (actionsData ?? []) as ActionItem[];
+      setActions(mappedActions);
+      localStorage.setItem(CACHE_ACTIONS, JSON.stringify(mappedActions));
 
       if (docsData && docsData.length > 0) {
         setDocuments(docsData as DocumentItem[]);
@@ -299,7 +307,7 @@ export function useBusinessData() {
   const updateBusiness = async (updatedFields: Partial<BusinessData>) => {
     const updated = { ...business, ...updatedFields };
     setBusiness(updated);
-    localStorage.setItem("exitecom_business", JSON.stringify(updated));
+    localStorage.setItem(CACHE_BUSINESS, JSON.stringify(updated));
 
     if (!isSupabaseConfigured || !user || !business.id) {
       toast.success("Updated business details (local state)");
@@ -315,6 +323,8 @@ export function useBusinessData() {
           primary_channel: updatedFields.channel,
           country: updatedFields.country,
           age: updatedFields.age,
+          monthly_revenue: updatedFields.monthlyRevenue,
+          exit_timeframe: updatedFields.exitTimeframe,
         })
         .eq("id", business.id);
 
@@ -391,9 +401,9 @@ export function useBusinessData() {
     }));
     setActions(mappedActions);
 
-    localStorage.setItem("exitecom_business", JSON.stringify(updatedBusiness));
-    localStorage.setItem("exitecom_risks", JSON.stringify(mappedRisks));
-    localStorage.setItem("exitecom_actions", JSON.stringify(mappedActions));
+    localStorage.setItem(CACHE_BUSINESS, JSON.stringify(updatedBusiness));
+    localStorage.setItem(CACHE_RISKS, JSON.stringify(mappedRisks));
+    localStorage.setItem(CACHE_ACTIONS, JSON.stringify(mappedActions));
 
     if (!isSupabaseConfigured || !user || !business.id) {
       toast.success("Successfully synchronized Shopify data (local sandbox)");
@@ -493,6 +503,10 @@ export function useBusinessData() {
     fetchData();
   }, [fetchData]);
 
+  const isShopifyConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("shopify"),
+  );
+
   return {
     business,
     risks,
@@ -500,6 +514,7 @@ export function useBusinessData() {
     documents,
     loading,
     error,
+    isShopifyConnected,
     refetch: fetchData,
     updateBusiness,
     syncShopifyData,

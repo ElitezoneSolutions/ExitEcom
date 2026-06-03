@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Check, X, ChevronDown, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import {
   mockBusiness,
   positiveDrivers,
@@ -15,7 +17,13 @@ export const Route = createFileRoute("/app/valuation")({
 });
 
 function Valuation() {
+  const { isShopifyConnected } = useBusinessData();
   const [open, setOpen] = useState(false);
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate title="Valuation Engine" feature="your valuation" />
+    );
+  }
   return (
     <>
       <PageHeader

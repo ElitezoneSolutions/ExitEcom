@@ -2,11 +2,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Upload, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { ProgressBar } from "@/components/ex/ProgressBar";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { useBusinessData } from "@/hooks/useBusinessData";
 import { dataRoomCategories } from "@/lib/mock";
 
 export const Route = createFileRoute("/app/data-room")({ component: DataRoom });
 
 function DataRoom() {
+  const { isShopifyConnected } = useBusinessData();
+  if (!isShopifyConnected) {
+    return <ConnectShopifyGate title="Data Room" feature="your data room" />;
+  }
   const total = dataRoomCategories.flatMap((c) => c.items).length;
   const done = dataRoomCategories
     .flatMap((c) => c.items)

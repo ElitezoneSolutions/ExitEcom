@@ -2,14 +2,24 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Users, Lock } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
-import { fmtGBPk } from "@/lib/mock";
+import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { fmtGBPk } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/buyer-matching")({
   component: BuyerMatching,
 });
 
 function BuyerMatching() {
-  const { business } = useBusinessData();
+  const { business, isShopifyConnected } = useBusinessData();
+
+  if (!isShopifyConnected) {
+    return (
+      <ConnectShopifyGate
+        title="Buyer Matching"
+        feature="your matched buyers"
+      />
+    );
+  }
 
   return (
     <>
