@@ -432,6 +432,8 @@ function Step4({ data }: { data: OnboardingData }) {
           { onConflict: "business_id" },
         );
         if (valErr) throw valErr;
+
+        if (!cancelled) toast.success("Business profile saved.");
       } catch (err) {
         console.error("Failed to save onboarding to Supabase:", err);
         toast.error("We couldn't save your details. Please try again.");

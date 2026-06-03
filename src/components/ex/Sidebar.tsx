@@ -17,7 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { Logo } from "./Logo";
-import { mockBusiness } from "@/lib/mock";
+import { useBusinessData } from "@/hooks/useBusinessData";
 
 const groups = [
   {
@@ -55,6 +55,11 @@ const groups = [
 
 export function Sidebar() {
   const { pathname } = useLocation();
+  const { business } = useBusinessData();
+  const businessName = business.name || "Your business";
+  const ownerInitial = business.ownerName?.[0] ?? "?";
+  const ownerName = business.ownerName || "Owner";
+
   return (
     <aside className="hidden lg:flex flex-col w-[240px] shrink-0 h-screen sticky top-0 bg-[var(--sidebar)] border-r border-[var(--border-warm)]">
       <div className="px-6 pt-7 pb-5 border-b border-[var(--border-warm)]">
@@ -62,7 +67,7 @@ export function Sidebar() {
         <div className="mt-4 inline-flex items-center gap-2 px-2.5 py-1 rounded-sm bg-[var(--sidebar-active)]">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
           <span className="text-[11px] text-[var(--text-secondary)] truncate">
-            {mockBusiness.name}
+            {businessName}
           </span>
         </div>
       </div>
@@ -117,11 +122,11 @@ export function Sidebar() {
 
       <div className="border-t border-[var(--border-warm)] px-4 py-4 flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-[var(--sidebar-active)] flex items-center justify-center text-[var(--accent)] font-display text-sm">
-          {mockBusiness.ownerName[0]}
+          {ownerInitial}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-[var(--text-primary)] truncate">
-            {mockBusiness.ownerName}
+            {ownerName}
           </div>
           <Link
             to="/login"
