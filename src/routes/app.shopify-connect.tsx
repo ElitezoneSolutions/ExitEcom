@@ -2,15 +2,12 @@ import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  ExternalLink,
   Lock,
   CheckCircle2,
-  HelpCircle,
   RefreshCw,
   AlertCircle,
   TrendingUp,
   Sparkles,
-  LineChart,
   DollarSign,
   Activity,
   User,
@@ -18,7 +15,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData, type BusinessData } from "@/hooks/useBusinessData";
-import { connectShopifyFn } from "@/lib/shopify";
+import { connectShopifyViaKeyFn } from "@/lib/shopify";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/shopify-connect")({
@@ -29,9 +26,8 @@ function ShopifyConnect() {
   const navigate = useNavigate();
   const { business, syncShopifyData } = useBusinessData();
 
-  // Form states
-  const [shopDomain, setShopDomain] = useState("");
-  const [accessToken, setAccessToken] = useState("");
+  // Form state — the merchant pastes the key shown by the ExitEcom Analytic app.
+  const [connectionKey, setConnectionKey] = useState("");
 
   // Sync state
   const [syncStatus, setSyncStatus] = useState<
@@ -42,12 +38,8 @@ function ShopifyConnect() {
 
   const handleSync = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!shopDomain) {
-      toast.error("Please enter your Shopify Shop Domain.");
-      return;
-    }
-    if (!accessToken) {
-      toast.error("Please enter your Admin API Access Token.");
+    if (!connectionKey.trim()) {
+      toast.error("Please paste your ExitEcom connection key.");
       return;
     }
 
@@ -64,10 +56,9 @@ function ShopifyConnect() {
         setSyncStatus("normalizing");
       }, 3500);
 
-      const result = await connectShopifyFn({
+      const result = await connectShopifyViaKeyFn({
         data: {
-          shopDomain,
-          accessToken,
+          connectionKey: connectionKey.trim(),
           industry: business.industry,
         },
       });
@@ -122,10 +113,10 @@ function ShopifyConnect() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold leading-tight">
-                  API Credentials
+                  Connection Key
                 </h3>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  Secure, read-only API connection
+                  Paste the key from the ExitEcom Analytic app
                 </p>
               </div>
             </div>
@@ -133,33 +124,24 @@ function ShopifyConnect() {
             <form onSubmit={handleSync} className="flex flex-col gap-5">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2 flex items-center justify-between">
-                  Shop Domain
+                  Connection Key
                   <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
-                    e.g. store.myshopify.com
+                    starts with eea_
                   </span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="my-skincare-brand.myshopify.com"
-                  value={shopDomain}
-                  onChange={(e) => setShopDomain(e.target.value)}
-                  className="w-full"
+                  placeholder="eea_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={connectionKey}
+                  onChange={(e) => setConnectionKey(e.target.value)}
+                  className="w-full font-mono"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-                  Admin API Access Token
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  className="w-full"
-                />
+                <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                  Get this from the <strong>ExitEcom Analytic</strong> app after
+                  installing it on your Shopify store (see the guide on the
+                  right).
+                </p>
               </div>
 
               <button
@@ -171,15 +153,15 @@ function ShopifyConnect() {
             </form>
 
             <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-2">
-              <Lock className="w-3.5 h-3.5" /> Credentials are encrypted and
-              never stored in plain text.
+              <Lock className="w-3.5 h-3.5" /> Read-only. Your Shopify access
+              token never leaves the ExitEcom Analytic app.
             </div>
           </div>
 
           {/* Guide */}
           <div className="lg:col-span-7 card-light p-6 md:p-8 flex flex-col gap-6">
             <h3 className="text-xl font-semibold border-b border-[var(--border-warm)] pb-3">
-              Onboarding Guide: Setting Up Shopify Custom App
+              How to get your connection key
             </h3>
 
             <div className="flex flex-col gap-5">
@@ -189,13 +171,12 @@ function ShopifyConnect() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-sm">
-                    Open Developer Settings
+                    Install the ExitEcom Analytic app
                   </h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Log in to your Shopify Admin page. Navigate to{" "}
-                    <strong>Settings</strong> (bottom-left gear icon) &rarr;{" "}
-                    <strong>Apps and sales channels</strong> &rarr;{" "}
-                    <strong>Develop apps</strong>.
+                    Add the <strong>ExitEcom Analytic</strong> app to your
+                    Shopify store and approve the read-only access it requests
+                    (orders, products, customers). It never gets write access.
                   </p>
                 </div>
               </div>
@@ -205,13 +186,11 @@ function ShopifyConnect() {
                   2
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">
-                    Create the App Instance
-                  </h4>
+                  <h4 className="font-semibold text-sm">Open the app</h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Click <strong>Create an app</strong>. Enter an App Name
-                    (e.g., <code>ExitEcom Analytics</code>) and select your App
-                    developer account. Click <strong>Create app</strong>.
+                    In your Shopify admin, go to <strong>Apps</strong> &rarr;{" "}
+                    <strong>ExitEcom Analytic</strong>. You&apos;ll land on the
+                    “Connect to ExitEcom” screen.
                   </p>
                 </div>
               </div>
@@ -222,34 +201,11 @@ function ShopifyConnect() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-sm">
-                    Configure Required Permissions (API Scopes)
+                    Copy your connection key
                   </h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Click <strong>Configure Admin API integration</strong>.
-                    Under Admin API access scopes, you MUST select read
-                    permissions for:
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-warm)] rounded text-[11px] font-mono text-[var(--text-primary)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
-                      read_orders
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-warm)] rounded text-[11px] font-mono text-[var(--text-primary)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
-                      read_products
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-warm)] rounded text-[11px] font-mono text-[var(--text-primary)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
-                      read_analytics
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-warm)] rounded text-[11px] font-mono text-[var(--text-primary)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
-                      read_customers
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                    Click <strong>Save</strong> at the top right to commit these
-                    scopes.
+                    The app shows a key starting with <code>eea_</code>. Click{" "}
+                    <strong>Copy key</strong>.
                   </p>
                 </div>
               </div>
@@ -259,21 +215,17 @@ function ShopifyConnect() {
                   4
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">
-                    Install App & Copy Access Token
-                  </h4>
+                  <h4 className="font-semibold text-sm">Paste it here</h4>
                   <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Navigate to the <strong>API credentials</strong> tab. Click{" "}
-                    <strong>Install app</strong> and confirm. Copy the generated{" "}
-                    <strong>Admin API Access Token</strong> (starts with{" "}
-                    <code>shpat_</code>).
+                    Paste the key into the <strong>Connection Key</strong> field
+                    and click <strong>Connect &amp; Sync Store</strong>.
                   </p>
                   <div className="mt-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>Important:</strong> The access token is revealed
-                      only ONCE. Store it securely. If lost, you will need to
-                      uninstall and reinstall the app to generate a new one.
+                      <strong>Tip:</strong> If you regenerate the key in the
+                      Shopify app, the old one stops working — paste the new key
+                      here to reconnect.
                     </div>
                   </div>
                 </div>

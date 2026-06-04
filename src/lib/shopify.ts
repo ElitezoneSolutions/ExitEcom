@@ -50,7 +50,7 @@ interface OrderSummary {
   line_items: ShopifyLineItem[];
 }
 interface ProductSummary {
-  id: number;
+  id: number | string;
   title: string;
   variants_count: number;
 }
@@ -69,15 +69,6 @@ export const connectShopifyFn = createServerFn({ method: "POST" })
     if (!shopDomain.includes(".")) {
       shopDomain = `${shopDomain}.myshopify.com`;
     }
-
-    const importMetaEnv = (
-      import.meta as unknown as { env?: Record<string, string | undefined> }
-    ).env;
-    const apiKey =
-      process.env.VITE_GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      importMetaEnv?.VITE_GEMINI_API_KEY ||
-      importMetaEnv?.GEMINI_API_KEY;
 
     // Sandbox mock generators
     const getSandboxOrders = () => {
@@ -263,24 +254,64 @@ export const connectShopifyFn = createServerFn({ method: "POST" })
         `[Shopify Sync] Fetched/Simulated shop: ${shop.name}. Orders: ${orders.length}. Products: ${products.length}.`,
       );
 
-      // 4. If Gemini API Key is missing, run fallback high-fidelity client-side or server-side math
-      if (!apiKey) {
-        console.warn(
-          "[Shopify Sync] No Gemini API key provided. Using rule-based fallback normalization.",
-        );
-        return getFallbackNormalization({
-          shopDataSummary,
-          ordersSummary,
-          productsSummary,
-          industry,
-        });
-      }
+      // 4. Normalize to M&A metrics (Gemini, or rule-based fallback).
+      return await normalizeStoreData({
+        shopDataSummary,
+        ordersSummary,
+        productsSummary,
+        industry,
+      });
+    } catch (error) {
+      console.error("[Shopify Sync] Error during sync:", error);
+      throw new Error(
+        (error instanceof Error && error.message) ||
+          "An unexpected error occurred during Shopify synchronization.",
+      );
+    }
+  });
 
-      // 5. Invoke Gemini API
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+// Resolve the Gemini key from server env (or Vite-injected env) — server-only.
+function resolveGeminiKey(): string | undefined {
+  const importMetaEnv = (
+    import.meta as unknown as { env?: Record<string, string | undefined> }
+  ).env;
+  return (
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    importMetaEnv?.VITE_GEMINI_API_KEY ||
+    importMetaEnv?.GEMINI_API_KEY
+  );
+}
 
-      const prompt = `
+// Shared normalizer: given condensed store summaries, produce the ExitEcom
+// metrics payload via Gemini, falling back to deterministic math without a key.
+async function normalizeStoreData(args: {
+  shopDataSummary: ShopSummary;
+  ordersSummary: OrderSummary[];
+  productsSummary: ProductSummary[];
+  industry: string;
+}) {
+  const { shopDataSummary, ordersSummary, productsSummary, industry } = args;
+  const apiKey = resolveGeminiKey();
+
+  // Without a key, run the deterministic rule-based fallback.
+  if (!apiKey) {
+    console.warn(
+      "[Shopify Sync] No Gemini API key provided. Using rule-based fallback normalization.",
+    );
+    return getFallbackNormalization({
+      shopDataSummary,
+      ordersSummary,
+      productsSummary,
+      industry,
+    });
+  }
+
+  // Invoke Gemini API
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const prompt = `
 You are an expert M&A Advisor and E-commerce Financial Analyst. Your job is to analyze raw store data from a Shopify backend and normalize the metrics for ExitEcom's Valuation and Exit Readiness Engine.
 
 Here is the raw Shopify store details, products, and order history:
@@ -378,24 +409,135 @@ Return ONLY a valid, parseable JSON object. No Markdown code fences, no extra te
 }
 `;
 
-      const response = await model.generateContent(prompt);
-      const responseText = response.response.text();
-      console.log("[Shopify Sync] Gemini Raw Response Received.");
+  const response = await model.generateContent(prompt);
+  const responseText = response.response.text();
+  console.log("[Shopify Sync] Gemini Raw Response Received.");
 
-      // Clean up markdown block if returned
-      const cleanText = responseText
-        .replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
-      const result = JSON.parse(cleanText);
-      return result;
-    } catch (error) {
-      console.error("[Shopify Sync] Error during sync:", error);
+  // Clean up markdown block if returned
+  const cleanText = responseText
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  return JSON.parse(cleanText);
+}
+
+interface ConnectViaKeyInput {
+  connectionKey: string;
+  industry?: string;
+  // Optional override of the ExitEcom Analytic app base URL (defaults to env).
+  appUrl?: string;
+}
+
+// Shape returned by the ExitEcom Analytic Shopify app's /api/store-data endpoint.
+interface BrokerStoreData {
+  shop: {
+    name: string;
+    domain: string;
+    myshopifyDomain: string;
+    currency: string;
+    country: string;
+    createdAt: string;
+  };
+  orders: {
+    totalPrice: number;
+    createdAt: string;
+    customerId: string | null;
+    lineItems: { title: string; quantity: number; price: number }[];
+  }[];
+  products: { id: string; title: string; variantsCount: number }[];
+}
+
+// Connect via the ExitEcom Analytic Shopify app: the merchant pastes the
+// connection key shown after installing the app. We pull their store data from
+// the app's broker endpoint (the Shopify token never reaches us), then run the
+// same normalization pipeline as the direct-token path.
+export const connectShopifyViaKeyFn = createServerFn({ method: "POST" })
+  .inputValidator((input: ConnectViaKeyInput) => input)
+  .handler(async ({ data }) => {
+    const { connectionKey, industry = "Beauty & Skincare" } = data;
+
+    if (!connectionKey || !connectionKey.trim()) {
+      throw new Error("Please paste your ExitEcom connection key.");
+    }
+
+    const baseUrl = (
+      data.appUrl ||
+      process.env.SHOPIFY_ANALYTIC_APP_URL ||
+      process.env.VITE_SHOPIFY_ANALYTIC_APP_URL ||
+      ""
+    )
+      .trim()
+      .replace(/\/+$/, "");
+
+    if (!baseUrl) {
       throw new Error(
-        (error instanceof Error && error.message) ||
-          "An unexpected error occurred during Shopify synchronization.",
+        "The ExitEcom Analytic app URL is not configured. Set SHOPIFY_ANALYTIC_APP_URL.",
       );
     }
+
+    let store: BrokerStoreData;
+    try {
+      const res = await fetch(
+        `${baseUrl}/api/store-data?key=${encodeURIComponent(connectionKey.trim())}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!res.ok) {
+        let message = `Connector returned status ${res.status}.`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) message = body.error;
+        } catch {
+          /* keep status-based message */
+        }
+        throw new Error(message);
+      }
+      store = (await res.json()) as BrokerStoreData;
+    } catch (error) {
+      console.error("[Shopify Connect] Broker fetch failed:", error);
+      throw new Error(
+        (error instanceof Error && error.message) ||
+          "Could not reach the ExitEcom Analytic connector.",
+      );
+    }
+
+    // Map the broker contract onto the condensed summaries the normalizer expects.
+    const shopDataSummary: ShopSummary = {
+      name: store.shop.name,
+      domain: store.shop.domain,
+      myshopify_domain: store.shop.myshopifyDomain,
+      currency: store.shop.currency,
+      country: store.shop.country,
+      created_at: store.shop.createdAt,
+      industry,
+    };
+    const ordersSummary: OrderSummary[] = (store.orders ?? []).map((o) => ({
+      total_price: String(o.totalPrice ?? 0),
+      created_at: o.createdAt,
+      customer_id: o.customerId ?? null,
+      line_items: (o.lineItems ?? []).map((li) => ({
+        title: li.title,
+        quantity: li.quantity,
+        price: String(li.price ?? 0),
+      })),
+    }));
+    const productsSummary: ProductSummary[] = (store.products ?? []).map(
+      (p) => ({
+        id: p.id,
+        title: p.title,
+        variants_count: p.variantsCount ?? 0,
+      }),
+    );
+
+    console.log(
+      `[Shopify Connect] Pulled ${ordersSummary.length} orders / ${productsSummary.length} products for ${shopDataSummary.name} via connection key.`,
+    );
+
+    return await normalizeStoreData({
+      shopDataSummary,
+      ordersSummary,
+      productsSummary,
+      industry,
+    });
   });
 
 // Helper for high-fidelity fallback calculations when no API key is provided
