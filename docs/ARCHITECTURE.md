@@ -49,21 +49,23 @@ File-based routing (`src/routes/`), compiled into `src/routeTree.gen.ts` by the
 TanStack Router plugin. **Never edit `routeTree.gen.ts` by hand** — it
 regenerates on dev/build.
 
-- Flat-dotted names map to nested paths: `app.dashboard.tsx` → `/app/dashboard`.
-- **`app.tsx`** is the authenticated layout (sidebar + `<Outlet/>`). All
-  `/app/*` pages render inside it.
+- Flat-dotted names map to nested paths: `_app.dashboard.tsx` → `/dashboard`.
+- **`_app.tsx`** is the authenticated layout (sidebar + `<Outlet/>`). The `_app`
+  prefix makes it a **pathless** layout route — it contributes no URL segment, so
+  its children sit at the root (`/dashboard`, `/profile`, …) while still rendering
+  inside it.
 - **`__root.tsx`** is the document shell: `<html>`/`<head>`, SEO meta/OG tags,
   the `QueryClientProvider` + `AuthProvider`, and the global 404 / error UI.
 - **`index.tsx`** is a pure redirect (`beforeLoad → redirect({ to: "/signup" })`).
   There is intentionally no marketing landing page in the app.
 
-> Auth gating: `app.tsx` wraps the shared `/app` layout in `<RequireAuth>`
-> (`src/components/auth/RouteGuards.tsx`), so every `/app/*` page is guarded at
+> Auth gating: `_app.tsx` wraps the shared authenticated layout in `<RequireAuth>`
+> (`src/components/auth/RouteGuards.tsx`), so every page inside it is guarded at
 > once. The guard shows a loader while auth resolves, redirects unauthenticated
 > visitors to `/login` (remembering their target via a `redirect` search param),
 > and reacts to mid-session expiry. Public-only pages use `<RequireGuest>`.
 >
-> Inside the guard, `app.tsx` also mounts `<BusinessDataProvider>` so the Sidebar
+> Inside the guard, `_app.tsx` also mounts `<BusinessDataProvider>` so the Sidebar
 > and the routed page share a single business-data instance (one backend
 > hydration per session, not one per consuming component).
 

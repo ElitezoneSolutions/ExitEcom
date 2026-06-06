@@ -166,21 +166,21 @@ supabase/
 | `/` → `/signup`           | Redirect (no landing page)                              |
 | `/signup`, `/login`       | Split-screen auth (`SplitAuth`)                         |
 | `/onboarding`             | 4-step intake wizard; seeds a business in Supabase      |
-| `/app/dashboard`          | Overview / home                                         |
-| `/app/profile`            | Business Profile                                        |
-| `/app/data-sources`       | Connections — Shopify / Meta / Google / uploads         |
-| `/app/store-data`         | Store Data — all pulled orders / products / customers   |
-| `/app/shopify-connect`    | Shopify credential + sync flow (authenticate + pull)    |
-| `/app/exit-score`         | Exit Readiness Score (9 dimensions)                     |
-| `/app/risk-scanner`       | Risk intelligence                                       |
-| `/app/valuation`          | Valuation Engine                                        |
-| `/app/optimization`       | Optimization Plan (£ uplift per action)                 |
-| `/app/financial-normalizer` | Buyer-ready financial reconstruction                  |
-| `/app/investment-memo`    | Auto-generated investment memo                          |
-| `/app/data-room`          | Due-diligence document repository                       |
-| `/app/buyer-matching`     | Matched acquirers (private beta placeholder)            |
-| `/app/reports`            | Saved reports & downloads                               |
-| `/app/settings`, `/app/billing` | Account management                                |
+| `/dashboard`          | Overview / home                                         |
+| `/profile`            | Business Profile                                        |
+| `/data-sources`       | Connections — Shopify / Meta / Google / uploads         |
+| `/store-data`         | Store Data — all pulled orders / products / customers   |
+| `/shopify-connect`    | Shopify credential + sync flow (authenticate + pull)    |
+| `/exit-score`         | Exit Readiness Score (9 dimensions)                     |
+| `/risk-scanner`       | Risk intelligence                                       |
+| `/valuation`          | Valuation Engine                                        |
+| `/optimization`       | Optimization Plan (£ uplift per action)                 |
+| `/financial-normalizer` | Buyer-ready financial reconstruction                  |
+| `/investment-memo`    | Auto-generated investment memo                          |
+| `/data-room`          | Due-diligence document repository                       |
+| `/buyer-matching`     | Matched acquirers (private beta placeholder)            |
+| `/reports`            | Saved reports & downloads                               |
+| `/settings`, `/billing` | Account management                                |
 
 ---
 
@@ -193,7 +193,7 @@ report — it only confirms what was pulled.
 **Phase 1 — Sync (pull + store, no report):**
 
 ```
-/app/shopify-connect  ──(shopDomain, accessToken)──▶  syncShopifyStoreFn (server fn)
+/shopify-connect  ──(shopDomain, accessToken)──▶  syncShopifyStoreFn (server fn)
                                                             │
                                           ┌─────────────────┤
                                           ▼                 ▼
@@ -219,7 +219,7 @@ report — it only confirms what was pulled.
 **Phase 2 — Report (on demand, deterministic):**
 
 ```
-/app/{exit-score,risk-scanner,valuation,optimization}  ──"Run"──▶  useReport.run()
+/{exit-score,risk-scanner,valuation,optimization}  ──"Run"──▶  useReport.run()
                                           │
                                           ▼
                     computeFullReport(rawData)   ← src/lib/analytics.ts

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { StatusBadge } from "@/components/ex/StatusBadge";
 
-export const Route = createFileRoute("/app/billing")({ component: Billing });
+export const Route = createFileRoute("/_app/billing")({ component: Billing });
 
 function Billing() {
   return (

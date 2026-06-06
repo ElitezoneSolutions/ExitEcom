@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { StatusBadge } from "@/components/ex/StatusBadge";
 
-export const Route = createFileRoute("/app/reports")({ component: Reports });
+export const Route = createFileRoute("/_app/reports")({ component: Reports });
 
 const generated = [
   ["Exit Readiness Report", "Today", "Full Report"],

@@ -8,7 +8,7 @@ import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
 import { useReport } from "@/hooks/useReport";
 import { fmtGBP } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/risk-scanner")({
+export const Route = createFileRoute("/_app/risk-scanner")({
   component: RiskScanner,
 });
 
@@ -134,7 +134,7 @@ function RiskScanner() {
           value.
         </span>
         <Link
-          to="/app/optimization"
+          to="/optimization"
           className="text-sm text-[var(--accent)] hover:text-[var(--accent-muted)] inline-flex items-center gap-1"
         >
           Open Optimization Plan <ArrowRight className="w-3.5 h-3.5" />

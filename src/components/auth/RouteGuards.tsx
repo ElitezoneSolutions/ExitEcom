@@ -92,7 +92,7 @@ export function RequireGuest({ children }: { children: ReactNode }) {
       setRedirecting(true);
       const target = isSafeRedirect(search.redirect)
         ? search.redirect
-        : "/app/dashboard";
+        : "/dashboard";
       router.history.replace(target);
     }
   }, [loading, user, search.redirect, router]);

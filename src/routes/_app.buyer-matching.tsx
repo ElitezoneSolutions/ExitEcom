@@ -5,7 +5,7 @@ import { useBusinessData } from "@/hooks/useBusinessData";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { fmtGBPk } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/buyer-matching")({
+export const Route = createFileRoute("/_app/buyer-matching")({
   component: BuyerMatching,
 });
 
@@ -48,13 +48,13 @@ function BuyerMatching() {
 
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link
-            to="/app/exit-score"
+            to="/exit-score"
             className="px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-md hover:bg-[var(--accent-hover)] transition-colors"
           >
             Improve Your Score
           </Link>
           <Link
-            to="/app/data-room"
+            to="/data-room"
             className="px-4 py-2 border border-[var(--border-warm)] text-[var(--text-primary)] text-sm font-medium rounded-md hover:bg-[var(--sidebar-active)] transition-colors"
           >
             Prepare Data Room

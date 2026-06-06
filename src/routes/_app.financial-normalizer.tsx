@@ -17,7 +17,7 @@ import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { mockBusiness, addBacks, fmtGBP } from "@/lib/mock";
 
-export const Route = createFileRoute("/app/financial-normalizer")({
+export const Route = createFileRoute("/_app/financial-normalizer")({
   component: Financial,
 });
 

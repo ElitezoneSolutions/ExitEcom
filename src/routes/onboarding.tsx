@@ -480,7 +480,7 @@ function Step4({ data }: { data: OnboardingData }) {
             and risk report.
           </p>
           <button
-            onClick={() => navigate({ to: "/app/data-sources" })}
+            onClick={() => navigate({ to: "/data-sources" })}
             className="btn-primary mt-8"
           >
             Connect Shopify <ArrowRight className="w-4 h-4" />

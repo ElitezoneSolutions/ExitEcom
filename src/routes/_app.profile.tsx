@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { useBusinessData } from "@/hooks/useBusinessData";
+import { normalizeBusinessProfileFn } from "@/lib/ai";
 
-export const Route = createFileRoute("/app/profile")({ component: Profile });
+export const Route = createFileRoute("/_app/profile")({ component: Profile });
 
 type ProfileForm = {
   name: string;
@@ -58,10 +60,37 @@ function Profile() {
     (key: keyof ProfileForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  // Track the latest form so the background tidy never clobbers edits the user
+  // made while it was running.
+  const formRef = useRef(form);
+  formRef.current = form;
+
+  // Saving is instant: persist exactly what was typed right away, then tidy the
+  // wording in the background (Gemini — currency/ranges/casing, e.g.
+  // "below 10k dollar" → "< $10k") and re-save SILENTLY only if it actually
+  // changed something and the user hasn't kept editing. If AI is unavailable the
+  // normalizer returns the trimmed values, so save always works either way.
   const handleSave = async () => {
     setSaving(true);
-    await updateBusiness(form);
+    const snapshot = form;
+    await updateBusiness(snapshot);
     setSaving(false);
+
+    try {
+      const { fields, normalized } = await normalizeBusinessProfileFn({
+        data: snapshot,
+      });
+      const changed = FIELDS.some(({ key }) => fields[key] !== snapshot[key]);
+      const editedSince = FIELDS.some(
+        ({ key }) => formRef.current[key] !== snapshot[key],
+      );
+      if (!changed || editedSince) return;
+      setForm(fields);
+      await updateBusiness(fields, { silent: true });
+      if (normalized) toast.success("Tidied up your profile details.");
+    } catch {
+      // Normalizer unreachable — the typed values were already saved.
+    }
   };
 
   if (loading) {
@@ -116,7 +145,10 @@ function Profile() {
 
           <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-warm)]">
             Buyers verify your profile details during due diligence. Keep this
-            up to date.
+            up to date — we tidy your entries into a consistent format when you
+            save (e.g. <span className="font-mono">below 10k dollar</span> →{" "}
+            <span className="font-mono">&lt; $10k</span>), keeping your own
+            currency.
           </div>
         </div>
 

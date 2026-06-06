@@ -23,31 +23,31 @@ import { computeMetrics } from "@/lib/analytics";
 import { fmtGBP, fmtGBPk } from "@/lib/utils";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/app/dashboard")({
+export const Route = createFileRoute("/_app/dashboard")({
   component: Dashboard,
 });
 
 const FEATURES = [
   {
-    to: "/app/exit-score" as const,
+    to: "/exit-score" as const,
     label: "Exit Readiness Score",
     desc: "Score your store across nine buyer-grade dimensions.",
     icon: Gauge,
   },
   {
-    to: "/app/risk-scanner" as const,
+    to: "/risk-scanner" as const,
     label: "Risk Scanner",
     desc: "Surface the risks a buyer will price in.",
     icon: ShieldAlert,
   },
   {
-    to: "/app/valuation" as const,
+    to: "/valuation" as const,
     label: "Valuation Engine",
     desc: "Turn earnings into a buyer-grade valuation range.",
     icon: TrendingUp,
   },
   {
-    to: "/app/optimization" as const,
+    to: "/optimization" as const,
     label: "Optimization Plan",
     desc: "A prioritised plan with £ uplift per action.",
     icon: Zap,
@@ -246,7 +246,7 @@ function Dashboard() {
             your store
           </span>
           <Link
-            to="/app/store-data"
+            to="/store-data"
             className="text-[var(--accent)] hover:text-[var(--accent-muted)]"
           >
             Open Store Data →
@@ -294,7 +294,7 @@ function Dashboard() {
             </div>
           </div>
           <Link
-            to="/app/exit-score"
+            to="/exit-score"
             className="mt-6 inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:text-[var(--accent-muted)]"
           >
             View Full Analysis <ArrowRight className="w-3 h-3" />
@@ -313,7 +313,7 @@ function Dashboard() {
             Current Multiple: {business.currentMultiple}x
           </div>
           <Link
-            to="/app/valuation"
+            to="/valuation"
             className="mt-6 inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:text-[var(--accent-muted)]"
           >
             View Valuation Engine <ArrowRight className="w-3 h-3" />
@@ -331,7 +331,7 @@ function Dashboard() {
             You're currently leaving this in potential exit value unrealised.
           </p>
           <Link
-            to="/app/optimization"
+            to="/optimization"
             className="mt-6 inline-flex items-center gap-1 text-xs font-medium text-white hover:opacity-80"
           >
             See How to Unlock It <ArrowRight className="w-3 h-3" />
@@ -372,7 +372,7 @@ function Dashboard() {
                   </div>
                 </div>
                 <Link
-                  to="/app/risk-scanner"
+                  to="/risk-scanner"
                   className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] shrink-0"
                 >
                   Details →
@@ -385,7 +385,7 @@ function Dashboard() {
               {Math.max(0, risks.length - 3)} additional risks identified
             </span>
             <Link
-              to="/app/risk-scanner"
+              to="/risk-scanner"
               className="text-[var(--accent)] hover:text-[var(--accent-muted)]"
             >
               View All Risks →
@@ -427,7 +427,7 @@ function Dashboard() {
           </div>
           <div className="mt-4 text-xs text-right">
             <Link
-              to="/app/optimization"
+              to="/optimization"
               className="text-[var(--accent)] hover:text-[var(--accent-muted)]"
             >
               View Full Optimization Plan →
@@ -483,7 +483,7 @@ function Dashboard() {
           <Connected name="P&L" ok={isPLConnected} />
           <Connected name="GA4" ok={isGA4Connected} />
           <Link
-            to="/app/data-sources"
+            to="/data-sources"
             className="text-[var(--accent)] hover:text-[var(--accent-muted)]"
           >
             Complete Your Data Sources →

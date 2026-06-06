@@ -13,24 +13,24 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as AppRouteImport } from './routes/app'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppValuationRouteImport } from './routes/app.valuation'
-import { Route as AppStoreDataRouteImport } from './routes/app.store-data'
-import { Route as AppShopifyConnectRouteImport } from './routes/app.shopify-connect'
-import { Route as AppSettingsRouteImport } from './routes/app.settings'
-import { Route as AppRiskScannerRouteImport } from './routes/app.risk-scanner'
-import { Route as AppReportsRouteImport } from './routes/app.reports'
-import { Route as AppProfileRouteImport } from './routes/app.profile'
-import { Route as AppOptimizationRouteImport } from './routes/app.optimization'
-import { Route as AppInvestmentMemoRouteImport } from './routes/app.investment-memo'
-import { Route as AppFinancialNormalizerRouteImport } from './routes/app.financial-normalizer'
-import { Route as AppExitScoreRouteImport } from './routes/app.exit-score'
-import { Route as AppDataSourcesRouteImport } from './routes/app.data-sources'
-import { Route as AppDataRoomRouteImport } from './routes/app.data-room'
-import { Route as AppDashboardRouteImport } from './routes/app.dashboard'
-import { Route as AppBuyerMatchingRouteImport } from './routes/app.buyer-matching'
-import { Route as AppBillingRouteImport } from './routes/app.billing'
+import { Route as AppValuationRouteImport } from './routes/_app.valuation'
+import { Route as AppStoreDataRouteImport } from './routes/_app.store-data'
+import { Route as AppShopifyConnectRouteImport } from './routes/_app.shopify-connect'
+import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppRiskScannerRouteImport } from './routes/_app.risk-scanner'
+import { Route as AppReportsRouteImport } from './routes/_app.reports'
+import { Route as AppProfileRouteImport } from './routes/_app.profile'
+import { Route as AppOptimizationRouteImport } from './routes/_app.optimization'
+import { Route as AppInvestmentMemoRouteImport } from './routes/_app.investment-memo'
+import { Route as AppFinancialNormalizerRouteImport } from './routes/_app.financial-normalizer'
+import { Route as AppExitScoreRouteImport } from './routes/_app.exit-score'
+import { Route as AppDataSourcesRouteImport } from './routes/_app.data-sources'
+import { Route as AppDataRoomRouteImport } from './routes/_app.data-room'
+import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppBuyerMatchingRouteImport } from './routes/_app.buyer-matching'
+import { Route as AppBillingRouteImport } from './routes/_app.billing'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -53,8 +53,7 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
-  id: '/app',
-  path: '/app',
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -145,150 +144,146 @@ const AppBillingRoute = AppBillingRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
-  '/app/billing': typeof AppBillingRoute
-  '/app/buyer-matching': typeof AppBuyerMatchingRoute
-  '/app/dashboard': typeof AppDashboardRoute
-  '/app/data-room': typeof AppDataRoomRoute
-  '/app/data-sources': typeof AppDataSourcesRoute
-  '/app/exit-score': typeof AppExitScoreRoute
-  '/app/financial-normalizer': typeof AppFinancialNormalizerRoute
-  '/app/investment-memo': typeof AppInvestmentMemoRoute
-  '/app/optimization': typeof AppOptimizationRoute
-  '/app/profile': typeof AppProfileRoute
-  '/app/reports': typeof AppReportsRoute
-  '/app/risk-scanner': typeof AppRiskScannerRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/shopify-connect': typeof AppShopifyConnectRoute
-  '/app/store-data': typeof AppStoreDataRoute
-  '/app/valuation': typeof AppValuationRoute
+  '/billing': typeof AppBillingRoute
+  '/buyer-matching': typeof AppBuyerMatchingRoute
+  '/dashboard': typeof AppDashboardRoute
+  '/data-room': typeof AppDataRoomRoute
+  '/data-sources': typeof AppDataSourcesRoute
+  '/exit-score': typeof AppExitScoreRoute
+  '/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/investment-memo': typeof AppInvestmentMemoRoute
+  '/optimization': typeof AppOptimizationRoute
+  '/profile': typeof AppProfileRoute
+  '/reports': typeof AppReportsRoute
+  '/risk-scanner': typeof AppRiskScannerRoute
+  '/settings': typeof AppSettingsRoute
+  '/shopify-connect': typeof AppShopifyConnectRoute
+  '/store-data': typeof AppStoreDataRoute
+  '/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
-  '/app/billing': typeof AppBillingRoute
-  '/app/buyer-matching': typeof AppBuyerMatchingRoute
-  '/app/dashboard': typeof AppDashboardRoute
-  '/app/data-room': typeof AppDataRoomRoute
-  '/app/data-sources': typeof AppDataSourcesRoute
-  '/app/exit-score': typeof AppExitScoreRoute
-  '/app/financial-normalizer': typeof AppFinancialNormalizerRoute
-  '/app/investment-memo': typeof AppInvestmentMemoRoute
-  '/app/optimization': typeof AppOptimizationRoute
-  '/app/profile': typeof AppProfileRoute
-  '/app/reports': typeof AppReportsRoute
-  '/app/risk-scanner': typeof AppRiskScannerRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/shopify-connect': typeof AppShopifyConnectRoute
-  '/app/store-data': typeof AppStoreDataRoute
-  '/app/valuation': typeof AppValuationRoute
+  '/billing': typeof AppBillingRoute
+  '/buyer-matching': typeof AppBuyerMatchingRoute
+  '/dashboard': typeof AppDashboardRoute
+  '/data-room': typeof AppDataRoomRoute
+  '/data-sources': typeof AppDataSourcesRoute
+  '/exit-score': typeof AppExitScoreRoute
+  '/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/investment-memo': typeof AppInvestmentMemoRoute
+  '/optimization': typeof AppOptimizationRoute
+  '/profile': typeof AppProfileRoute
+  '/reports': typeof AppReportsRoute
+  '/risk-scanner': typeof AppRiskScannerRoute
+  '/settings': typeof AppSettingsRoute
+  '/shopify-connect': typeof AppShopifyConnectRoute
+  '/store-data': typeof AppStoreDataRoute
+  '/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/app': typeof AppRouteWithChildren
+  '/_app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
-  '/app/billing': typeof AppBillingRoute
-  '/app/buyer-matching': typeof AppBuyerMatchingRoute
-  '/app/dashboard': typeof AppDashboardRoute
-  '/app/data-room': typeof AppDataRoomRoute
-  '/app/data-sources': typeof AppDataSourcesRoute
-  '/app/exit-score': typeof AppExitScoreRoute
-  '/app/financial-normalizer': typeof AppFinancialNormalizerRoute
-  '/app/investment-memo': typeof AppInvestmentMemoRoute
-  '/app/optimization': typeof AppOptimizationRoute
-  '/app/profile': typeof AppProfileRoute
-  '/app/reports': typeof AppReportsRoute
-  '/app/risk-scanner': typeof AppRiskScannerRoute
-  '/app/settings': typeof AppSettingsRoute
-  '/app/shopify-connect': typeof AppShopifyConnectRoute
-  '/app/store-data': typeof AppStoreDataRoute
-  '/app/valuation': typeof AppValuationRoute
+  '/_app/billing': typeof AppBillingRoute
+  '/_app/buyer-matching': typeof AppBuyerMatchingRoute
+  '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/data-room': typeof AppDataRoomRoute
+  '/_app/data-sources': typeof AppDataSourcesRoute
+  '/_app/exit-score': typeof AppExitScoreRoute
+  '/_app/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/_app/investment-memo': typeof AppInvestmentMemoRoute
+  '/_app/optimization': typeof AppOptimizationRoute
+  '/_app/profile': typeof AppProfileRoute
+  '/_app/reports': typeof AppReportsRoute
+  '/_app/risk-scanner': typeof AppRiskScannerRoute
+  '/_app/settings': typeof AppSettingsRoute
+  '/_app/shopify-connect': typeof AppShopifyConnectRoute
+  '/_app/store-data': typeof AppStoreDataRoute
+  '/_app/valuation': typeof AppValuationRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/app'
     | '/forgot-password'
     | '/login'
     | '/onboarding'
     | '/signup'
-    | '/app/billing'
-    | '/app/buyer-matching'
-    | '/app/dashboard'
-    | '/app/data-room'
-    | '/app/data-sources'
-    | '/app/exit-score'
-    | '/app/financial-normalizer'
-    | '/app/investment-memo'
-    | '/app/optimization'
-    | '/app/profile'
-    | '/app/reports'
-    | '/app/risk-scanner'
-    | '/app/settings'
-    | '/app/shopify-connect'
-    | '/app/store-data'
-    | '/app/valuation'
+    | '/billing'
+    | '/buyer-matching'
+    | '/dashboard'
+    | '/data-room'
+    | '/data-sources'
+    | '/exit-score'
+    | '/financial-normalizer'
+    | '/investment-memo'
+    | '/optimization'
+    | '/profile'
+    | '/reports'
+    | '/risk-scanner'
+    | '/settings'
+    | '/shopify-connect'
+    | '/store-data'
+    | '/valuation'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/app'
     | '/forgot-password'
     | '/login'
     | '/onboarding'
     | '/signup'
-    | '/app/billing'
-    | '/app/buyer-matching'
-    | '/app/dashboard'
-    | '/app/data-room'
-    | '/app/data-sources'
-    | '/app/exit-score'
-    | '/app/financial-normalizer'
-    | '/app/investment-memo'
-    | '/app/optimization'
-    | '/app/profile'
-    | '/app/reports'
-    | '/app/risk-scanner'
-    | '/app/settings'
-    | '/app/shopify-connect'
-    | '/app/store-data'
-    | '/app/valuation'
+    | '/billing'
+    | '/buyer-matching'
+    | '/dashboard'
+    | '/data-room'
+    | '/data-sources'
+    | '/exit-score'
+    | '/financial-normalizer'
+    | '/investment-memo'
+    | '/optimization'
+    | '/profile'
+    | '/reports'
+    | '/risk-scanner'
+    | '/settings'
+    | '/shopify-connect'
+    | '/store-data'
+    | '/valuation'
   id:
     | '__root__'
     | '/'
-    | '/app'
+    | '/_app'
     | '/forgot-password'
     | '/login'
     | '/onboarding'
     | '/signup'
-    | '/app/billing'
-    | '/app/buyer-matching'
-    | '/app/dashboard'
-    | '/app/data-room'
-    | '/app/data-sources'
-    | '/app/exit-score'
-    | '/app/financial-normalizer'
-    | '/app/investment-memo'
-    | '/app/optimization'
-    | '/app/profile'
-    | '/app/reports'
-    | '/app/risk-scanner'
-    | '/app/settings'
-    | '/app/shopify-connect'
-    | '/app/store-data'
-    | '/app/valuation'
+    | '/_app/billing'
+    | '/_app/buyer-matching'
+    | '/_app/dashboard'
+    | '/_app/data-room'
+    | '/_app/data-sources'
+    | '/_app/exit-score'
+    | '/_app/financial-normalizer'
+    | '/_app/investment-memo'
+    | '/_app/optimization'
+    | '/_app/profile'
+    | '/_app/reports'
+    | '/_app/risk-scanner'
+    | '/_app/settings'
+    | '/_app/shopify-connect'
+    | '/_app/store-data'
+    | '/_app/valuation'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -330,10 +325,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app': {
-      id: '/app'
-      path: '/app'
-      fullPath: '/app'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -344,115 +339,115 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/app/valuation': {
-      id: '/app/valuation'
+    '/_app/valuation': {
+      id: '/_app/valuation'
       path: '/valuation'
-      fullPath: '/app/valuation'
+      fullPath: '/valuation'
       preLoaderRoute: typeof AppValuationRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/store-data': {
-      id: '/app/store-data'
+    '/_app/store-data': {
+      id: '/_app/store-data'
       path: '/store-data'
-      fullPath: '/app/store-data'
+      fullPath: '/store-data'
       preLoaderRoute: typeof AppStoreDataRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/shopify-connect': {
-      id: '/app/shopify-connect'
+    '/_app/shopify-connect': {
+      id: '/_app/shopify-connect'
       path: '/shopify-connect'
-      fullPath: '/app/shopify-connect'
+      fullPath: '/shopify-connect'
       preLoaderRoute: typeof AppShopifyConnectRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/settings': {
-      id: '/app/settings'
+    '/_app/settings': {
+      id: '/_app/settings'
       path: '/settings'
-      fullPath: '/app/settings'
+      fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/risk-scanner': {
-      id: '/app/risk-scanner'
+    '/_app/risk-scanner': {
+      id: '/_app/risk-scanner'
       path: '/risk-scanner'
-      fullPath: '/app/risk-scanner'
+      fullPath: '/risk-scanner'
       preLoaderRoute: typeof AppRiskScannerRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/reports': {
-      id: '/app/reports'
+    '/_app/reports': {
+      id: '/_app/reports'
       path: '/reports'
-      fullPath: '/app/reports'
+      fullPath: '/reports'
       preLoaderRoute: typeof AppReportsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/profile': {
-      id: '/app/profile'
+    '/_app/profile': {
+      id: '/_app/profile'
       path: '/profile'
-      fullPath: '/app/profile'
+      fullPath: '/profile'
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/optimization': {
-      id: '/app/optimization'
+    '/_app/optimization': {
+      id: '/_app/optimization'
       path: '/optimization'
-      fullPath: '/app/optimization'
+      fullPath: '/optimization'
       preLoaderRoute: typeof AppOptimizationRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/investment-memo': {
-      id: '/app/investment-memo'
+    '/_app/investment-memo': {
+      id: '/_app/investment-memo'
       path: '/investment-memo'
-      fullPath: '/app/investment-memo'
+      fullPath: '/investment-memo'
       preLoaderRoute: typeof AppInvestmentMemoRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/financial-normalizer': {
-      id: '/app/financial-normalizer'
+    '/_app/financial-normalizer': {
+      id: '/_app/financial-normalizer'
       path: '/financial-normalizer'
-      fullPath: '/app/financial-normalizer'
+      fullPath: '/financial-normalizer'
       preLoaderRoute: typeof AppFinancialNormalizerRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/exit-score': {
-      id: '/app/exit-score'
+    '/_app/exit-score': {
+      id: '/_app/exit-score'
       path: '/exit-score'
-      fullPath: '/app/exit-score'
+      fullPath: '/exit-score'
       preLoaderRoute: typeof AppExitScoreRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/data-sources': {
-      id: '/app/data-sources'
+    '/_app/data-sources': {
+      id: '/_app/data-sources'
       path: '/data-sources'
-      fullPath: '/app/data-sources'
+      fullPath: '/data-sources'
       preLoaderRoute: typeof AppDataSourcesRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/data-room': {
-      id: '/app/data-room'
+    '/_app/data-room': {
+      id: '/_app/data-room'
       path: '/data-room'
-      fullPath: '/app/data-room'
+      fullPath: '/data-room'
       preLoaderRoute: typeof AppDataRoomRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/dashboard': {
-      id: '/app/dashboard'
+    '/_app/dashboard': {
+      id: '/_app/dashboard'
       path: '/dashboard'
-      fullPath: '/app/dashboard'
+      fullPath: '/dashboard'
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/buyer-matching': {
-      id: '/app/buyer-matching'
+    '/_app/buyer-matching': {
+      id: '/_app/buyer-matching'
       path: '/buyer-matching'
-      fullPath: '/app/buyer-matching'
+      fullPath: '/buyer-matching'
       preLoaderRoute: typeof AppBuyerMatchingRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/billing': {
-      id: '/app/billing'
+    '/_app/billing': {
+      id: '/_app/billing'
       path: '/billing'
-      fullPath: '/app/billing'
+      fullPath: '/billing'
       preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }

@@ -19,7 +19,7 @@ import { toast } from "sonner";
 
 type ConnectMethod = "key" | "custom";
 
-export const Route = createFileRoute("/app/shopify-connect")({
+export const Route = createFileRoute("/_app/shopify-connect")({
   component: ShopifyConnect,
 });
 
@@ -77,7 +77,7 @@ function ShopifyConnect() {
     <>
       <div className="flex items-center gap-2 mb-4">
         <Link
-          to="/app/data-sources"
+          to="/data-sources"
           className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Data Sources
@@ -388,13 +388,13 @@ function ShopifyConnect() {
 
             <div className="flex flex-col sm:flex-row gap-3 w-full mt-4">
               <button
-                onClick={() => navigate({ to: "/app/store-data" })}
+                onClick={() => navigate({ to: "/store-data" })}
                 className="flex-1 btn-primary py-3 rounded-md justify-center font-semibold text-sm"
               >
                 View Store Data
               </button>
               <button
-                onClick={() => navigate({ to: "/app/exit-score" })}
+                onClick={() => navigate({ to: "/exit-score" })}
                 className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm cursor-pointer"
               >
                 Run your first report
@@ -429,7 +429,7 @@ function ShopifyConnect() {
               Try Again
             </button>
             <Link
-              to="/app/data-sources"
+              to="/data-sources"
               className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm text-center"
             >
               Cancel

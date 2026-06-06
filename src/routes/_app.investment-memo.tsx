@@ -6,7 +6,7 @@ import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { mockBusiness, fmtGBP } from "@/lib/mock";
 
-export const Route = createFileRoute("/app/investment-memo")({
+export const Route = createFileRoute("/_app/investment-memo")({
   component: Memo,
 });
 

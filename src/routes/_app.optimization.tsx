@@ -8,7 +8,7 @@ import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
 import { useReport } from "@/hooks/useReport";
 import { fmtGBP } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/optimization")({
+export const Route = createFileRoute("/_app/optimization")({
   component: Optimization,
 });
 

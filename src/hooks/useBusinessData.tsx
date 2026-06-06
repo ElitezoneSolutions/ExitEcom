@@ -315,7 +315,7 @@ const mapCustomerRow = (r: CustomerRow): RawShopifyCustomer => ({
 });
 
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
-// the whole `/app` subtree shares a single instance — otherwise every component
+// the whole authenticated app subtree shares a single instance — otherwise every component
 // that called this (the Sidebar + each page + useReport) would spin up its own
 // state and fire its own Supabase hydration on mount (2–3× the round-trips per
 // page, plus divergent copies of the same data). Consume it via useBusinessData.
@@ -956,7 +956,7 @@ const BusinessDataContext = createContext<BusinessDataValue | undefined>(
 );
 
 /**
- * Provides a single shared business-data instance to the whole `/app` subtree.
+ * Provides a single shared business-data instance to the whole authenticated app subtree.
  * Mount this once (in the authenticated layout) above the Sidebar and the
  * routed pages so they all read/write the same state and the backend is
  * hydrated once per session rather than once per consuming component.
