@@ -8,7 +8,7 @@ import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
 import { useReport } from "@/hooks/useReport";
 import { fmtGBP } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/valuation")({
+export const Route = createFileRoute("/_app/valuation")({
   component: Valuation,
 });
 
@@ -204,7 +204,7 @@ function Valuation() {
       {/* Bottom actions */}
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-[var(--border-warm)]">
         <Link
-          to="/app/optimization"
+          to="/optimization"
           className="text-sm text-[var(--accent)] hover:text-[var(--accent-muted)] inline-flex items-center gap-1"
         >
           Open Optimization Plan <ArrowRight className="w-3.5 h-3.5" />

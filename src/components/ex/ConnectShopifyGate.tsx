@@ -33,7 +33,7 @@ export function ConnectShopifyGate({
           all built from your real store.
         </p>
         <Link
-          to="/app/data-sources"
+          to="/data-sources"
           className="mt-8 inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-white text-sm font-medium rounded-md hover:bg-[var(--accent-hover)] transition-colors"
         >
           Connect Shopify <ArrowRight className="w-4 h-4" />

@@ -5,7 +5,7 @@ import { StatusBadge } from "@/components/ex/StatusBadge";
 import { ScoreRing } from "@/components/ex/ScoreRing";
 import { useBusinessData } from "@/hooks/useBusinessData";
 
-export const Route = createFileRoute("/app/data-sources")({
+export const Route = createFileRoute("/_app/data-sources")({
   component: DataSources,
 });
 
@@ -162,8 +162,8 @@ function DataSources() {
                         <Link
                           to={
                             p.status === "connected"
-                              ? "/app/store-data"
-                              : "/app/shopify-connect"
+                              ? "/store-data"
+                              : "/shopify-connect"
                           }
                           className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                         >

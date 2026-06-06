@@ -54,7 +54,7 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
   // the dashboard by default.
   const goToApp = () =>
     router.history.push(
-      isSafeRedirect(search.redirect) ? search.redirect : "/app/dashboard",
+      isSafeRedirect(search.redirect) ? search.redirect : "/dashboard",
     );
 
   // Surface the "session expired" notice once, when redirected here for it.

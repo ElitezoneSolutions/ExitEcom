@@ -28,7 +28,7 @@ A simplified list of changes made to ExitEcom. Newest first.
 - New migration `20260606000000_shopify_raw_data.sql`: `shopify_stores`,
   `shopify_orders`, `shopify_products`, `shopify_customers` (all RLS-protected,
   idempotent upserts) + new `valuation_data` columns. Applied live.
-- New page `/app/store-data` displays everything pulled (orders / products /
+- New page `/store-data` displays everything pulled (orders / products /
   customers / store metadata) with **Sync now** + auto-stale (>6h) refresh.
 - Sidebar **Data Sources** is now an always-expanded parent: **Connections** +
   **Store Data**.
@@ -65,6 +65,6 @@ A simplified list of changes made to ExitEcom. Newest first.
 - Added `README.md`, `docs/ARCHITECTURE.md`, and `.env.example`.
 
 ## Known follow-ups
-- [ ] Add an **auth guard** so `/app/*` and `/onboarding` redirect to `/login` when not signed in.
+- [ ] Add an **auth guard** so `/*` and `/onboarding` redirect to `/login` when not signed in.
 - [ ] Wire each gated result page to **real Shopify-derived data** when Shopify Connect is built (see `docs/DATA-DISPLAY.md` TODO list).
 - [ ] Consider a transactional email provider (e.g. Resend) so emails send from `otp@exitecom.com` rather than the Gmail account.

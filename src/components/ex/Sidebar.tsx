@@ -25,14 +25,14 @@ const groups = [
   {
     label: "Overview",
     items: [
-      { to: "/app/dashboard", label: "Dashboard", icon: LayoutGrid },
-      { to: "/app/profile", label: "Business Profile", icon: Building2 },
+      { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
+      { to: "/profile", label: "Business Profile", icon: Building2 },
       {
         label: "Data Sources",
         icon: LinkIcon,
         children: [
-          { to: "/app/data-sources", label: "Connections" },
-          { to: "/app/store-data", label: "Store Data" },
+          { to: "/data-sources", label: "Connections" },
+          { to: "/store-data", label: "Store Data" },
         ],
       },
     ],
@@ -40,24 +40,24 @@ const groups = [
   {
     label: "Exit Analysis",
     items: [
-      { to: "/app/exit-score", label: "Exit Readiness Score", icon: Gauge },
-      { to: "/app/risk-scanner", label: "Risk Scanner", icon: ShieldAlert },
-      { to: "/app/valuation", label: "Valuation Engine", icon: TrendingUp },
-      { to: "/app/optimization", label: "Optimization Plan", icon: Zap },
+      { to: "/exit-score", label: "Exit Readiness Score", icon: Gauge },
+      { to: "/risk-scanner", label: "Risk Scanner", icon: ShieldAlert },
+      { to: "/valuation", label: "Valuation Engine", icon: TrendingUp },
+      { to: "/optimization", label: "Optimization Plan", icon: Zap },
     ],
   },
   {
     label: "Reports",
     items: [
-      { to: "/app/reports", label: "Saved Reports", icon: Bookmark },
-      { to: "/app/reports", label: "Downloads", icon: Download },
+      { to: "/reports", label: "Saved Reports", icon: Bookmark },
+      { to: "/reports", label: "Downloads", icon: Download },
     ],
   },
   {
     label: "Account",
     items: [
-      { to: "/app/settings", label: "Settings", icon: Settings },
-      { to: "/app/billing", label: "Billing", icon: CreditCard },
+      { to: "/settings", label: "Settings", icon: Settings },
+      { to: "/billing", label: "Billing", icon: CreditCard },
     ],
   },
 ] as const;
@@ -171,7 +171,7 @@ export function Sidebar() {
 
       <div className="px-4 py-4">
         <Link
-          to="/app/buyer-matching"
+          to="/buyer-matching"
           className="flex items-center justify-between w-full px-4 py-3 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-md text-sm font-medium transition-colors"
         >
           <span>Find a Buyer</span>

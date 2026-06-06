@@ -24,8 +24,8 @@ live paths:
 
 | Data | Where it's collected | DB table | Surfaced on |
 | --- | --- | --- | --- |
-| Business profile (name, industry, channel, country, age, monthly revenue, founder context, exit timeframe) | **Onboarding** (`src/routes/onboarding.tsx`) | `businesses` | Profile (`/app/profile`) |
-| Raw store data: orders, products, customers, store metadata | **Shopify Connect** (`syncShopifyStoreFn`) | `shopify_stores`, `shopify_orders`, `shopify_products`, `shopify_customers` | Store Data (`/app/store-data`) |
+| Business profile (name, industry, channel, country, age, monthly revenue, founder context, exit timeframe) | **Onboarding** (`src/routes/onboarding.tsx`) | `businesses` | Profile (`/profile`) |
+| Raw store data: orders, products, customers, store metadata | **Shopify Connect** (`syncShopifyStoreFn`) | `shopify_stores`, `shopify_orders`, `shopify_products`, `shopify_customers` | Store Data (`/store-data`) |
 | Results: Exit Score, valuation range, multiples, KPIs, risks, actions, documents | **Computed on demand** from the raw data (`src/lib/analytics.ts`) | `valuation_data`, `risks`, `actions`, `documents` | Dashboard + result pages |
 
 `useBusinessData` (`src/hooks/useBusinessData.ts`) is the single read/write layer.
@@ -47,12 +47,12 @@ const { isShopifyConnected } = useBusinessData();
 if (!isShopifyConnected) return <ConnectShopifyGate title="…" feature="…" />;
 ```
 
-**Gated pages:** `app.dashboard`, `app.exit-score`, `app.valuation`,
-`app.risk-scanner`, `app.optimization`, `app.investment-memo`,
-`app.financial-normalizer`, `app.data-room`, `app.buyer-matching`.
+**Gated pages:** `_app.dashboard`, `_app.exit-score`, `_app.valuation`,
+`_app.risk-scanner`, `_app.optimization`, `_app.investment-memo`,
+`_app.financial-normalizer`, `_app.data-room`, `_app.buyer-matching`.
 
-**Always reachable:** `app.profile`, `app.data-sources`, `app.store-data`,
-`app.shopify-connect`, `app.settings`, `app.billing` — you need these to enter
+**Always reachable:** `_app.profile`, `_app.data-sources`, `_app.store-data`,
+`_app.shopify-connect`, `_app.settings`, `_app.billing` — you need these to enter
 data, connect, and inspect the pulled raw data.
 
 Once a store is connected, `isShopifyConnected` is true and the gate lifts. The
@@ -82,27 +82,27 @@ Sign up ──▶ Onboarding (4 steps) ──writes businesses row──▶ Data
 - Onboarding Step 2 is **info-only**: Shopify is "connect after setup", all other
   integrations are "Coming soon". No fake "Connected" toggles.
 - Onboarding Step 4 **inserts** the `businesses` row + a zeroed `valuation_data`
-  row (no fabricated valuation), then routes to `/app/data-sources`.
+  row (no fabricated valuation), then routes to `/data-sources`.
 
 ## Status — result pages wired to real data
 
 The core pages now compute from real Shopify-derived data (via `useReport` →
 `computeFullReport`) and persist snapshots:
 
-- [x] `app.dashboard` — command-center (counts + launchers) pre-run; real hero numbers post-run
-- [x] `app.exit-score` — 9-dimension breakdown, computed
-- [x] `app.valuation` — valuation range, multiples, drivers, computed
-- [x] `app.risk-scanner` — computed risks, persisted to `risks`
-- [x] `app.optimization` — computed actions, persisted to `actions`
-- [x] `app.store-data` — raw orders / products / customers / metadata (new)
+- [x] `_app.dashboard` — command-center (counts + launchers) pre-run; real hero numbers post-run
+- [x] `_app.exit-score` — 9-dimension breakdown, computed
+- [x] `_app.valuation` — valuation range, multiples, drivers, computed
+- [x] `_app.risk-scanner` — computed risks, persisted to `risks`
+- [x] `_app.optimization` — computed actions, persisted to `actions`
+- [x] `_app.store-data` — raw orders / products / customers / metadata (new)
 
 Still on mock scaffolding (not yet wired — they remain gated, so no user sees mock
 data today):
 
-- [ ] `app.financial-normalizer` — normalized financials (imports `mockBusiness`/`addBacks`)
-- [ ] `app.investment-memo` — generate from real metrics (imports `mockBusiness`)
-- [ ] `app.data-room` — `documents` from DB (imports `dataRoomCategories`)
-- [ ] `app.buyer-matching` — real match criteria (private-beta placeholder)
+- [ ] `_app.financial-normalizer` — normalized financials (imports `mockBusiness`/`addBacks`)
+- [ ] `_app.investment-memo` — generate from real metrics (imports `mockBusiness`)
+- [ ] `_app.data-room` — `documents` from DB (imports `dataRoomCategories`)
+- [ ] `_app.buyer-matching` — real match criteria (private-beta placeholder)
 - [ ] Once these consume real data, delete `src/lib/mock.ts`. Note: the `fmtGBP`/
       `fmtGBPk` formatters now live in `src/lib/utils.ts`, but `RiskCard`/`ActionCard`
       and the legacy pages still import them from `mock.ts` — repoint those first.

@@ -147,7 +147,7 @@ the store creation date is unknown. (`analytics.ts:291`)
 
 ## 2. Exit Readiness Score
 
-**Page:** `/app/exit-score` · **Function:** `computeExitScore(metrics)`
+**Page:** `/exit-score` · **Function:** `computeExitScore(metrics)`
 ([`analytics.ts:334`](../src/lib/analytics.ts))
 
 A score out of **100** built from **9 weighted dimensions**. The weights (max
@@ -210,7 +210,7 @@ So a brand-new store with a handful of orders sits near 50%, and a store with
 
 ## 3. Risk Scanner
 
-**Page:** `/app/risk-scanner` · **Function:** `computeRisks(metrics, valuation)`
+**Page:** `/risk-scanner` · **Function:** `computeRisks(metrics, valuation)`
 ([`analytics.ts:488`](../src/lib/analytics.ts))
 
 Surfaces the risks a buyer prices in, and quantifies each in **£ impact on
@@ -244,7 +244,7 @@ only thing Gemini may later rephrase (never the numbers).
 
 ## 4. Valuation Engine
 
-**Page:** `/app/valuation` · **Function:** `computeValuation(metrics, exitScore)`
+**Page:** `/valuation` · **Function:** `computeValuation(metrics, exitScore)`
 ([`analytics.ts:408`](../src/lib/analytics.ts))
 
 Turns earnings into a buyer-grade valuation **range** using an SDE multiple that
@@ -293,7 +293,7 @@ These labels explain the multiple to the user; the actual multiple comes from
 
 ## 5. Optimization Plan
 
-**Page:** `/app/optimization` · **Function:**
+**Page:** `/optimization` · **Function:**
 `computeOptimization(metrics, valuation)`
 ([`analytics.ts:540`](../src/lib/analytics.ts))
 

@@ -3,10 +3,10 @@ import { Sidebar } from "@/components/ex/Sidebar";
 import { RequireAuth } from "@/components/auth/RouteGuards";
 import { BusinessDataProvider } from "@/hooks/useBusinessData";
 
-export const Route = createFileRoute("/app")({ component: AppShell });
+export const Route = createFileRoute("/_app")({ component: AppShell });
 
-// Every internal page lives under `/app`, so guarding this shared layout
-// protects them all. The guard re-checks on each mount (direct URL, refresh,
+// Every internal page nests under this pathless `_app` layout, so guarding this
+// shared layout protects them all. The guard re-checks on each mount (direct URL, refresh,
 // back button) and reacts to mid-session auth changes before anything renders.
 //
 // BusinessDataProvider sits inside the auth guard (so it only hydrates once a

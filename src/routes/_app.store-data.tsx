@@ -8,7 +8,7 @@ import { useBusinessData } from "@/hooks/useBusinessData";
 import { computeMetrics } from "@/lib/analytics";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/app/store-data")({
+export const Route = createFileRoute("/_app/store-data")({
   component: StoreData,
 });
 

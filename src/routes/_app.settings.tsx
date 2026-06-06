@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageHeader } from "@/components/ex/PageHeader";
 
-export const Route = createFileRoute("/app/settings")({ component: Settings });
+export const Route = createFileRoute("/_app/settings")({ component: Settings });
 
 const tabs = ["Profile", "Notifications", "Integrations", "Security"] as const;
 

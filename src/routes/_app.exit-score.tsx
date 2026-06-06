@@ -9,7 +9,7 @@ import { useReport } from "@/hooks/useReport";
 import type { ScoreDimension } from "@/lib/analytics";
 import { fmtGBP, fmtGBPk } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/exit-score")({
+export const Route = createFileRoute("/_app/exit-score")({
   component: ExitScore,
 });
 
@@ -227,7 +227,7 @@ function ExitScore() {
             Open the prioritised optimization plan with £ uplift per action.
           </div>
         </div>
-        <Link to="/app/optimization" className="btn-primary">
+        <Link to="/optimization" className="btn-primary">
           Open Optimization Plan <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
