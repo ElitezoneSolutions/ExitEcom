@@ -596,13 +596,19 @@ function useBusinessDataImpl() {
     }
   };
 
-  const updateBusiness = async (updatedFields: Partial<BusinessData>) => {
+  // `opts.silent` suppresses the success toast (used by background re-saves, e.g.
+  // the profile auto-tidy, which surface their own message). Errors always toast.
+  const updateBusiness = async (
+    updatedFields: Partial<BusinessData>,
+    opts?: { silent?: boolean },
+  ) => {
     const updated = { ...business, ...updatedFields };
     setBusiness(updated);
     localStorage.setItem(CACHE_BUSINESS, JSON.stringify(updated));
 
     if (!isSupabaseConfigured || !user || !business.id) {
-      toast.success("Updated business details (local state)");
+      if (!opts?.silent)
+        toast.success("Updated business details (local state)");
       return true;
     }
 
@@ -621,7 +627,8 @@ function useBusinessDataImpl() {
         .eq("id", business.id);
 
       if (updateError) throw updateError;
-      toast.success("Successfully synced business details to database!");
+      if (!opts?.silent)
+        toast.success("Successfully synced business details to database!");
       return true;
     } catch (err: unknown) {
       console.error("Failed to update business in Supabase:", err);

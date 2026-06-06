@@ -73,7 +73,7 @@ Create a `.env` file in the project root:
 | ------------------------ | -------- | ----------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`      | No\*     | Supabase project URL. Exposed to the client.                            |
 | `VITE_SUPABASE_ANON_KEY` | No\*     | Supabase anon key. Exposed to the client.                               |
-| `GEMINI_API_KEY`         | No       | **Server-side only.** Optional cosmetic AI: polishes the _prose_ of risk/action copy. Never touches numbers. |
+| `GEMINI_API_KEY`         | No       | **Server-side only.** Optional cosmetic AI: polishes the _prose_ of risk/action copy and tidies the Business Profile fields into consistent display labels (e.g. `below 10k dollar` → `< $10k`, keeping your own currency — never converting it). Never touches numbers. |
 
 \* **Demo Mode:** if Supabase vars are missing or left as placeholders, the app
 runs against `localStorage` only (auth is mocked; see
