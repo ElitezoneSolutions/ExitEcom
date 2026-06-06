@@ -4,33 +4,16 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ActionCard } from "@/components/ex/ActionCard";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
-import { useBusinessData } from "@/hooks/useBusinessData";
-import { topActions, fmtGBP } from "@/lib/mock";
+import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import { useReport } from "@/hooks/useReport";
+import { fmtGBP } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/optimization")({
   component: Optimization,
 });
 
-const roadmap = {
-  "Quick Wins (0–48 hours)": [
-    "Add trust badges to PDP",
-    "Collect 30 customer reviews",
-    "Fix mobile checkout UX",
-  ],
-  "Short-term (1–4 weeks)": [
-    "Improve top-3 ad creatives",
-    "Launch welcome & post-purchase email flows",
-    "Optimise product pricing",
-  ],
-  "Strategic (1–3 months)": [
-    "Add 2 adjacent product lines",
-    "Build SOPs for top workflows",
-    "Launch organic content channel",
-  ],
-};
-
 function Optimization() {
-  const { isShopifyConnected } = useBusinessData();
+  const { isShopifyConnected, report, computing, run } = useReport();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setChecked((c) => ({ ...c, [k]: !c[k] }));
 
@@ -43,23 +26,46 @@ function Optimization() {
     );
   }
 
+  if (!report) {
+    return (
+      <>
+        <PageHeader
+          title="Optimization Plan"
+          subtitle="The highest-impact actions to increase what buyers will pay."
+        />
+        <RunReportCard
+          feature="Optimization Plan"
+          blurb="We turn your store's weak points into a prioritised action plan with an estimated £ uplift for each move."
+          cta="Run Optimization Plan"
+          onRun={run}
+          computing={computing}
+        />
+      </>
+    );
+  }
+
+  const { actions, valuation: v } = report;
+  const totalUnlock = actions.reduce((s, a) => s + a.uplift, 0);
+  const afterQuickWins = v.valuationMid + Math.round(v.valueGap * 0.4);
+
   return (
     <>
       <PageHeader
         title="Optimization Plan"
         subtitle="The highest-impact actions to increase what buyers will pay."
+        right={<RecomputeButton onRun={run} computing={computing} />}
       />
 
       <div className="grid md:grid-cols-3 gap-5">
         <Hero
           label="Total Unlock Potential"
-          value={fmtGBP(120000)}
+          value={fmtGBP(totalUnlock)}
           sub="Across all priority actions"
         />
         <Hero
           label="Actions Required"
-          value="8 total"
-          sub="3 High · 3 Medium · 2 Quick Wins"
+          value={`${actions.length} total`}
+          sub={`${actions.filter((a) => a.priority === "high").length} High priority`}
         />
         <Hero
           label="Est. Time to Improve"
@@ -71,7 +77,7 @@ function Optimization() {
       <div className="mt-12">
         <SectionLabel>Highest Impact Actions</SectionLabel>
         <div className="mt-5 space-y-4">
-          {topActions.map((a) => (
+          {actions.map((a) => (
             <ActionCard key={a.title} {...a} />
           ))}
         </div>
@@ -80,14 +86,14 @@ function Optimization() {
       <div className="mt-12">
         <SectionLabel>Implementation Roadmap</SectionLabel>
         <div className="mt-5 grid md:grid-cols-3 gap-5">
-          {Object.entries(roadmap).map(([col, items]) => (
-            <div key={col} className="card-light p-6">
+          {actions.map((a) => (
+            <div key={a.title} className="card-light p-6">
               <div className="label-caps-gold" style={{ fontSize: 10 }}>
-                {col}
+                {a.title} · {a.time}
               </div>
               <ul className="mt-5 space-y-3">
-                {items.map((it) => {
-                  const k = `${col}::${it}`;
+                {a.steps.map((it) => {
+                  const k = `${a.title}::${it}`;
                   const isChecked = checked[k];
                   return (
                     <li key={it}>
@@ -135,21 +141,12 @@ function Optimization() {
       <div className="mt-12 card-light p-8">
         <SectionLabel>Progression Summary</SectionLabel>
         <div className="mt-6 flex items-center justify-between gap-4">
-          <Step label="Current Value" v={220000} />
+          <Step label="Current Value" v={v.valuationMid} />
           <Connector />
-          <Step label="After Quick Wins" v={255000} />
+          <Step label="After Quick Wins" v={afterQuickWins} />
           <Connector />
-          <Step label="After Full Plan" v={340000} accent />
+          <Step label="After Full Plan" v={v.valuationOptimised} accent />
         </div>
-      </div>
-
-      <div className="mt-10 flex flex-wrap justify-between gap-4">
-        <button className="btn-primary">
-          Download Full Optimization Report (PDF)
-        </button>
-        <a className="btn-ghost-light" href="/app/financial-normalizer">
-          Continue to Financial Normalizer →
-        </a>
       </div>
     </>
   );

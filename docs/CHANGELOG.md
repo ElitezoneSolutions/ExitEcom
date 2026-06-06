@@ -2,6 +2,42 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06 — Deterministic engine, raw data store & on-demand reports
+
+### Sync and reporting are now decoupled
+- **Connecting a store no longer auto-generates a report.** It only
+  authenticates, pulls, stores raw data, and confirms (counts only — no score or
+  valuation on the success screen).
+- New server fn `syncShopifyStoreFn` (`src/lib/shopify.ts`) pulls **all history**
+  (orders capped ~5k, products ~2k, customers ~5k) via cursor pagination. Real
+  credential failures now throw real errors; the sandbox path is reserved for
+  explicit `*test/demo/sandbox*` creds.
+
+### Numbers are deterministic — AI is cosmetic only
+- New deterministic engine `src/lib/analytics.ts` computes metrics, the 9-dimension
+  exit score, valuation, risks and actions from the **full** raw dataset (real line
+  items). Same data → same numbers, fully auditable.
+- **Removed Gemini from every numeric path.** Gemini (`src/lib/ai.ts`,
+  `enrichRiskCopyFn`) now only polishes the _prose_ of risk/action copy and is
+  optional. Removed `VITE_GEMINI_API_KEY` (browser-leak risk); the key is
+  server-only via `process.env.GEMINI_API_KEY`.
+- Reports run **on demand** via `useReport` (`run()` / "Re-compute") on the four
+  result pages, which now render **real computed values** (no more `mock.ts`).
+
+### Raw data store + Store Data page
+- New migration `20260606000000_shopify_raw_data.sql`: `shopify_stores`,
+  `shopify_orders`, `shopify_products`, `shopify_customers` (all RLS-protected,
+  idempotent upserts) + new `valuation_data` columns. Applied live.
+- New page `/app/store-data` displays everything pulled (orders / products /
+  customers / store metadata) with **Sync now** + auto-stale (>6h) refresh.
+- Sidebar **Data Sources** is now an always-expanded parent: **Connections** +
+  **Store Data**.
+- Raw data is cached in `localStorage` (`exitecom_shopify_raw_v1`) for instant
+  paint and zero-network warm loads. The Admin API token is **never** cached — it
+  is lazily re-fetched from `shopify_stores` at sync time.
+- Fixed a spurious "Failed to load live backend data" toast on login: raw-data
+  loading is isolated in its own try/catch that degrades silently.
+
 ## 2026-06 — Auth, real data & cleanup
 
 ### Email OTP sign-up

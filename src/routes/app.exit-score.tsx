@@ -4,15 +4,18 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ProgressBar } from "@/components/ex/ProgressBar";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
-import { useBusinessData } from "@/hooks/useBusinessData";
-import { mockBusiness, fmtGBP, fmtGBPk } from "@/lib/mock";
+import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import { useReport } from "@/hooks/useReport";
+import type { ScoreDimension } from "@/lib/analytics";
+import { fmtGBP, fmtGBPk } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/exit-score")({
   component: ExitScore,
 });
 
 function ExitScore() {
-  const { isShopifyConnected } = useBusinessData();
+  const { isShopifyConnected, report, computing, run } = useReport();
+
   if (!isShopifyConnected) {
     return (
       <ConnectShopifyGate
@@ -21,11 +24,33 @@ function ExitScore() {
       />
     );
   }
+
+  if (!report) {
+    return (
+      <>
+        <PageHeader
+          title="Exit Readiness Score"
+          subtitle="A buyer-grade assessment of your business across nine critical dimensions."
+        />
+        <RunReportCard
+          feature="Exit Readiness Score"
+          blurb="We score your store across nine buyer-grade dimensions using your real orders, products and customers."
+          cta="Run Exit Readiness Score"
+          onRun={run}
+          computing={computing}
+        />
+      </>
+    );
+  }
+
+  const { score, valuation, metrics } = report;
+
   return (
     <>
       <PageHeader
         title="Exit Readiness Score"
         subtitle="A buyer-grade assessment of your business across nine critical dimensions."
+        right={<RecomputeButton onRun={run} computing={computing} />}
       />
 
       {/* Hero */}
@@ -37,7 +62,7 @@ function ExitScore() {
               className="font-display text-[var(--accent)]"
               style={{ fontSize: 96, lineHeight: 1 }}
             >
-              {mockBusiness.exitScore}
+              {score.exitScore}
             </div>
             <div className="font-display text-[var(--text-on-dark-secondary)] text-3xl">
               / 100
@@ -45,22 +70,23 @@ function ExitScore() {
           </div>
           <div className="mt-4 inline-flex items-center px-3 py-1 border border-[var(--accent)] rounded-sm">
             <span className="text-[var(--accent)] text-[11px] tracking-[0.18em] uppercase">
-              {mockBusiness.scoreTier}
+              {score.scoreTier}
             </span>
           </div>
           <p className="mt-6 text-[var(--text-on-dark)] text-[15px] max-w-lg leading-relaxed">
-            Strong growth trajectory with suppressed buyer confidence due to
-            operational concentration risks and founder dependency.
+            Based on {metrics.orderCount.toLocaleString()} orders across{" "}
+            {metrics.productCount} products and {metrics.customerCount}{" "}
+            customers.
           </p>
 
           <div className="mt-8 grid grid-cols-3 gap-5 max-w-md">
             {[
               {
                 l: "Valuation Range",
-                v: `${fmtGBPk(mockBusiness.valuationLow)}–${fmtGBPk(mockBusiness.valuationHigh)}`,
+                v: `${fmtGBPk(valuation.valuationLow)}–${fmtGBPk(valuation.valuationHigh)}`,
               },
-              { l: "Value Gap", v: fmtGBPk(mockBusiness.valueGap) },
-              { l: "Data Confidence", v: `${mockBusiness.dataConfidence}%` },
+              { l: "Value Gap", v: fmtGBPk(valuation.valueGap) },
+              { l: "Data Confidence", v: `${score.dataConfidence}%` },
             ].map((s) => (
               <div key={s.l}>
                 <div className="label-caps-dark" style={{ fontSize: 9 }}>
@@ -74,7 +100,7 @@ function ExitScore() {
           </div>
         </div>
         <div className="lg:col-span-2">
-          <Radar />
+          <Radar cats={score.scoreBreakdown} />
         </div>
       </div>
 
@@ -82,7 +108,7 @@ function ExitScore() {
       <div className="mt-12">
         <SectionLabel>Score Breakdown — 9 Dimensions</SectionLabel>
         <div className="mt-5 card-light divide-y divide-[var(--border-warm)]">
-          {mockBusiness.scoreBreakdown.map((c) => {
+          {score.scoreBreakdown.map((c) => {
             const pct = (c.score / c.max) * 100;
             const dot =
               c.status === "green"
@@ -103,11 +129,6 @@ function ExitScore() {
                   <span className="text-sm font-medium text-[var(--text-primary)]">
                     {c.name}
                   </span>
-                  {c.key === "founderDependency" && (
-                    <span className="text-[var(--risk-critical)] text-xs">
-                      ⚠
-                    </span>
-                  )}
                 </div>
                 <div className="col-span-1 text-xs text-[var(--text-muted)]">
                   {c.max} pts
@@ -129,70 +150,47 @@ function ExitScore() {
         <div>
           <SectionLabel>Estimated Value</SectionLabel>
           <div className="font-display text-4xl mt-3 text-[var(--text-primary)]">
-            {fmtGBPk(mockBusiness.valuationLow)} —{" "}
-            {fmtGBPk(mockBusiness.valuationHigh)}
+            {fmtGBPk(valuation.valuationLow)} —{" "}
+            {fmtGBPk(valuation.valuationHigh)}
           </div>
           <p className="mt-3 text-sm text-[var(--text-muted)]">
-            Based on real buyer behaviour, not marketplace estimates.
+            Derived from your trailing-twelve-month revenue and earnings.
           </p>
         </div>
         <div className="space-y-4">
           {[
-            {
-              l: "Quick Sale",
-              v: mockBusiness.quickSale,
-              m: Number(
-                (
-                  mockBusiness.quickSale / mockBusiness.adjustedEarnings
-                ).toFixed(1),
-              ),
-              w: 30,
-            },
-            {
-              l: "Fair Market",
-              v: mockBusiness.fairMarket,
-              m: Number(
-                (
-                  mockBusiness.fairMarket / mockBusiness.adjustedEarnings
-                ).toFixed(1),
-              ),
-              w: 60,
-              gold: true,
-            },
-            {
-              l: "Optimised",
-              v: mockBusiness.optimised,
-              m: Number(
-                (
-                  mockBusiness.optimised / mockBusiness.adjustedEarnings
-                ).toFixed(1),
-              ),
-              w: 100,
-              accent: true,
-            },
-          ].map((b) => (
-            <div key={b.l} className="flex items-center gap-4">
-              <div className="w-24 text-xs text-[var(--text-muted)] tracking-[0.12em] uppercase">
-                {b.l}
+            { l: "Quick Sale", v: valuation.quickSale, w: 30 },
+            { l: "Fair Market", v: valuation.fairMarket, w: 60, gold: true },
+            { l: "Optimised", v: valuation.optimised, w: 100, accent: true },
+          ].map((b) => {
+            const m =
+              valuation.adjustedEarnings > 0
+                ? Number((b.v / valuation.adjustedEarnings).toFixed(1))
+                : 0;
+            return (
+              <div key={b.l} className="flex items-center gap-4">
+                <div className="w-24 text-xs text-[var(--text-muted)] tracking-[0.12em] uppercase">
+                  {b.l}
+                </div>
+                <div className="flex-1 h-7 bg-[var(--bg-secondary)] relative rounded-sm overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0"
+                    style={{
+                      width: `${b.w}%`,
+                      backgroundColor: b.accent
+                        ? "var(--accent)"
+                        : b.gold
+                          ? "rgba(184,150,90,0.5)"
+                          : "var(--text-muted)",
+                    }}
+                  />
+                </div>
+                <div className="w-32 text-right font-display">
+                  {fmtGBP(b.v)} · {m}x
+                </div>
               </div>
-              <div className="flex-1 h-7 bg-[var(--bg-secondary)] relative rounded-sm overflow-hidden">
-                <div
-                  className="absolute inset-y-0 left-0"
-                  style={{
-                    width: `${b.w}%`,
-                    backgroundColor: b.accent
-                      ? "var(--accent)"
-                      : b.gold
-                        ? "rgba(184,150,90,0.5)"
-                        : "var(--text-muted)",
-                  }}
-                />
-              </div>
-              <div className="w-32 text-right font-display">
-                {fmtGBP(b.v)} · {b.m}x
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -202,21 +200,17 @@ function ExitScore() {
         style={{ borderLeft: "3px solid var(--accent)" }}
       >
         <h3 className="font-display text-2xl text-[var(--text-primary)]">
-          You are leaving {fmtGBP(mockBusiness.valueGap)} on the table. We know
-          exactly why.
+          You are leaving {fmtGBP(valuation.valueGap)} on the table. Here's why.
         </h3>
         <div className="mt-5 flex flex-wrap gap-2">
-          {[
-            { l: "Founder Dependency", v: -35000 },
-            { l: "Product Concentration", v: -45000 },
-          ].map((c) => (
+          {valuation.negativeDrivers.map((c) => (
             <span
-              key={c.l}
+              key={c.name}
               className="px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-warm)] rounded-sm text-xs"
             >
-              {c.l}{" "}
+              {c.name}{" "}
               <span className="text-[var(--accent)] font-medium ml-1">
-                {fmtGBPk(c.v)}
+                {c.impact}
               </span>
             </span>
           ))}
@@ -241,9 +235,7 @@ function ExitScore() {
   );
 }
 
-function Radar() {
-  // Simple SVG radar (9-axis)
-  const cats = mockBusiness.scoreBreakdown;
+function Radar({ cats }: { cats: ScoreDimension[] }) {
   const cx = 150,
     cy = 150,
     R = 120;

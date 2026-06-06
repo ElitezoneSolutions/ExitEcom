@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -8,11 +15,15 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isDemoMode: boolean;
+  /** True when the previous session was invalidated/expired (not a manual logout). */
+  sessionExpired: boolean;
+  /** Clear the expired flag once the "session expired" message has been shown. */
+  acknowledgeExpiry: () => void;
   signUp: (
     email: string,
     password: string,
     fullName?: string,
-  ) => Promise<{ error: Error | null; data: unknown }>;
+  ) => Promise<{ error: Error | null; data: unknown; emailExists: boolean }>;
   signIn: (
     email: string,
     password: string,
@@ -32,6 +43,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  // Distinguishes a user-initiated sign-out from an involuntary one (expired or
+  // revoked token). Both surface as a SIGNED_OUT event from Supabase.
+  const manualSignOut = useRef(false);
+
+  const acknowledgeExpiry = useCallback(() => setSessionExpired(false), []);
 
   // Define fallback mock user details
   const getMockUser = (
@@ -72,10 +89,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Listen for auth changes
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
+      } = supabase.auth.onAuthStateChange((event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+
+        if (event === "SIGNED_OUT" && !manualSignOut.current) {
+          // Token expired or was revoked while the app was open — Supabase has
+          // already cleared its stored session. Flag it so the guard can show
+          // the "session expired" message on redirect.
+          setSessionExpired(true);
+        }
+        if (event === "SIGNED_IN") {
+          setSessionExpired(false);
+        }
+        manualSignOut.current = false;
       });
 
       return () => {
@@ -110,10 +138,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             },
           },
         });
-        return { error: error ? new Error(error.message) : null, data };
+
+        if (error) {
+          // With email confirmations OFF, a duplicate signup returns an error.
+          const emailExists =
+            /already registered|already exists|already been registered/i.test(
+              error.message,
+            );
+          return { error: new Error(error.message), data, emailExists };
+        }
+
+        // With email confirmations ON, Supabase hides duplicate accounts to
+        // prevent email enumeration: it returns no error, but the user comes
+        // back with an empty `identities` array. That's our duplicate signal.
+        const identities = (data?.user as { identities?: unknown[] } | null)
+          ?.identities;
+        const emailExists =
+          Array.isArray(identities) && identities.length === 0;
+
+        return { error: null, data, emailExists };
       } catch (err: unknown) {
         const errorVal = err instanceof Error ? err : new Error(String(err));
-        return { error: errorVal, data: null };
+        return { error: errorVal, data: null, emailExists: false };
       }
     } else {
       // Mock Sign Up
@@ -125,7 +171,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(u);
       setSession(getMockSession(u));
       toast.info("Signed up in Demo Mode (Supabase not configured)");
-      return { error: null, data: { user: u, session: getMockSession(u) } };
+      return {
+        error: null,
+        data: { user: u, session: getMockSession(u) },
+        emailExists: false,
+      };
     }
   };
 
@@ -156,11 +206,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    setSessionExpired(false);
     if (isSupabaseConfigured) {
       try {
+        // Mark this as intentional so the resulting SIGNED_OUT event isn't
+        // mistaken for an expired session.
+        manualSignOut.current = true;
         const { error } = await supabase.auth.signOut();
+        if (error) manualSignOut.current = false;
         return { error: error ? new Error(error.message) : null };
       } catch (err: unknown) {
+        manualSignOut.current = false;
         const errorVal = err instanceof Error ? err : new Error(String(err));
         return { error: errorVal };
       }
@@ -246,6 +302,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         loading,
         isDemoMode: !isSupabaseConfigured,
+        sessionExpired,
+        acknowledgeExpiry,
         signUp,
         signIn,
         signOut,

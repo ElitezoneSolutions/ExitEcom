@@ -160,7 +160,11 @@ function DataSources() {
                       />
                       {sec !== "Coming Soon" && (
                         <Link
-                          to="/app/shopify-connect"
+                          to={
+                            p.status === "connected"
+                              ? "/app/store-data"
+                              : "/app/shopify-connect"
+                          }
                           className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                         >
                           {p.status === "connected" ? "Manage" : "Connect"}

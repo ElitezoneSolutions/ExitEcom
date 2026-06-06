@@ -6,76 +6,62 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertCircle,
-  TrendingUp,
   Sparkles,
-  DollarSign,
-  Activity,
-  User,
+  ShoppingCart,
   Package,
+  Users,
+  Store,
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
-import { useBusinessData, type BusinessData } from "@/hooks/useBusinessData";
-import { connectShopifyViaKeyFn } from "@/lib/shopify";
+import { useBusinessData } from "@/hooks/useBusinessData";
+import type { ShopifySyncResult } from "@/lib/shopify";
 import { toast } from "sonner";
+
+type ConnectMethod = "key" | "custom";
 
 export const Route = createFileRoute("/app/shopify-connect")({
   component: ShopifyConnect,
 });
 
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 function ShopifyConnect() {
   const navigate = useNavigate();
-  const { business, syncShopifyData } = useBusinessData();
+  const { syncStore } = useBusinessData();
 
-  // Form state — the merchant pastes the key shown by the ExitEcom Analytic app.
-  const [connectionKey, setConnectionKey] = useState("");
+  const [method, setMethod] = useState<ConnectMethod>("custom");
 
-  // Sync state
+  // Custom-app credentials (Shopify Admin API access token + store domain).
+  const [shopDomain, setShopDomain] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+
   const [syncStatus, setSyncStatus] = useState<
-    "idle" | "connecting" | "fetching" | "normalizing" | "success" | "error"
+    "idle" | "connecting" | "fetching" | "saving" | "success" | "error"
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [syncedData, setSyncedData] = useState<BusinessData | null>(null);
+  const [summary, setSummary] = useState<ShopifySyncResult | null>(null);
 
   const handleSync = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!connectionKey.trim()) {
-      toast.error("Please paste your ExitEcom connection key.");
+    if (!shopDomain.trim() || !accessToken.trim()) {
+      toast.error("Enter both your store domain and Admin API access token.");
       return;
     }
 
     try {
       setErrorMessage("");
       setSyncStatus("connecting");
+      await delay(700);
+      setSyncStatus("fetching");
 
-      // Progress animation steps
-      setTimeout(() => {
-        setSyncStatus("fetching");
-      }, 1500);
+      const result = await syncStore(shopDomain.trim(), accessToken.trim());
 
-      setTimeout(() => {
-        setSyncStatus("normalizing");
-      }, 3500);
+      setSyncStatus("saving");
+      await delay(500);
 
-      const result = await connectShopifyViaKeyFn({
-        data: {
-          connectionKey: connectionKey.trim(),
-          industry: business.industry,
-        },
-      });
-
-      if (!result || !result.businessUpdate) {
-        throw new Error("Invalid response received from Shopify Connect.");
-      }
-
-      // Save synced data to state/DB
-      const success = await syncShopifyData(result);
-      if (success) {
-        setSyncedData(result.businessUpdate);
-        setSyncStatus("success");
-        toast.success("Shopify store connected successfully!");
-      } else {
-        throw new Error("Failed to save synced data to local state/database.");
-      }
+      setSummary(result);
+      setSyncStatus("success");
+      toast.success("Shopify store connected. Data synced.");
     } catch (err) {
       console.error(err);
       setSyncStatus("error");
@@ -83,7 +69,7 @@ function ShopifyConnect() {
         (err instanceof Error && err.message) ||
           "Could not connect to Shopify. Please check your credentials.",
       );
-      toast.error("Sync failed. Check credentials and scopes.");
+      toast.error("Connection failed. Check the domain, token and scopes.");
     }
   };
 
@@ -99,146 +85,198 @@ function ShopifyConnect() {
       </div>
 
       <PageHeader
-        title="Shopify Connect"
-        subtitle="Connect your core revenue engine in 5 minutes. We pull order data and synthesize M&A performance reports securely."
+        title="Connect Shopify"
+        subtitle="We authenticate, pull your full order, product and customer history, and store it securely. No report is generated until you run one."
       />
 
       {syncStatus === "idle" && (
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
-          {/* Form */}
-          <div className="lg:col-span-5 card-light p-6 md:p-8 flex flex-col gap-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-warm)]">
-              <div className="w-10 h-10 rounded-lg bg-[var(--blue-100)] flex items-center justify-center text-[var(--accent)] font-semibold text-lg">
-                S
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold leading-tight">
-                  Connection Key
-                </h3>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  Paste the key from the ExitEcom Analytic app
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSync} className="flex flex-col gap-5">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2 flex items-center justify-between">
-                  Connection Key
-                  <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
-                    starts with eea_
-                  </span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="eea_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  value={connectionKey}
-                  onChange={(e) => setConnectionKey(e.target.value)}
-                  className="w-full font-mono"
-                />
-                <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                  Get this from the <strong>ExitEcom Analytic</strong> app after
-                  installing it on your Shopify store (see the guide on the
-                  right).
-                </p>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
-              >
-                <Sparkles className="w-4 h-4 text-white" /> Connect & Sync Store
-              </button>
-            </form>
-
-            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-2">
-              <Lock className="w-3.5 h-3.5" /> Read-only. Your Shopify access
-              token never leaves the ExitEcom Analytic app.
-            </div>
+        <>
+          {/* Method selector */}
+          <div className="inline-flex p-1 mb-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-warm)] gap-1">
+            <button
+              type="button"
+              onClick={() => setMethod("custom")}
+              className={`px-4 py-2 text-xs font-semibold rounded-md transition-colors ${
+                method === "custom"
+                  ? "bg-white text-[var(--accent)] shadow-sm"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              Shopify custom app
+            </button>
+            <button
+              type="button"
+              disabled
+              title="Coming soon"
+              className="px-4 py-2 text-xs font-semibold rounded-md text-[var(--text-muted)] opacity-50 cursor-not-allowed inline-flex items-center gap-1.5"
+            >
+              ExitEcom Analytic key
+              <span className="text-[9px] uppercase tracking-wider font-bold bg-[var(--border-warm)] text-[var(--text-secondary)] px-1.5 py-0.5 rounded">
+                Soon
+              </span>
+            </button>
           </div>
 
-          {/* Guide */}
-          <div className="lg:col-span-7 card-light p-6 md:p-8 flex flex-col gap-6">
-            <h3 className="text-xl font-semibold border-b border-[var(--border-warm)] pb-3">
-              How to get your connection key
-            </h3>
-
-            <div className="flex flex-col gap-5">
-              <div className="flex items-start gap-4">
-                <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                  1
+          <div className="grid lg:grid-cols-12 gap-8 items-start">
+            {/* Form */}
+            <div className="lg:col-span-5 card-light p-6 md:p-8 flex flex-col gap-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-warm)]">
+                <div className="w-10 h-10 rounded-lg bg-[var(--blue-100)] flex items-center justify-center text-[var(--accent)] font-semibold text-lg">
+                  S
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">
-                    Install the ExitEcom Analytic app
-                  </h4>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Add the <strong>ExitEcom Analytic</strong> app to your
-                    Shopify store and approve the read-only access it requests
-                    (orders, products, customers). It never gets write access.
+                  <h3 className="text-lg font-semibold leading-tight">
+                    Custom App Credentials
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Use an Admin API token from your own Shopify app
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-4">
-                <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                  2
-                </div>
+              <form onSubmit={handleSync} className="flex flex-col gap-5">
                 <div>
-                  <h4 className="font-semibold text-sm">Open the app</h4>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    In your Shopify admin, go to <strong>Apps</strong> &rarr;{" "}
-                    <strong>ExitEcom Analytic</strong>. You&apos;ll land on the
-                    “Connect to ExitEcom” screen.
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                    Store Domain
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="your-store.myshopify.com"
+                    value={shopDomain}
+                    onChange={(e) => setShopDomain(e.target.value)}
+                    className="w-full font-mono"
+                  />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                    Your <code>.myshopify.com</code> domain (Settings &rarr;
+                    Domains).
                   </p>
                 </div>
-              </div>
 
-              <div className="flex items-start gap-4">
-                <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                  3
-                </div>
                 <div>
-                  <h4 className="font-semibold text-sm">
-                    Copy your connection key
-                  </h4>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    The app shows a key starting with <code>eea_</code>. Click{" "}
-                    <strong>Copy key</strong>.
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2 flex items-center justify-between">
+                    Admin API Access Token
+                    <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
+                      starts with shpat_
+                    </span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    className="w-full font-mono"
+                  />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                    Generated when you install your custom app (see the guide on
+                    the right).
                   </p>
                 </div>
-              </div>
 
-              <div className="flex items-start gap-4">
-                <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                  4
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm">Paste it here</h4>
-                  <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                    Paste the key into the <strong>Connection Key</strong> field
-                    and click <strong>Connect &amp; Sync Store</strong>.
-                  </p>
-                  <div className="mt-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Tip:</strong> If you regenerate the key in the
-                      Shopify app, the old one stops working — paste the new key
-                      here to reconnect.
+                <button
+                  type="submit"
+                  className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
+                >
+                  <Sparkles className="w-4 h-4 text-white" /> Connect & Pull
+                  Data
+                </button>
+              </form>
+
+              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-2 text-center">
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                Read-only. We only request order, product, and customer read
+                scopes.
+              </div>
+            </div>
+
+            {/* Guide */}
+            <div className="lg:col-span-7 card-light p-6 md:p-8 flex flex-col gap-6">
+              <h3 className="text-xl font-semibold border-b border-[var(--border-warm)] pb-3">
+                How to create a Shopify custom app
+              </h3>
+
+              <div className="flex flex-col gap-5">
+                {[
+                  {
+                    n: 1,
+                    h: "Open app development",
+                    b: (
+                      <>
+                        In your Shopify admin, go to <strong>Settings</strong>{" "}
+                        &rarr; <strong>Apps and sales channels</strong> &rarr;{" "}
+                        <strong>Develop apps</strong>, then{" "}
+                        <strong>Create an app</strong>.
+                      </>
+                    ),
+                  },
+                  {
+                    n: 2,
+                    h: "Grant read-only scopes",
+                    b: (
+                      <>
+                        Under <strong>Configuration</strong> &rarr;{" "}
+                        <strong>Admin API integration</strong>, enable{" "}
+                        <code>read_orders</code>, <code>read_products</code> and{" "}
+                        <code>read_customers</code>.
+                      </>
+                    ),
+                  },
+                  {
+                    n: 3,
+                    h: "Install & reveal the token",
+                    b: (
+                      <>
+                        Click <strong>Install app</strong>, then on the{" "}
+                        <strong>API credentials</strong> tab reveal the{" "}
+                        <strong>Admin API access token</strong> (starts with{" "}
+                        <code>shpat_</code>).
+                      </>
+                    ),
+                  },
+                  {
+                    n: 4,
+                    h: "Paste it here",
+                    b: (
+                      <>
+                        Enter your <strong>store domain</strong> and the{" "}
+                        <strong>access token</strong>, then click{" "}
+                        <strong>Connect &amp; Pull Data</strong>.
+                      </>
+                    ),
+                  },
+                ].map((s) => (
+                  <div key={s.n} className="flex items-start gap-4">
+                    <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
+                      {s.n}
                     </div>
+                    <div>
+                      <h4 className="font-semibold text-sm">{s.h}</h4>
+                      <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                        {s.b}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Tip:</strong> The Admin API token is shown only
+                    once. Copy it immediately — if you lose it, uninstall and
+                    recreate the app to get a new one.
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Syncing Progress View */}
+      {/* Syncing progress */}
       {(syncStatus === "connecting" ||
         syncStatus === "fetching" ||
-        syncStatus === "normalizing") && (
+        syncStatus === "saving") && (
         <div className="card-light max-w-xl mx-auto p-10 flex flex-col items-center justify-center text-center gap-8 shadow-lg my-12 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-[var(--bg-secondary)]">
             <div
@@ -246,76 +284,52 @@ function ShopifyConnect() {
               style={{
                 width:
                   syncStatus === "connecting"
-                    ? "20%"
+                    ? "25%"
                     : syncStatus === "fetching"
-                      ? "55%"
-                      : "85%",
+                      ? "70%"
+                      : "92%",
               }}
-            ></div>
+            />
           </div>
 
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full bg-[var(--blue-100)] flex items-center justify-center">
-              <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin" />
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[var(--accent)] rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-              <Sparkles className="w-3.5 h-3.5 text-white animate-pulse" />
-            </div>
+          <div className="w-16 h-16 rounded-full bg-[var(--blue-100)] flex items-center justify-center">
+            <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin" />
           </div>
 
           <div>
             <h3 className="text-xl font-semibold font-display">
-              {syncStatus === "connecting" && "Initializing Connection..."}
-              {syncStatus === "fetching" && "Syncing Customer Logs..."}
-              {syncStatus === "normalizing" && "Synthesizing M&A Insights..."}
+              {syncStatus === "connecting" && "Authenticating with Shopify…"}
+              {syncStatus === "fetching" && "Pulling your store data…"}
+              {syncStatus === "saving" && "Saving securely…"}
             </h3>
             <p className="text-xs text-[var(--text-muted)] mt-2.5 max-w-sm mx-auto leading-relaxed">
               {syncStatus === "connecting" &&
-                "Establishing SSL handshakes with Shopify API secure gateway..."}
+                "Verifying your Admin API token and store domain."}
               {syncStatus === "fetching" &&
-                "Pulling order metrics, line-item arrays, and product catalog variants..."}
-              {syncStatus === "normalizing" &&
-                "Gemini AI is normalizing currency values, calculating product concentration, cohort repeat rates, and valuing assets..."}
+                "Fetching orders, products and customers (paginating through your full history)."}
+              {syncStatus === "saving" &&
+                "Storing the raw data. No report is generated — you run those on demand."}
             </p>
           </div>
 
-          {/* Micro-animations list */}
           <div className="w-full max-w-sm flex flex-col gap-2 mt-2 text-left text-xs bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] font-medium">
-            <div className="flex items-center justify-between text-[var(--text-secondary)]">
-              <span>🚀 Shopify Gateway Handshake</span>
-              <span className="font-mono text-[10px] text-[var(--positive)]">
-                DONE
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-[var(--text-secondary)]">
-              <span>📦 Fetching Product Catalog</span>
-              <span className="font-mono text-[10px]">
-                {syncStatus === "connecting" ? "PENDING" : "DONE"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-[var(--text-secondary)]">
-              <span>📋 Mapping Customer Orders</span>
-              <span className="font-mono text-[10px]">
-                {syncStatus === "connecting"
-                  ? "PENDING"
-                  : syncStatus === "fetching"
-                    ? "SYNCING"
-                    : "DONE"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-[var(--text-secondary)]">
-              <span>🤖 Gemini AI Normalization</span>
-              <span className="font-mono text-[10px]">
-                {syncStatus === "normalizing" ? "RUNNING" : "PENDING"}
-              </span>
-            </div>
+            <Step label="🔐 Authenticate" done={syncStatus !== "connecting"} />
+            <Step
+              label="📦 Pull orders, products & customers"
+              done={syncStatus === "saving"}
+              running={syncStatus === "fetching"}
+            />
+            <Step
+              label="💾 Persist to your account"
+              running={syncStatus === "saving"}
+            />
           </div>
         </div>
       )}
 
-      {/* Success View */}
-      {syncStatus === "success" && syncedData && (
-        <div className="max-w-4xl mx-auto flex flex-col gap-8 my-6">
+      {/* Success — confirmation + counts only, NO report */}
+      {syncStatus === "success" && summary && (
+        <div className="max-w-3xl mx-auto flex flex-col gap-6 my-6">
           <div className="card-light p-8 text-center flex flex-col items-center gap-5 shadow-lg bg-white border-2 border-[var(--positive)]/30">
             <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center border border-emerald-300">
               <CheckCircle2 className="w-8 h-8 text-[var(--positive)]" />
@@ -323,141 +337,90 @@ function ShopifyConnect() {
 
             <div>
               <h3 className="text-2xl font-bold font-display">
-                Shopify Connected & Normalized
+                {summary.shop.name || "Your store"} is connected
               </h3>
               <p className="text-sm text-[var(--text-muted)] mt-1.5">
-                Gemini successfully normalized metrics for{" "}
-                <strong>{syncedData.name}</strong>. Your Exit Score and
-                valuation range are updated.
+                We pulled and stored your store data. Nothing has been analysed
+                yet — run a report whenever you're ready.
               </p>
             </div>
 
-            <div className="w-full grid sm:grid-cols-3 gap-4 mt-6">
-              <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left flex flex-col justify-between">
-                <div>
-                  <div className="label-caps flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-[var(--accent)]" />{" "}
-                    Exit Readiness Score
-                  </div>
-                  <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
-                    {syncedData.exitScore} / 100
-                  </div>
-                </div>
-                <div className="text-[10px] text-[var(--accent)] mt-3 font-semibold tracking-wider uppercase">
-                  {syncedData.scoreTier}
-                </div>
-              </div>
-
-              <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left flex flex-col justify-between">
-                <div>
-                  <div className="label-caps flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-[var(--accent)]" />{" "}
-                    Projected SDE
-                  </div>
-                  <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
-                    £{(syncedData.sde / 1000).toFixed(0)}k
-                  </div>
-                </div>
-                <div className="text-[10px] text-[var(--text-muted)] mt-3 leading-tight">
-                  Based on recent order volumes and standard margins
-                </div>
-              </div>
-
-              <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left flex flex-col justify-between">
-                <div>
-                  <div className="label-caps flex items-center gap-1.5">
-                    <TrendingUp className="w-3.5 h-3.5 text-[var(--accent)]" />{" "}
-                    Valuation Midpoint
-                  </div>
-                  <div className="font-display text-3xl font-bold text-[var(--accent)] mt-3">
-                    £{(syncedData.valuationMid / 1000).toFixed(0)}k
-                  </div>
-                </div>
-                <div className="text-[10px] text-[var(--positive)] mt-3 font-semibold">
-                  ✓ Multiple of {syncedData.currentMultiple.toFixed(1)}x SDE
-                </div>
-              </div>
+            <div className="w-full grid sm:grid-cols-3 gap-4 mt-2">
+              <Stat
+                icon={<ShoppingCart className="w-4 h-4 text-[var(--accent)]" />}
+                label="Orders"
+                value={summary.counts.orders.toLocaleString()}
+                note={summary.capped.orders ? "capped at 5,000" : undefined}
+              />
+              <Stat
+                icon={<Package className="w-4 h-4 text-[var(--accent)]" />}
+                label="Products"
+                value={summary.counts.products.toLocaleString()}
+                note={summary.capped.products ? "capped" : undefined}
+              />
+              <Stat
+                icon={<Users className="w-4 h-4 text-[var(--accent)]" />}
+                label="Customers"
+                value={summary.counts.customers.toLocaleString()}
+                note={summary.capped.customers ? "capped" : undefined}
+              />
             </div>
 
-            <div className="w-full grid sm:grid-cols-2 gap-4">
-              <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left">
-                <div className="label-caps flex items-center gap-1.5 mb-2">
-                  <User className="w-3.5 h-3.5 text-[var(--accent)]" /> Customer
-                  Economics
-                </div>
-                <div className="text-sm font-medium mt-1">
-                  Repeat Purchase Rate:{" "}
-                  <span className="text-[var(--accent)] font-semibold">
-                    {(syncedData.repeatRate * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="text-sm font-medium mt-1">
-                  Average Order Value (AOV):{" "}
-                  <span className="text-[var(--accent)] font-semibold">
-                    £{syncedData.avgOrderValue.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left">
-                <div className="label-caps flex items-center gap-1.5 mb-2">
-                  <Package className="w-3.5 h-3.5 text-[var(--accent)]" /> SKU
-                  Logistics
-                </div>
-                <div className="text-sm font-medium mt-1">
-                  Product Concentration:{" "}
-                  <span className="text-[var(--accent)] font-semibold">
-                    {(syncedData.topProductShare * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="text-sm font-medium mt-1">
-                  Data Confidence Level:{" "}
-                  <span className="text-[var(--positive)] font-semibold">
-                    {syncedData.dataConfidence}%
-                  </span>
-                </div>
-              </div>
+            <div className="w-full flex items-center justify-center gap-4 text-xs text-[var(--text-muted)] mt-1">
+              <span className="inline-flex items-center gap-1.5">
+                <Store className="w-3.5 h-3.5" /> {summary.shop.currency}
+              </span>
+              {summary.shop.shopCreatedAt && (
+                <span>
+                  Store opened{" "}
+                  {new Date(summary.shop.shopCreatedAt).toLocaleDateString(
+                    "en-GB",
+                    { month: "short", year: "numeric" },
+                  )}
+                </span>
+              )}
+              {summary.sandbox && (
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
+                  sandbox data
+                </span>
+              )}
             </div>
 
-            <div className="flex gap-4 w-full mt-6">
+            <div className="flex flex-col sm:flex-row gap-3 w-full mt-4">
               <button
-                onClick={() => navigate({ to: "/app/dashboard" })}
+                onClick={() => navigate({ to: "/app/store-data" })}
                 className="flex-1 btn-primary py-3 rounded-md justify-center font-semibold text-sm"
               >
-                Go to Dashboard
+                View Store Data
               </button>
               <button
-                onClick={() => setSyncStatus("idle")}
+                onClick={() => navigate({ to: "/app/exit-score" })}
                 className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm cursor-pointer"
               >
-                Reconnect Store
+                Run your first report
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Error View */}
+      {/* Error */}
       {syncStatus === "error" && (
         <div className="card-light max-w-xl mx-auto p-8 text-center flex flex-col items-center gap-5 shadow-lg my-12 border-2 border-[var(--risk-critical)]/30">
           <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center border border-red-200">
             <AlertCircle className="w-8 h-8 text-[var(--risk-critical)]" />
           </div>
-
           <div>
             <h3 className="text-xl font-bold font-display">
-              Connection Sync Failed
+              Connection failed
             </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
-              We encountered an issue while communicating with your Shopify
-              store or normalizing the data.
+              We couldn't reach your store or authenticate the token.
             </p>
           </div>
-
           <div className="w-full p-4 bg-red-50 border border-red-100 rounded text-left text-xs font-mono text-[var(--risk-critical)] overflow-x-auto max-h-40">
             {errorMessage}
           </div>
-
           <div className="flex gap-4 w-full mt-2">
             <button
               onClick={() => setSyncStatus("idle")}
@@ -475,5 +438,56 @@ function ShopifyConnect() {
         </div>
       )}
     </>
+  );
+}
+
+function Step({
+  label,
+  done,
+  running,
+}: {
+  label: string;
+  done?: boolean;
+  running?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between text-[var(--text-secondary)]">
+      <span>{label}</span>
+      <span className="font-mono text-[10px]">
+        {done ? (
+          <span className="text-[var(--positive)]">DONE</span>
+        ) : running ? (
+          "RUNNING"
+        ) : (
+          "PENDING"
+        )}
+      </span>
+    </div>
+  );
+}
+
+function Stat({
+  icon,
+  label,
+  value,
+  note,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  note?: string;
+}) {
+  return (
+    <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left">
+      <div className="label-caps flex items-center gap-1.5">
+        {icon} {label}
+      </div>
+      <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
+        {value}
+      </div>
+      {note && (
+        <div className="text-[10px] text-[var(--text-muted)] mt-1">{note}</div>
+      )}
+    </div>
   );
 }

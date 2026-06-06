@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutGrid,
   Building2,
@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { useBusinessData } from "@/hooks/useBusinessData";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 const groups = [
   {
@@ -25,7 +27,14 @@ const groups = [
     items: [
       { to: "/app/dashboard", label: "Dashboard", icon: LayoutGrid },
       { to: "/app/profile", label: "Business Profile", icon: Building2 },
-      { to: "/app/data-sources", label: "Data Sources", icon: LinkIcon },
+      {
+        label: "Data Sources",
+        icon: LinkIcon,
+        children: [
+          { to: "/app/data-sources", label: "Connections" },
+          { to: "/app/store-data", label: "Store Data" },
+        ],
+      },
     ],
   },
   {
@@ -56,9 +65,20 @@ const groups = [
 export function Sidebar() {
   const { pathname } = useLocation();
   const { business } = useBusinessData();
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
   const businessName = business.name || "Your business";
   const ownerInitial = business.ownerName?.[0] ?? "?";
   const ownerName = business.ownerName || "Owner";
+
+  const handleLogout = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast.error(error.message || "Could not log out");
+      return;
+    }
+    navigate({ to: "/login" });
+  };
 
   return (
     <aside className="hidden lg:flex flex-col w-[240px] shrink-0 h-screen sticky top-0 bg-[var(--sidebar)] border-r border-[var(--border-warm)]">
@@ -80,8 +100,47 @@ export function Sidebar() {
             </div>
             <ul className="space-y-0.5">
               {g.items.map((it) => {
-                const active = pathname === it.to;
                 const Icon = it.icon;
+
+                // Always-expanded parent with child links (e.g. Data Sources).
+                if ("children" in it) {
+                  return (
+                    <li key={it.label}>
+                      <div className="flex items-center gap-3 px-3 py-2 text-sm text-[var(--text-secondary)]">
+                        <Icon className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+                        <span className="truncate">{it.label}</span>
+                      </div>
+                      <ul className="mt-0.5 ml-[1.45rem] pl-3 border-l border-[var(--border-warm)] space-y-0.5">
+                        {it.children.map((c) => {
+                          const childActive = pathname === c.to;
+                          return (
+                            <li key={c.label}>
+                              <Link
+                                to={c.to}
+                                className="flex items-center px-3 py-1.5 text-[13px] rounded-sm transition-colors relative"
+                                style={{
+                                  color: childActive
+                                    ? "var(--accent)"
+                                    : "var(--text-secondary)",
+                                  backgroundColor: childActive
+                                    ? "var(--sidebar-active)"
+                                    : "transparent",
+                                }}
+                              >
+                                {childActive && (
+                                  <span className="absolute -left-3 top-1 bottom-1 w-[2px] bg-[var(--accent)]" />
+                                )}
+                                <span className="truncate">{c.label}</span>
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </li>
+                  );
+                }
+
+                const active = pathname === it.to;
                 return (
                   <li key={it.label}>
                     <Link
@@ -128,12 +187,13 @@ export function Sidebar() {
           <div className="text-xs text-[var(--text-primary)] truncate">
             {ownerName}
           </div>
-          <Link
-            to="/login"
+          <button
+            type="button"
+            onClick={handleLogout}
             className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] inline-flex items-center gap-1"
           >
             <LogOut className="w-3 h-3" /> Log out
-          </Link>
+          </button>
         </div>
       </div>
     </aside>

@@ -1,8 +1,15 @@
 # ExitEcom — Architecture
 
 This document explains how the app is wired together: rendering, routing, auth,
-the data layer, the Shopify/Gemini pipeline, and SSR error handling. For setup
-and a high-level overview, start with the root [`README.md`](../README.md).
+the data layer, the Shopify sync pipeline, the deterministic analytics engine,
+and SSR error handling. For setup and a high-level overview, start with the root
+[`README.md`](../README.md).
+
+> **Design rule (2026-06):** sync and reporting are decoupled. Connecting a store
+> only authenticates, pulls, and **stores raw data** — it never produces a report.
+> Reports run **on demand** and every number is computed deterministically in
+> `src/lib/analytics.ts`. Gemini (`src/lib/ai.ts`) is optional and only polishes
+> the _prose_ of risk/action copy — it never produces a number.
 
 ---
 
@@ -77,64 +84,134 @@ reuses it with `mode="login"`.
 
 ## 4. Data layer (`src/hooks/useBusinessData.ts`)
 
-This hook is the single source of truth for the founder's business data. It
-returns `{ business, risks, actions, documents, loading, error, refetch,
-updateBusiness, syncShopifyData }`.
+This hook is the single source of truth for the founder's business data and the
+raw Shopify dataset. It returns `{ business, risks, actions, documents, loading,
+error, isShopifyConnected, store, orders, products, customers, lastSyncedAt,
+canResync, refetch, updateBusiness, syncStore, resyncStore, saveComputedReport }`.
 
 **Initialisation (synchronous):** state is seeded from `localStorage` if present,
-otherwise from `src/lib/mock.ts` (the "NovaSkin Co." demo dataset). This means
-the UI always has data to render, even before any network call.
+otherwise from an `EMPTY_BUSINESS` empty state. There is **no mock fallback** — if
+there's no real data, the UI shows empty/gated states. The raw Shopify arrays
+(`store`, `orders`, `products`, `customers`, `lastSyncedAt`) are seeded from a
+dedicated cache key (`exitecom_shopify_raw_v1`).
 
 **Hydration (`fetchData`):** when Supabase is configured _and_ a user exists, it
-loads the most recent business for `owner_id`, then its `valuation_data`,
-`risks`, `actions`, and `documents`, and maps the snake_case DB columns onto the
-camelCase `BusinessData` shape. Results are cached back to `localStorage`. On
-error it toasts and falls back to the offline/local data.
+loads the most recent business for `owner_id`, then its `valuation_data`, `risks`,
+`actions`, and `documents`, maps snake_case → camelCase, and caches to
+`localStorage`. It then calls `loadShopifyData(businessId)` in an **isolated**
+try/catch that degrades silently (console.warn, no toast) — so a not-yet-connected
+store or a missing table never surfaces a scary "failed to load" toast on login.
+
+**Raw Shopify data (`loadShopifyData`):**
+
+- **Warm cache** → serves `store` + `lastSyncedAt` + arrays from `localStorage`
+  and returns with **zero network**.
+- **Cold** → reads `shopify_stores` (metadata + credentials) and the three heavy
+  tables, then writes the cache. No store row → clears state + cache.
 
 **Writes:**
 
 - `updateBusiness(partial)` — optimistic local update + `localStorage`, then (if
   live) persists to `businesses` and `valuation_data`.
-- `syncShopifyData(report)` — applies a `NormalizedShopifyReport` to state and
-  `localStorage`, then (if live) upserts `valuation_data` and **replaces** the
-  `risks`/`actions` rows for the business.
+- `syncStore(shopDomain, accessToken, opts?)` — calls `syncShopifyStoreFn`, sets
+  state optimistically, **upserts** raw rows into `shopify_stores/_orders/
+  _products/_customers` (idempotent on the UNIQUE Shopify-ID keys), and refreshes
+  the cache. Persistence is wrapped so DB errors surface as clear messages
+  (`describeDbError` detects a missing migration).
+- `resyncStore(incremental?)` — re-syncs an already-connected store. Lazily fetches
+  the stored `access_token` from `shopify_stores` only when needed (the token is
+  never kept in `localStorage`).
+- `saveComputedReport(report)` — writes a computed snapshot to `valuation_data`
+  (upsert) and **replaces** the `risks`/`actions` rows. Used by `useReport`.
+
+`describeDbError` converts Postgrest errors (which are not `Error` instances) into
+clear `Error`s and detects a missing migration (code `PGRST205` / "could not find
+the table") so the connect UI can tell the user to apply the migration.
 
 Key TypeScript contracts (exported): `BusinessData`, `RiskItem`, `ActionItem`,
-`DocumentItem`, `NormalizedShopifyReport`.
+`DocumentItem`.
+
+### 4a. On-demand reports (`src/hooks/useReport.ts`)
+
+`useReport` wraps `useBusinessData`, assembles an `AnalyticsInput` from the raw
+data, and exposes `{ ...bd, input, hasData, hasRun, report, computing, run }`.
+
+- `hasRun` is true once a snapshot exists (`business.exitScore > 0` or any risks).
+- `report` is recomputed via `computeFullReport(input)` whenever there's data and
+  a report has been run (or was just run this session).
+- `run()` computes the full report deterministically and persists it via
+  `saveComputedReport`. The four report pages call this behind a "Run" / "Re-compute"
+  button — nothing is computed until the user asks.
 
 ---
 
-## 5. The Shopify → metrics pipeline (`src/lib/shopify.ts`)
+## 5. The Shopify sync pipeline (`src/lib/shopify.ts`)
 
-`connectShopifyFn` is a TanStack **server function** (`POST`), so credentials and
-the Gemini key stay on the server. Built with the current builder API:
+`syncShopifyStoreFn` is a TanStack **server function** (`POST`), so the Admin API
+token stays on the server. It **only pulls raw data** — no normalization, no
+Gemini, no report. Built with the current builder API:
 
 ```ts
 createServerFn({ method: "POST" })
-  .inputValidator((input: ConnectShopifyInput) => input)
+  .inputValidator((input: ShopifySyncInput) => input)
   .handler(async ({ data }) => { /* ... */ });
 ```
 
 Steps inside the handler:
 
 1. **Sanitise** the shop domain (strip protocol, append `.myshopify.com`).
-2. **Fetch** shop / orders / products from the Shopify Admin API
-   (`2024-01`). **Sandbox mode** kicks in automatically when the domain or token
-   contains `test`/`demo`/`sandbox`, _or_ if the real API call throws — it
-   substitutes a high-fidelity simulated store (12 repeat customers, 5 SKUs).
-3. **Condense** the raw data into compact summaries (`ShopSummary`,
-   `OrderSummary[]`, `ProductSummary[]`).
-4. **Normalise** to M&A metrics:
-   - With a Gemini key → `gemini-2.5-flash` is prompted (as an "M&A advisor") to
-     return strict JSON. The response is de-fenced and `JSON.parse`d.
-   - Without a key → `getFallbackNormalization()` computes AOV, TTM revenue
-     (extrapolated), repeat rate, product concentration, margins, exit score,
-     valuation multiples, risks and actions deterministically.
-5. **Return** `{ businessUpdate, risks[], actions[] }`, which the client passes to
-   `useBusinessData.syncShopifyData()`.
+2. **Validate** the credentials via `GET /admin/api/2024-01/shop.json`. On a real
+   domain a failure now **throws a real error** (401/403 messaging) — the old
+   silent sandbox-masking-on-failure is gone. The sandbox generator is used
+   **only** for explicit `test`/`demo`/`sandbox` creds, so local demos still work.
+3. **Paginate** orders, products and customers via the cursor in the
+   `Link: rel="next"` header (`limit=250`), capped at `ORDER_CAP=5000`,
+   `PRODUCT_CAP=2000`, `CUSTOMER_CAP=5000`. Incremental refresh passes
+   `created_at_min = sinceISO`. `attachLastOrderDates` derives each customer's
+   last-order date from the orders.
+4. **Return** raw `{ shop, orders[], products[], customers[], counts, capped,
+   sandbox }` to the client. Persistence happens in the hook (`syncStore`), which
+   holds the authed Supabase session — a server-side anon client would be blocked
+   by RLS.
 
-The client caller (`routes/app.shopify-connect.tsx`) invokes it as
-`connectShopifyFn({ data: { shopDomain, accessToken, industry } })`.
+The deterministic math that used to live here (`getFallbackNormalization`) has
+moved to the analytics engine (§5a). Exported types: `RawShopifyStore`,
+`RawShopifyOrder`, `RawShopifyProduct`, `RawShopifyCustomer`, `RawLineItem`,
+`ShopifySyncInput`, `ShopifySyncResult`.
+
+The client caller (`routes/app.shopify-connect.tsx`) calls the hook's
+`syncStore(shopDomain, accessToken)`, which invokes the server fn and persists the
+result. The success screen shows **counts only** — never a score or valuation.
+
+---
+
+## 5a. Deterministic analytics engine (`src/lib/analytics.ts`)
+
+Pure, synchronous functions over the **full** raw dataset (real line items, all
+customers) — no AI, no randomness, fully auditable. Re-running the same data
+always yields the same numbers.
+
+- `computeMetrics(input)` → revenue TTM (trailing 365d, annualised fallback),
+  12-month revenue buckets, AOV, repeat rate, per-product revenue +
+  `topProductShare` (from real line items), industry margins, COGS, gross profit,
+  EBITDA, SDE (= EBITDA × 1.25), opex, business age, growth rate.
+- `computeExitScore(metrics)` → score across **9 dimensions** summing to 100, a
+  `scoreTier`, and a `dataConfidence`.
+- `computeValuation(metrics, exitScore)` → low / mid / high / optimised values,
+  multiples, value gap, positive/negative drivers.
+- `computeRisks(metrics, valuation)` → `RiskItem[]` (deterministic, templated copy).
+- `computeOptimization(metrics, valuation)` → `ActionItem[]`.
+- `computeFullReport(input)` → `{ metrics, score, valuation, risks, actions,
+  businessUpdate }` — the single entry point used by `useReport`.
+
+### Optional AI copy-polish (`src/lib/ai.ts`)
+
+`enrichRiskCopyFn` is the **only** place AI is used. It is a server function that
+takes deterministically-computed risk copy and asks `gemini-2.5-flash` to rewrite
+**only** the `description`/`recommendation` _prose_ (explicitly instructed not to
+change any number). The key is read via `process.env.GEMINI_API_KEY` (server-only;
+**never** `VITE_`-prefixed). If the key is absent or anything fails, it returns the
+original text unchanged (`passthrough`). Numbers never pass through here.
 
 ---
 
@@ -143,17 +220,33 @@ The client caller (`routes/app.shopify-connect.tsx`) invokes it as
 Defined in `supabase/migrations/`. Every table has **Row-Level Security** so a
 user only ever sees rows tied to their own `auth.uid()`.
 
-| Table            | Key                         | Notes                                                            |
-| ---------------- | --------------------------- | ---------------------------------------------------------------- |
-| `profiles`       | `id` → `auth.users.id`      | `full_name`. Self-scoped select/insert/update.                   |
-| `businesses`     | `id` (uuid)                 | Owned by `owner_id`. Intake fields (industry, channel, age, …).  |
-| `valuation_data` | `business_id` (1:1)         | Exit score, valuation range, multiples, KPIs, connected sources. |
-| `risks`          | `id`, FK `business_id`      | severity + buyer-perspective narrative + recommendation.         |
-| `actions`        | `id`, FK `business_id`      | priority, £ uplift, time, steps.                                 |
-| `documents`      | `id`, FK `business_id`      | data-room document checklist state.                              |
+| Table               | Key                                | Notes                                                            |
+| ------------------- | ---------------------------------- | ---------------------------------------------------------------- |
+| `profiles`          | `id` → `auth.users.id`             | `full_name`. Self-scoped select/insert/update.                   |
+| `businesses`        | `id` (uuid)                        | Owned by `owner_id`. Intake fields (industry, channel, age, …).  |
+| `valuation_data`    | `business_id` (1:1)                | Computed snapshot: exit score, valuation range, multiples, KPIs, connected sources, `score_breakdown`/`revenue_monthly` jsonb, `revenue_ttm`, `ebitda`, `score_tier`. |
+| `risks`             | `id`, FK `business_id`             | severity + buyer-perspective narrative + recommendation.         |
+| `actions`           | `id`, FK `business_id`             | priority, £ uplift, time, steps.                                 |
+| `documents`         | `id`, FK `business_id`             | data-room document checklist state.                              |
+| `shopify_stores`    | `business_id` (PK/FK)              | One row per business: `shop_domain`, `access_token`, `name`, `currency`, `country`, `plan`, `shop_created_at`, `last_synced_at`. |
+| `shopify_orders`    | `business_id` + UNIQUE Shopify ID  | Raw orders: total, currency, dates, financial status, customer id, `line_items` jsonb. |
+| `shopify_products`  | `business_id` + UNIQUE Shopify ID  | Raw products: title, type, vendor, status, `variants` jsonb.     |
+| `shopify_customers` | `business_id` + UNIQUE Shopify ID  | Raw customers: email, name, `orders_count`, `total_spent`, last-order date. |
 
-RLS on the child tables (`valuation_data`/`risks`/`actions`/`documents`) is
-enforced via an `exists (... where businesses.owner_id = auth.uid())` subquery.
+The `valuation_data` / `risks` / `actions` tables store **computed report
+snapshots**; the `shopify_*` tables store the **raw pulled data** that those
+reports are computed from. Per-product revenue, repeat rates, concentration and
+TTM are always **derived at compute time** from the raw rows, never denormalised.
+
+RLS on every child table (`valuation_data`/`risks`/`actions`/`documents` and all
+four `shopify_*` tables) is enforced via an
+`exists (... where businesses.owner_id = auth.uid())` subquery. The UNIQUE
+`(business_id, shopify_*_id)` keys make re-syncs idempotent upserts.
+
+> The raw tables were added in `supabase/migrations/20260606000000_shopify_raw_data.sql`,
+> which also extended `valuation_data` with the new columns above (all via
+> `add column if not exists`). **Migrations must be applied to the live hosted
+> project** — see the standing note in memory.
 
 ---
 
@@ -180,14 +273,18 @@ enforced via an `exists (... where businesses.owner_id = auth.uid())` subquery.
   `@lovable.dev/vite-tanstack-config` (TanStack Start, React, Tailwind,
   tsconfig-paths, env injection) — duplicates break the build.
 - **Demo Mode is a first-class path**, not an error state. New data features
-  should degrade gracefully to mock data + `localStorage` when Supabase is absent.
-- **Gemini is the app-wide AI provider**, not Shopify-only. The Shopify
-  normalizer (`src/lib/shopify.ts`) is just its first consumer; new AI /
-  intelligence features across the app should use the same `GEMINI_API_KEY`.
-  Worth centralising a shared server-side Gemini client when the second feature
-  lands so the model name and key resolution live in one place.
+  should degrade gracefully to an empty state + `localStorage` when Supabase is
+  absent — **not** to mock data (the live data layer no longer imports `mock.ts`).
+- **All numbers are deterministic.** Valuation, score and risk figures are
+  computed in `src/lib/analytics.ts` and must stay auditable. **Never** route a
+  number through an LLM. Gemini (`src/lib/ai.ts`) is **optional and cosmetic only**
+  — it rewrites risk/action _prose_ and nothing else. The app is fully functional
+  with no Gemini key (copy falls back to deterministic templates).
 - **Server-only secrets** (Shopify token, Gemini key) belong inside server
   functions / `process.env`, never in `VITE_`-prefixed client code (except the
-  Supabase anon key, which is public by design).
+  Supabase anon key, which is public by design). In particular **never set
+  `VITE_GEMINI_API_KEY`** — it would inline the key into the browser bundle. The
+  Shopify Admin token is also kept out of `localStorage`; it lives only in the
+  RLS-protected `shopify_stores` row.
 - The deployed entry is `src/server.ts`; keep its catastrophic-error handling in
   sync with how the app surfaces failures.

@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppValuationRouteImport } from './routes/app.valuation'
+import { Route as AppStoreDataRouteImport } from './routes/app.store-data'
 import { Route as AppShopifyConnectRouteImport } from './routes/app.shopify-connect'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppRiskScannerRouteImport } from './routes/app.risk-scanner'
@@ -45,6 +47,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -58,6 +65,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppValuationRoute = AppValuationRouteImport.update({
   id: '/valuation',
   path: '/valuation',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStoreDataRoute = AppStoreDataRouteImport.update({
+  id: '/store-data',
+  path: '/store-data',
   getParentRoute: () => AppRoute,
 } as any)
 const AppShopifyConnectRoute = AppShopifyConnectRouteImport.update({
@@ -134,6 +146,7 @@ const AppBillingRoute = AppBillingRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
@@ -151,11 +164,13 @@ export interface FileRoutesByFullPath {
   '/app/risk-scanner': typeof AppRiskScannerRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/shopify-connect': typeof AppShopifyConnectRoute
+  '/app/store-data': typeof AppStoreDataRoute
   '/app/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
@@ -173,12 +188,14 @@ export interface FileRoutesByTo {
   '/app/risk-scanner': typeof AppRiskScannerRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/shopify-connect': typeof AppShopifyConnectRoute
+  '/app/store-data': typeof AppStoreDataRoute
   '/app/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
@@ -196,6 +213,7 @@ export interface FileRoutesById {
   '/app/risk-scanner': typeof AppRiskScannerRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/shopify-connect': typeof AppShopifyConnectRoute
+  '/app/store-data': typeof AppStoreDataRoute
   '/app/valuation': typeof AppValuationRoute
 }
 export interface FileRouteTypes {
@@ -203,6 +221,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/forgot-password'
     | '/login'
     | '/onboarding'
     | '/signup'
@@ -220,11 +239,13 @@ export interface FileRouteTypes {
     | '/app/risk-scanner'
     | '/app/settings'
     | '/app/shopify-connect'
+    | '/app/store-data'
     | '/app/valuation'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/app'
+    | '/forgot-password'
     | '/login'
     | '/onboarding'
     | '/signup'
@@ -242,11 +263,13 @@ export interface FileRouteTypes {
     | '/app/risk-scanner'
     | '/app/settings'
     | '/app/shopify-connect'
+    | '/app/store-data'
     | '/app/valuation'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/forgot-password'
     | '/login'
     | '/onboarding'
     | '/signup'
@@ -264,12 +287,14 @@ export interface FileRouteTypes {
     | '/app/risk-scanner'
     | '/app/settings'
     | '/app/shopify-connect'
+    | '/app/store-data'
     | '/app/valuation'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
@@ -298,6 +323,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
@@ -317,6 +349,13 @@ declare module '@tanstack/react-router' {
       path: '/valuation'
       fullPath: '/app/valuation'
       preLoaderRoute: typeof AppValuationRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/store-data': {
+      id: '/app/store-data'
+      path: '/store-data'
+      fullPath: '/app/store-data'
+      preLoaderRoute: typeof AppStoreDataRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/shopify-connect': {
@@ -435,6 +474,7 @@ interface AppRouteChildren {
   AppRiskScannerRoute: typeof AppRiskScannerRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppShopifyConnectRoute: typeof AppShopifyConnectRoute
+  AppStoreDataRoute: typeof AppStoreDataRoute
   AppValuationRoute: typeof AppValuationRoute
 }
 
@@ -453,6 +493,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppRiskScannerRoute: AppRiskScannerRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppShopifyConnectRoute: AppShopifyConnectRoute,
+  AppStoreDataRoute: AppStoreDataRoute,
   AppValuationRoute: AppValuationRoute,
 }
 
@@ -461,6 +502,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,

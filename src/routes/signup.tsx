@@ -1,4 +1,10 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useRouter,
+  useSearch,
+} from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { Logo } from "@/components/ex/Logo";
 import { SectionLabel } from "@/components/ex/SectionLabel";
@@ -7,30 +13,62 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { RequireGuest, isSafeRedirect } from "@/components/auth/RouteGuards";
 
 export const Route = createFileRoute("/signup")({ component: Signup });
 
 function Signup() {
-  return <SplitAuth mode="signup" />;
+  return (
+    <RequireGuest>
+      <SplitAuth mode="signup" />
+    </RequireGuest>
+  );
 }
 
 export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
   const { signUp, signIn, signInWithGoogle, verifyEmailOtp, resendSignupOtp } =
     useAuth();
   const navigate = useNavigate();
+  const router = useRouter();
+  const search = useSearch({ strict: false }) as {
+    redirect?: string;
+    reason?: string;
+  };
   const [loading, setLoading] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // Inline, field-level error for an email that already has an account.
+  const [emailExists, setEmailExists] = useState(false);
 
   // "form" = collect details, "otp" = enter the emailed 6-digit code.
   const [step, setStep] = useState<"form" | "otp">("form");
   const [otp, setOtp] = useState("");
+
+  // Where to land once authenticated: the page the user was bounced from, or
+  // the dashboard by default.
+  const goToApp = () =>
+    router.history.push(
+      isSafeRedirect(search.redirect) ? search.redirect : "/app/dashboard",
+    );
+
+  // Surface the "session expired" notice once, when redirected here for it.
+  const expiredShown = useRef(false);
+  useEffect(() => {
+    if (
+      mode === "login" &&
+      search.reason === "expired" &&
+      !expiredShown.current
+    ) {
+      expiredShown.current = true;
+      toast.error("Your session has expired, please log in again.");
+    }
+  }, [mode, search.reason]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,9 +86,17 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
 
     try {
       if (mode === "signup") {
-        const { error, data } = await signUp(email, password, fullName);
+        const {
+          error,
+          data,
+          emailExists: exists,
+        } = await signUp(email, password, fullName);
         toast.dismiss(loadingToast);
-        if (error) {
+        if (exists) {
+          // Specific, inline handling — keep the email populated, don't show a
+          // generic toast.
+          setEmailExists(true);
+        } else if (error) {
           toast.error(error.message || "Failed to create account");
         } else {
           const hasSession = Boolean(
@@ -73,7 +119,7 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
           toast.error(error.message || "Failed to sign in");
         } else {
           toast.success("Signed in successfully!");
-          navigate({ to: "/app/dashboard" });
+          goToApp();
         }
       }
     } catch (err: unknown) {
@@ -208,13 +254,35 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
                     disabled={loading}
                   />
                 )}
-                <Field
-                  label="Email Address"
-                  type="email"
-                  value={email}
-                  onChange={setEmail}
-                  disabled={loading}
-                />
+                <div>
+                  <Field
+                    label="Email Address"
+                    type="email"
+                    value={email}
+                    onChange={(val) => {
+                      setEmail(val);
+                      if (emailExists) setEmailExists(false);
+                    }}
+                    disabled={loading}
+                    invalid={emailExists}
+                  />
+                  {emailExists && (
+                    <p className="mt-1.5 text-xs text-[var(--danger,#dc2626)]">
+                      An account with this email already exists.{" "}
+                      <Link
+                        to="/login"
+                        search={
+                          isSafeRedirect(search.redirect)
+                            ? { redirect: search.redirect }
+                            : undefined
+                        }
+                        className="text-[var(--accent)] hover:text-[var(--accent-muted)] underline"
+                      >
+                        Log in instead
+                      </Link>
+                    </p>
+                  )}
+                </div>
                 <Field
                   label="Password"
                   type="password"
@@ -233,12 +301,12 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
                 )}
                 {mode === "login" && (
                   <div className="text-right">
-                    <a
+                    <Link
+                      to="/forgot-password"
                       className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)]"
-                      href="#"
                     >
                       Forgot password?
-                    </a>
+                    </Link>
                   </div>
                 )}
                 <button
@@ -386,12 +454,14 @@ function Field({
   value,
   onChange,
   disabled,
+  invalid,
 }: {
   label: string;
   type: string;
   value: string;
   onChange: (val: string) => void;
   disabled?: boolean;
+  invalid?: boolean;
 }) {
   return (
     <label className="block">
@@ -401,10 +471,15 @@ function Field({
       <input
         type={type}
         required
+        aria-invalid={invalid || undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="mt-2 w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-50"
+        className={`mt-2 w-full bg-transparent border rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors disabled:opacity-50 ${
+          invalid
+            ? "border-[var(--danger,#dc2626)] focus:border-[var(--danger,#dc2626)]"
+            : "border-[var(--border-warm)] focus:border-[var(--accent)]"
+        }`}
       />
     </label>
   );

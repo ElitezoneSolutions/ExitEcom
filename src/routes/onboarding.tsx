@@ -7,8 +7,15 @@ import { SectionLabel } from "@/components/ex/SectionLabel";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
+import { RequireAuth } from "@/components/auth/RouteGuards";
 
-export const Route = createFileRoute("/onboarding")({ component: Onboarding });
+export const Route = createFileRoute("/onboarding")({
+  component: () => (
+    <RequireAuth>
+      <Onboarding />
+    </RequireAuth>
+  ),
+});
 
 interface OnboardingData {
   businessName: string;
