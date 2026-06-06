@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  createContext,
+  useContext,
+  type ReactNode,
+} from "react";
 import { useAuth } from "./useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -307,7 +314,12 @@ const mapCustomerRow = (r: CustomerRow): RawShopifyCustomer => ({
   lastOrderAt: r.last_order_at ?? null,
 });
 
-export function useBusinessData() {
+// The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
+// the whole `/app` subtree shares a single instance — otherwise every component
+// that called this (the Sidebar + each page + useReport) would spin up its own
+// state and fire its own Supabase hydration on mount (2–3× the round-trips per
+// page, plus divergent copies of the same data). Consume it via useBusinessData.
+function useBusinessDataImpl() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -928,4 +940,35 @@ export function useBusinessData() {
     resyncStore,
     saveComputedReport,
   };
+}
+
+type BusinessDataValue = ReturnType<typeof useBusinessDataImpl>;
+
+const BusinessDataContext = createContext<BusinessDataValue | undefined>(
+  undefined,
+);
+
+/**
+ * Provides a single shared business-data instance to the whole `/app` subtree.
+ * Mount this once (in the authenticated layout) above the Sidebar and the
+ * routed pages so they all read/write the same state and the backend is
+ * hydrated once per session rather than once per consuming component.
+ */
+export function BusinessDataProvider({ children }: { children: ReactNode }) {
+  const value = useBusinessDataImpl();
+  return (
+    <BusinessDataContext.Provider value={value}>
+      {children}
+    </BusinessDataContext.Provider>
+  );
+}
+
+export function useBusinessData() {
+  const context = useContext(BusinessDataContext);
+  if (context === undefined) {
+    throw new Error(
+      "useBusinessData must be used within a BusinessDataProvider",
+    );
+  }
+  return context;
 }
