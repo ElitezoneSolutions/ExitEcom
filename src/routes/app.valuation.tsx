@@ -4,58 +4,76 @@ import { Check, X, ChevronDown, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
-import { useBusinessData } from "@/hooks/useBusinessData";
-import {
-  mockBusiness,
-  positiveDrivers,
-  negativeDrivers,
-  fmtGBP,
-} from "@/lib/mock";
+import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import { useReport } from "@/hooks/useReport";
+import { fmtGBP } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/valuation")({
   component: Valuation,
 });
 
 function Valuation() {
-  const { isShopifyConnected } = useBusinessData();
+  const { isShopifyConnected, report, computing, run } = useReport();
   const [open, setOpen] = useState(false);
+
   if (!isShopifyConnected) {
     return (
       <ConnectShopifyGate title="Valuation Engine" feature="your valuation" />
     );
   }
+
+  if (!report) {
+    return (
+      <>
+        <PageHeader
+          title="Valuation Engine"
+          subtitle="What a buyer will actually pay — and why."
+        />
+        <RunReportCard
+          feature="Valuation Engine"
+          blurb="We translate your trailing-twelve-month revenue and earnings into a buyer-grade valuation range with three scenarios."
+          cta="Run Valuation Engine"
+          onRun={run}
+          computing={computing}
+        />
+      </>
+    );
+  }
+
+  const { valuation: v, metrics } = report;
+  const mult = (val: number) =>
+    v.adjustedEarnings > 0 ? (val / v.adjustedEarnings).toFixed(1) : "0";
+
   return (
     <>
       <PageHeader
         title="Valuation Engine"
         subtitle="What a buyer will actually pay — and why."
+        right={<RecomputeButton onRun={run} computing={computing} />}
       />
 
       {/* Hero */}
       <div className="card-dark p-10">
         <SectionLabel dark>Buyer-Grade Valuation</SectionLabel>
         <p className="mt-3 text-xs text-[var(--text-on-dark-secondary)]">
-          Based on real buyer behaviour, not marketplace estimates
+          Derived from your real order and earnings data
         </p>
         <div className="mt-8 grid lg:grid-cols-3 gap-6 items-end">
           <div className="lg:col-span-2">
             <div className="font-display text-[var(--accent)] text-[56px] md:text-[68px] leading-none">
-              {fmtGBP(mockBusiness.valuationLow)} —{" "}
-              {fmtGBP(mockBusiness.valuationHigh)}
+              {fmtGBP(v.valuationLow)} — {fmtGBP(v.valuationHigh)}
             </div>
             <div className="mt-4 font-display text-xl text-[var(--text-on-dark)]">
-              Fair Market Value: {fmtGBP(mockBusiness.fairMarket)}
+              Fair Market Value: {fmtGBP(v.fairMarket)}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Chip>Current Multiple: {mockBusiness.currentMultiple}x</Chip>
-              <Chip>
-                Adjusted Earnings: {fmtGBP(mockBusiness.adjustedEarnings)}
-              </Chip>
+              <Chip>Current Multiple: {v.currentMultiple}x</Chip>
+              <Chip>Adjusted Earnings: {fmtGBP(v.adjustedEarnings)}</Chip>
             </div>
           </div>
           <div className="lg:text-right">
             <div className="font-display text-2xl text-[var(--accent)]">
-              You're leaving £80,000 on the table.
+              You're leaving {fmtGBP(v.valueGap)} on the table.
             </div>
           </div>
         </div>
@@ -70,18 +88,16 @@ function Valuation() {
         <div className="mt-4 flex items-center gap-6 text-sm flex-wrap">
           <div>
             <span className="text-[var(--text-muted)]">Current:</span>{" "}
-            <span className="font-display text-lg">
-              {fmtGBP(mockBusiness.fairMarket)}
-            </span>{" "}
-            at {mockBusiness.currentMultiple}x
+            <span className="font-display text-lg">{fmtGBP(v.fairMarket)}</span>{" "}
+            at {v.currentMultiple}x
           </div>
           <ArrowRight className="w-4 h-4 text-[var(--text-muted)]" />
           <div>
             <span className="text-[var(--text-muted)]">Potential:</span>{" "}
             <span className="font-display text-lg text-[var(--accent)]">
-              {fmtGBP(mockBusiness.optimised)}
+              {fmtGBP(v.optimised)}
             </span>{" "}
-            at {mockBusiness.optimisedMultiple}x
+            at {v.optimisedMultiple}x
           </div>
         </div>
         <div className="mt-6 h-3 bg-[var(--bg-secondary)] rounded-sm relative overflow-hidden">
@@ -99,15 +115,19 @@ function Valuation() {
           />
         </div>
         <p className="mt-4 text-sm text-[var(--text-secondary)]">
-          Valuation suppressed by: Founder Dependency · Product Concentration ·
-          Limited Operating History
+          Valuation suppressed by:{" "}
+          {v.negativeDrivers.map((d) => d.name).join(" · ")}
         </p>
       </div>
 
       {/* Drivers */}
       <div className="mt-12 grid md:grid-cols-2 gap-6">
-        <DriverList label="Positive Drivers" items={positiveDrivers} positive />
-        <DriverList label="Negative Drivers" items={negativeDrivers} />
+        <DriverList
+          label="Positive Drivers"
+          items={v.positiveDrivers}
+          positive
+        />
+        <DriverList label="Negative Drivers" items={v.negativeDrivers} />
       </div>
 
       {/* Scenarios */}
@@ -116,22 +136,22 @@ function Valuation() {
         <div className="mt-5 grid md:grid-cols-3 gap-5">
           <Scenario
             label="Quick Sale"
-            v={mockBusiness.quickSale}
-            m={`${(mockBusiness.quickSale / mockBusiness.adjustedEarnings).toFixed(1)}x`}
+            v={v.quickSale}
+            m={`${mult(v.quickSale)}x`}
             desc="Conservative market conditions"
             muted
           />
           <Scenario
             label="Fair Market"
-            v={mockBusiness.fairMarket}
-            m={`${(mockBusiness.fairMarket / mockBusiness.adjustedEarnings).toFixed(1)}x`}
+            v={v.fairMarket}
+            m={`${mult(v.fairMarket)}x`}
             desc="Current realistic expectation"
             gold
           />
           <Scenario
             label="Optimised"
-            v={mockBusiness.optimised}
-            m={`${(mockBusiness.optimised / mockBusiness.adjustedEarnings).toFixed(1)}x`}
+            v={v.optimised}
+            m={`${mult(v.optimised)}x`}
             desc="After implementing optimization plan"
             accent
           />
@@ -155,23 +175,27 @@ function Valuation() {
           <div className="mt-3 card-light p-6 text-sm text-[var(--text-secondary)] space-y-3 leading-relaxed">
             <p>
               <span className="font-medium text-[var(--text-primary)]">
-                SDE calculation:
+                Earnings (SDE):
               </span>{" "}
-              Revenue − COGS − Ad Spend − Operating Expenses + Add-backs.
+              From {fmtGBP(metrics.revenueTTM)} trailing-twelve-month revenue at
+              a {Math.round(metrics.grossMargin * 100)}% gross margin and{" "}
+              {Math.round(metrics.netMargin * 100)}% net margin benchmark,
+              yielding {fmtGBP(v.adjustedEarnings)} adjusted earnings.
             </p>
             <p>
               <span className="font-medium text-[var(--text-primary)]">
-                Quality adjustments:
+                Multiple:
               </span>{" "}
-              Multiple is adjusted upward for revenue diversity, gross margin
-              and growth trajectory.
+              Set by the Exit Readiness Score ({v.currentMultiple}x at fair
+              market), adjusted up to {v.optimisedMultiple}x once risks are
+              addressed.
             </p>
             <p>
               <span className="font-medium text-[var(--text-primary)]">
-                Hard constraints:
+                Note:
               </span>{" "}
-              Age cap (sub-3-year businesses cap at 2.0x) and profit cap
-              (multiples cap when SDE &lt; £80k).
+              COGS, ad spend and net margin use industry-standard benchmarks —
+              connect a P&amp;L to replace them with verified figures.
             </p>
           </div>
         )}
@@ -179,9 +203,6 @@ function Valuation() {
 
       {/* Bottom actions */}
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-[var(--border-warm)]">
-        <button className="btn-ghost-light text-sm">
-          Download Full Valuation Report
-        </button>
         <Link
           to="/app/optimization"
           className="text-sm text-[var(--accent)] hover:text-[var(--accent-muted)] inline-flex items-center gap-1"

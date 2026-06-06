@@ -1,96 +1,91 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { RiskCard } from "@/components/ex/RiskCard";
-import { StatusBadge } from "@/components/ex/StatusBadge";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
-import { useBusinessData } from "@/hooks/useBusinessData";
-import {
-  mockBusiness,
-  topRisks,
-  additionalRisks,
-  fmtGBP,
-  fmtGBPk,
-} from "@/lib/mock";
+import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import { useReport } from "@/hooks/useReport";
+import { fmtGBP } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/risk-scanner")({
   component: RiskScanner,
 });
 
 function RiskScanner() {
-  const { isShopifyConnected } = useBusinessData();
-  const [open, setOpen] = useState(false);
+  const { isShopifyConnected, report, computing, run } = useReport();
+
   if (!isShopifyConnected) {
     return (
       <ConnectShopifyGate title="Risk Scanner" feature="your risk profile" />
     );
   }
+
+  if (!report) {
+    return (
+      <>
+        <PageHeader
+          title="Risk Scanner"
+          subtitle="Buyer-grade risk intelligence — focused, not a firehose."
+        />
+        <RunReportCard
+          feature="Risk Scanner"
+          blurb="We surface the risks a buyer will price in — concentration, retention and channel dependency — from your real store data."
+          cta="Run Risk Scanner"
+          onRun={run}
+          computing={computing}
+        />
+      </>
+    );
+  }
+
+  const { risks, valuation, score } = report;
+  const riskScore = Math.max(0, 100 - score.exitScore);
+  const counts = {
+    high: risks.filter((r) => r.severity === "high").length,
+    medium: risks.filter((r) => r.severity === "medium").length,
+    low: risks.filter((r) => r.severity === "low").length,
+  };
+
   return (
     <>
       <PageHeader
         title="Risk Scanner"
         subtitle="Buyer-grade risk intelligence — focused, not a firehose."
+        right={<RecomputeButton onRun={run} computing={computing} />}
       />
 
       <div className="grid md:grid-cols-3 gap-5">
         <Hero
           label="Risk Score"
-          value={`${mockBusiness.riskScore} / 100`}
-          sub="Moderate Risk"
+          value={`${riskScore} / 100`}
+          sub={
+            riskScore > 50
+              ? "Elevated Risk"
+              : riskScore > 30
+                ? "Moderate Risk"
+                : "Low Risk"
+          }
         />
         <Hero
           label="Estimated Value Lost"
-          value={fmtGBP(mockBusiness.totalValueLost)}
+          value={fmtGBP(valuation.valueGap)}
           sub="Across all identified risks"
         />
         <Hero
           label="Risks Identified"
-          value="6 total"
-          sub="2 High · 3 Medium · 1 Low"
+          value={`${risks.length} total`}
+          sub={`${counts.high} High · ${counts.medium} Medium · ${counts.low} Low`}
         />
       </div>
 
       <div className="mt-12">
         <SectionLabel>Critical Buyer Concerns</SectionLabel>
         <div className="mt-4 space-y-4">
-          {topRisks.map((r) => (
+          {risks.map((r) => (
             <RiskCard key={r.title} {...r} />
           ))}
         </div>
-      </div>
-
-      <div className="mt-10">
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="card-light w-full px-6 py-4 flex items-center justify-between hover:border-[var(--accent)] transition-colors"
-        >
-          <span className="text-sm font-medium">
-            {additionalRisks.length} Additional Risks
-          </span>
-          <ChevronDown
-            className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </button>
-        {open && (
-          <div className="mt-3 card-light divide-y divide-[var(--border-warm)]">
-            {additionalRisks.map((r) => (
-              <div key={r.title} className="px-6 py-4 flex items-center gap-4">
-                <StatusBadge status={r.severity} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{r.title}</div>
-                  <div className="text-xs text-[var(--text-muted)] mt-0.5">
-                    {r.description}
-                  </div>
-                </div>
-                <div className="font-display text-[var(--accent)]">
-                  {fmtGBPk(r.impact)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Valuation impact summary */}
@@ -102,7 +97,7 @@ function RiskScanner() {
               Current Value
             </div>
             <div className="font-display text-3xl mt-2 text-[var(--text-muted)]">
-              {fmtGBP(220000)}
+              {fmtGBP(valuation.valuationMid)}
             </div>
           </div>
           <div className="text-center text-[var(--text-muted)]">
@@ -114,7 +109,7 @@ function RiskScanner() {
               Potential Value
             </div>
             <div className="font-display text-3xl mt-2 text-[var(--accent)]">
-              {fmtGBP(340000)}
+              {fmtGBP(valuation.valuationOptimised)}
             </div>
           </div>
         </div>
@@ -129,13 +124,14 @@ function RiskScanner() {
           />
         </div>
         <div className="mt-3 text-center text-xs text-[var(--text-muted)] tracking-[0.12em] uppercase">
-          £120k Opportunity
+          {fmtGBP(valuation.valueGap)} Opportunity
         </div>
       </div>
 
       <div className="mt-8 px-6 py-4 flex items-center justify-between flex-wrap gap-3 border-t border-[var(--border-warm)]">
         <span className="text-sm text-[var(--text-secondary)]">
-          Address these risks to unlock {fmtGBP(120000)} in exit value.
+          Address these risks to unlock {fmtGBP(valuation.valueGap)} in exit
+          value.
         </span>
         <Link
           to="/app/optimization"

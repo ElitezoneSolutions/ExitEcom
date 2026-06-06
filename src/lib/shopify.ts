@@ -1,778 +1,464 @@
 import { createServerFn } from "@tanstack/react-start";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
-interface ConnectShopifyInput {
+// ---------------------------------------------------------------------------
+// Shopify data sync (custom-app path).
+//
+// Connecting a store does ONE job: authenticate, pull the full dataset
+// (orders, products, customers, store metadata), and hand the raw rows back to
+// the caller to persist. No normalization, no valuation, no AI — reports are
+// computed later, on demand, from the stored data (see src/lib/analytics.ts).
+// ---------------------------------------------------------------------------
+
+const API_VERSION = "2024-01";
+const PAGE_LIMIT = 250;
+const ORDER_CAP = 5000;
+const PRODUCT_CAP = 2000;
+const CUSTOMER_CAP = 5000;
+
+export interface ShopifySyncInput {
   shopDomain: string;
   accessToken: string;
-  industry?: string;
+  // ISO timestamp; on incremental refresh only pull orders created after this.
+  sinceISO?: string;
 }
 
-// Raw shapes pulled from the Shopify Admin API (or the sandbox simulator).
-interface ShopifyLineItem {
+export interface RawShopifyStore {
+  shopDomain: string;
+  name: string;
+  currency: string;
+  country: string;
+  plan: string | null;
+  shopCreatedAt: string;
+}
+
+export interface RawLineItem {
+  title: string;
+  quantity: number;
+  price: number;
+  productId: string | null;
+}
+
+export interface RawShopifyOrder {
+  shopifyOrderId: string;
+  orderNumber: string;
+  totalPrice: number;
+  currency: string;
+  createdAt: string;
+  processedAt: string | null;
+  financialStatus: string | null;
+  customerId: string | null;
+  lineItems: RawLineItem[];
+}
+
+export interface RawShopifyProduct {
+  shopifyProductId: string;
+  title: string;
+  productType: string | null;
+  vendor: string | null;
+  status: string | null;
+  createdAt: string;
+  variants: { id: string; title: string; price: number }[];
+}
+
+export interface RawShopifyCustomer {
+  shopifyCustomerId: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  ordersCount: number;
+  totalSpent: number;
+  createdAt: string;
+  lastOrderAt: string | null;
+}
+
+export interface ShopifySyncResult {
+  shop: RawShopifyStore;
+  orders: RawShopifyOrder[];
+  products: RawShopifyProduct[];
+  customers: RawShopifyCustomer[];
+  counts: { orders: number; products: number; customers: number };
+  capped: { orders: boolean; products: boolean; customers: boolean };
+  sandbox: boolean;
+}
+
+// --- Raw Shopify Admin API shapes (subset of fields we request) -------------
+interface ApiLineItem {
   title: string;
   quantity: number;
   price: string;
+  product_id: number | string | null;
 }
-interface ShopifyOrder {
+interface ApiOrder {
+  id: number | string;
+  name?: string;
   total_price: string;
+  currency?: string;
   created_at: string;
-  customer?: { id: string | number } | null;
-  line_items?: ShopifyLineItem[];
+  processed_at?: string | null;
+  financial_status?: string | null;
+  customer?: { id: number | string } | null;
+  line_items?: ApiLineItem[];
 }
-interface ShopifyProduct {
-  id: number;
+interface ApiProduct {
+  id: number | string;
   title: string;
-  variants?: unknown[];
+  product_type?: string | null;
+  vendor?: string | null;
+  status?: string | null;
+  created_at: string;
+  variants?: { id: number | string; title: string; price: string }[];
 }
-interface ShopifyShop {
+interface ApiCustomer {
+  id: number | string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  orders_count?: number;
+  total_spent?: string;
+  created_at: string;
+}
+interface ApiShop {
   name: string;
   domain: string;
   myshopify_domain: string;
   currency: string;
   country_name: string;
+  plan_name?: string | null;
   created_at: string;
 }
 
-// Condensed payloads handed to Gemini / the rule-based fallback normalizer.
-interface ShopSummary {
-  name: string;
-  domain: string;
-  myshopify_domain: string;
-  currency: string;
-  country: string;
-  created_at: string;
-  industry: string;
-}
-interface OrderSummary {
-  total_price: string;
-  created_at: string;
-  customer_id: string | number | null;
-  line_items: ShopifyLineItem[];
-}
-interface ProductSummary {
-  id: number | string;
-  title: string;
-  variants_count: number;
+// Follow Shopify's cursor pagination (Link header, rel="next").
+function parseNextLink(link: string | null): string | null {
+  if (!link) return null;
+  for (const part of link.split(",")) {
+    const match = part.match(/<([^>]+)>;\s*rel="next"/);
+    if (match) return match[1];
+  }
+  return null;
 }
 
-export const connectShopifyFn = createServerFn({ method: "POST" })
-  .inputValidator((input: ConnectShopifyInput) => input)
-  .handler(async ({ data }) => {
-    const {
-      shopDomain: rawShopDomain,
-      accessToken,
-      industry = "Beauty & Skincare",
-    } = data;
+async function fetchPaged<T>(
+  initialUrl: string,
+  accessToken: string,
+  extract: (json: unknown) => T[],
+  cap: number,
+): Promise<{ items: T[]; capped: boolean }> {
+  const items: T[] = [];
+  let url: string | null = initialUrl;
+  let capped = false;
 
-    // 1. Sanitize Shop Domain
-    let shopDomain = rawShopDomain.trim().replace(/^https?:\/\//, "");
+  while (url) {
+    const res: Response = await fetch(url, {
+      headers: {
+        "X-Shopify-Access-Token": accessToken,
+        Accept: "application/json",
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Shopify API returned status ${res.status}`);
+    }
+    const json: unknown = await res.json();
+    items.push(...extract(json));
+    if (items.length >= cap) {
+      capped = true;
+      break;
+    }
+    url = parseNextLink(res.headers.get("link"));
+  }
+
+  return { items: items.slice(0, cap), capped };
+}
+
+function toNumber(value: string | number | null | undefined): number {
+  const n = typeof value === "number" ? value : parseFloat(value ?? "0");
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mapOrder(o: ApiOrder, fallbackCurrency: string): RawShopifyOrder {
+  return {
+    shopifyOrderId: String(o.id),
+    orderNumber: o.name ?? String(o.id),
+    totalPrice: toNumber(o.total_price),
+    currency: o.currency ?? fallbackCurrency,
+    createdAt: o.created_at,
+    processedAt: o.processed_at ?? null,
+    financialStatus: o.financial_status ?? null,
+    customerId: o.customer?.id != null ? String(o.customer.id) : null,
+    lineItems: (o.line_items ?? []).map((li) => ({
+      title: li.title,
+      quantity: li.quantity,
+      price: toNumber(li.price),
+      productId: li.product_id != null ? String(li.product_id) : null,
+    })),
+  };
+}
+
+function mapProduct(p: ApiProduct): RawShopifyProduct {
+  return {
+    shopifyProductId: String(p.id),
+    title: p.title,
+    productType: p.product_type ?? null,
+    vendor: p.vendor ?? null,
+    status: p.status ?? null,
+    createdAt: p.created_at,
+    variants: (p.variants ?? []).map((v) => ({
+      id: String(v.id),
+      title: v.title,
+      price: toNumber(v.price),
+    })),
+  };
+}
+
+function mapCustomer(c: ApiCustomer): RawShopifyCustomer {
+  return {
+    shopifyCustomerId: String(c.id),
+    email: c.email ?? null,
+    firstName: c.first_name ?? null,
+    lastName: c.last_name ?? null,
+    ordersCount: c.orders_count ?? 0,
+    totalSpent: toNumber(c.total_spent),
+    createdAt: c.created_at,
+    lastOrderAt: null,
+  };
+}
+
+// Derive each customer's last order date from the orders we pulled.
+function attachLastOrderDates(
+  customers: RawShopifyCustomer[],
+  orders: RawShopifyOrder[],
+): RawShopifyCustomer[] {
+  const lastByCustomer = new Map<string, string>();
+  for (const o of orders) {
+    if (!o.customerId) continue;
+    const prev = lastByCustomer.get(o.customerId);
+    if (!prev || new Date(o.createdAt) > new Date(prev)) {
+      lastByCustomer.set(o.customerId, o.createdAt);
+    }
+  }
+  return customers.map((c) => ({
+    ...c,
+    lastOrderAt: lastByCustomer.get(c.shopifyCustomerId) ?? null,
+  }));
+}
+
+function isSandboxCreds(shopDomain: string, accessToken: string): boolean {
+  const haystack = `${shopDomain} ${accessToken}`.toLowerCase();
+  return (
+    haystack.includes("test") ||
+    haystack.includes("demo") ||
+    haystack.includes("sandbox")
+  );
+}
+
+// High-fidelity sandbox data so local/demo flows work without a real store.
+function buildSandbox(shopDomain: string): ShopifySyncResult {
+  const baseName = shopDomain.split(".")[0] || "demo";
+  const productTitles = [
+    "Hero Serum",
+    "Glow Moisturizer",
+    "Hydrating Cleanser",
+    "Sunscreen SPF 50",
+    "Exfoliating Toner",
+  ];
+  const prices = [45, 35, 28, 32, 26];
+  const now = Date.now();
+
+  const products: RawShopifyProduct[] = productTitles.map((title, i) => ({
+    shopifyProductId: String(101 + i),
+    title,
+    productType: "Skincare",
+    vendor: baseName,
+    status: "active",
+    createdAt: new Date(now - (400 - i * 30) * 86400000).toISOString(),
+    variants: [{ id: String(1000 + i), title: "Default", price: prices[i] }],
+  }));
+
+  const customers: RawShopifyCustomer[] = Array.from(
+    { length: 12 },
+    (_, i) => ({
+      shopifyCustomerId: `cust_${10000 + i}`,
+      email: `customer${i}@example.com`,
+      firstName: `Customer`,
+      lastName: String(i + 1),
+      ordersCount: 0,
+      totalSpent: 0,
+      createdAt: new Date(now - (300 - i * 10) * 86400000).toISOString(),
+      lastOrderAt: null,
+    }),
+  );
+
+  const orders: RawShopifyOrder[] = [];
+  for (let i = 0; i < 45; i++) {
+    const customer = customers[i % customers.length];
+    const p1 = i % productTitles.length;
+    const items: RawLineItem[] = [
+      {
+        title: productTitles[p1],
+        quantity: 1,
+        price: prices[p1],
+        productId: String(101 + p1),
+      },
+    ];
+    let total = prices[p1];
+    if (i % 3 === 0) {
+      const p2 = (i + 2) % productTitles.length;
+      items.push({
+        title: productTitles[p2],
+        quantity: 1,
+        price: prices[p2],
+        productId: String(101 + p2),
+      });
+      total += prices[p2];
+    }
+    orders.push({
+      shopifyOrderId: `order_${i}`,
+      orderNumber: `#${1000 + i}`,
+      totalPrice: total,
+      currency: "GBP",
+      createdAt: new Date(now - (i % 30) * 86400000).toISOString(),
+      processedAt: new Date(now - (i % 30) * 86400000).toISOString(),
+      financialStatus: "paid",
+      customerId: customer.shopifyCustomerId,
+      lineItems: items,
+    });
+  }
+
+  // Roll order facts back onto sandbox customers so the data is self-consistent.
+  for (const c of customers) {
+    const theirs = orders.filter((o) => o.customerId === c.shopifyCustomerId);
+    c.ordersCount = theirs.length;
+    c.totalSpent = theirs.reduce((s, o) => s + o.totalPrice, 0);
+  }
+
+  return {
+    shop: {
+      shopDomain,
+      name: `${baseName.toUpperCase()} Store`,
+      currency: "GBP",
+      country: "United Kingdom",
+      plan: "sandbox",
+      shopCreatedAt: new Date(now - 365 * 86400000).toISOString(),
+    },
+    orders,
+    products,
+    customers: attachLastOrderDates(customers, orders),
+    counts: {
+      orders: orders.length,
+      products: products.length,
+      customers: customers.length,
+    },
+    capped: { orders: false, products: false, customers: false },
+    sandbox: true,
+  };
+}
+
+export const syncShopifyStoreFn = createServerFn({ method: "POST" })
+  .inputValidator((input: ShopifySyncInput) => input)
+  .handler(async ({ data }): Promise<ShopifySyncResult> => {
+    const { accessToken, sinceISO } = data;
+
+    // Sanitize domain (accept "store", "store.myshopify.com", or a full URL).
+    let shopDomain = data.shopDomain
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/, "");
     if (!shopDomain.includes(".")) {
       shopDomain = `${shopDomain}.myshopify.com`;
     }
 
-    // Sandbox mock generators
-    const getSandboxOrders = () => {
-      const products = [
-        "Hero Serum",
-        "Glow Moisturizer",
-        "Hydrating Cleanser",
-        "Sunscreen SPF 50",
-        "Exfoliating Toner",
-      ];
-      const ordersList = [];
-      const now = new Date();
+    if (!shopDomain || !accessToken?.trim()) {
+      throw new Error(
+        "A store domain and Admin API access token are required.",
+      );
+    }
 
-      // Generate 45 realistic orders over the last 30 days
-      for (let i = 0; i < 45; i++) {
-        const orderDate = new Date(
-          now.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000,
-        );
-        const customerId = `cust_${10000 + Math.floor(i % 12)}`; // 12 unique customers -> high repeat rate!
-        const product1 = products[Math.floor(Math.random() * products.length)];
-        const product2 = products[Math.floor(Math.random() * products.length)];
-        const isMultiItem = Math.random() > 0.6;
+    // Explicit sandbox/demo creds short-circuit to deterministic fake data.
+    if (isSandboxCreds(shopDomain, accessToken)) {
+      return buildSandbox(shopDomain);
+    }
 
-        const items = [{ title: product1, quantity: 1, price: "45.00" }];
-        let totalPrice = 45.0;
+    const base = `https://${shopDomain}/admin/api/${API_VERSION}`;
 
-        if (isMultiItem && product1 !== product2) {
-          items.push({ title: product2, quantity: 1, price: "35.00" });
-          totalPrice += 35.0;
-        }
+    // 1. Authenticate + read store metadata. Real failures surface as errors.
+    const shopRes = await fetch(`${base}/shop.json`, {
+      headers: {
+        "X-Shopify-Access-Token": accessToken,
+        Accept: "application/json",
+      },
+    });
+    if (!shopRes.ok) {
+      throw new Error(
+        shopRes.status === 401 || shopRes.status === 403
+          ? "Shopify rejected the access token. Check the token and that it has read_orders, read_products and read_customers scopes."
+          : `Could not reach the store (Shopify returned ${shopRes.status}). Check the store domain.`,
+      );
+    }
+    const shopJson = (await shopRes.json()) as { shop: ApiShop };
+    const shop = shopJson.shop;
+    const currency = shop.currency ?? "USD";
 
-        ordersList.push({
-          total_price: totalPrice.toFixed(2),
-          created_at: orderDate.toISOString(),
-          customer: { id: customerId },
-          line_items: items,
-        });
-      }
-      return ordersList;
-    };
+    // 2. Orders (cursor-paginated; incremental when sinceISO is provided).
+    const orderFields =
+      "id,name,total_price,currency,created_at,processed_at,financial_status,customer,line_items";
+    let ordersUrl = `${base}/orders.json?status=any&limit=${PAGE_LIMIT}&fields=${orderFields}`;
+    if (sinceISO)
+      ordersUrl += `&created_at_min=${encodeURIComponent(sinceISO)}`;
+    const ordersPaged = await fetchPaged<RawShopifyOrder>(
+      ordersUrl,
+      accessToken,
+      (json) =>
+        ((json as { orders?: ApiOrder[] }).orders ?? []).map((o) =>
+          mapOrder(o, currency),
+        ),
+      ORDER_CAP,
+    );
 
-    const getSandboxProducts = () => {
-      return [
-        { id: 101, title: "Hero Serum", variants: [1, 2] },
-        { id: 102, title: "Glow Moisturizer", variants: [1] },
-        { id: 103, title: "Hydrating Cleanser", variants: [1] },
-        { id: 104, title: "Sunscreen SPF 50", variants: [1, 2] },
-        { id: 105, title: "Exfoliating Toner", variants: [1] },
-      ];
-    };
+    // 3. Products.
+    const productFields =
+      "id,title,product_type,vendor,status,created_at,variants";
+    const productsPaged = await fetchPaged<RawShopifyProduct>(
+      `${base}/products.json?limit=${PAGE_LIMIT}&fields=${productFields}`,
+      accessToken,
+      (json) =>
+        ((json as { products?: ApiProduct[] }).products ?? []).map(mapProduct),
+      PRODUCT_CAP,
+    );
 
-    try {
-      // 2. Fetch Data from Shopify
-      console.log(`[Shopify Sync] Fetching data for ${shopDomain}`);
+    // 4. Customers.
+    const customerFields =
+      "id,email,first_name,last_name,orders_count,total_spent,created_at";
+    const customersPaged = await fetchPaged<RawShopifyCustomer>(
+      `${base}/customers.json?limit=${PAGE_LIMIT}&fields=${customerFields}`,
+      accessToken,
+      (json) =>
+        ((json as { customers?: ApiCustomer[] }).customers ?? []).map(
+          mapCustomer,
+        ),
+      CUSTOMER_CAP,
+    );
 
-      let shop: ShopifyShop;
-      let orders: ShopifyOrder[] = [];
-      let products: ShopifyProduct[] = [];
-
-      // Check if sandbox / test mode is requested explicitly
-      const isSandbox =
-        shopDomain.toLowerCase().includes("test") ||
-        shopDomain.toLowerCase().includes("demo") ||
-        shopDomain.toLowerCase().includes("sandbox") ||
-        accessToken.toLowerCase().includes("test") ||
-        accessToken.toLowerCase().includes("demo") ||
-        accessToken.toLowerCase().includes("sandbox");
-
-      if (isSandbox) {
-        console.log(
-          "[Shopify Sync] Sandbox credentials detected. Using high-fidelity sandbox data.",
-        );
-        shop = {
-          name: shopDomain.split(".")[0].toUpperCase() + " Store",
-          domain: shopDomain,
-          myshopify_domain: shopDomain,
-          currency: "GBP",
-          country_name: "United Kingdom",
-          created_at: new Date(
-            Date.now() - 365 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        };
-        orders = getSandboxOrders();
-        products = getSandboxProducts();
-      } else {
-        try {
-          // Fetch Shop details
-          const shopRes = await fetch(
-            `https://${shopDomain}/admin/api/2024-01/shop.json`,
-            {
-              headers: {
-                "X-Shopify-Access-Token": accessToken,
-                Accept: "application/json",
-              },
-            },
-          );
-
-          if (!shopRes.ok) {
-            throw new Error(`Shopify API returned status ${shopRes.status}`);
-          }
-          const shopData = await shopRes.json();
-          shop = shopData.shop;
-
-          // Fetch Recent Orders (limit to 50 for API performance and token limitations)
-          const ordersRes = await fetch(
-            `https://${shopDomain}/admin/api/2024-01/orders.json?status=any&limit=50&fields=total_price,created_at,customer,line_items`,
-            {
-              headers: {
-                "X-Shopify-Access-Token": accessToken,
-                Accept: "application/json",
-              },
-            },
-          );
-          const ordersData = ordersRes.ok
-            ? await ordersRes.json()
-            : { orders: [] };
-          orders = ordersData.orders || [];
-
-          // Fetch Products (limit to 50)
-          const productsRes = await fetch(
-            `https://${shopDomain}/admin/api/2024-01/products.json?limit=50&fields=id,title,variants`,
-            {
-              headers: {
-                "X-Shopify-Access-Token": accessToken,
-                Accept: "application/json",
-              },
-            },
-          );
-          const productsData = productsRes.ok
-            ? await productsRes.json()
-            : { products: [] };
-          products = productsData.products || [];
-        } catch (fetchError) {
-          console.warn(
-            "[Shopify Sync] Real API connection failed, falling back to Sandbox simulation for testing:",
-            fetchError,
-          );
-          shop = {
-            name: shopDomain.split(".")[0].toUpperCase() + " Store",
-            domain: shopDomain,
-            myshopify_domain: shopDomain,
-            currency: "GBP",
-            country_name: "United Kingdom",
-            created_at: new Date(
-              Date.now() - 365 * 24 * 60 * 60 * 1000,
-            ).toISOString(),
-          };
-          orders = getSandboxOrders();
-          products = getSandboxProducts();
-        }
-      }
-
-      // 3. Prepare payload for Gemini
-      const shopDataSummary = {
+    return {
+      shop: {
+        shopDomain: shop.myshopify_domain ?? shopDomain,
         name: shop.name,
-        domain: shop.domain,
-        myshopify_domain: shop.myshopify_domain,
-        currency: shop.currency,
+        currency,
         country: shop.country_name,
-        created_at: shop.created_at,
-        industry: industry,
-      };
-
-      const ordersSummary: OrderSummary[] = orders.map((o) => ({
-        total_price: o.total_price,
-        created_at: o.created_at,
-        customer_id: o.customer?.id ?? null,
-        line_items:
-          o.line_items?.map((li) => ({
-            title: li.title,
-            quantity: li.quantity,
-            price: li.price,
-          })) || [],
-      }));
-
-      const productsSummary: ProductSummary[] = products.map((p) => ({
-        id: p.id,
-        title: p.title,
-        variants_count: p.variants?.length || 0,
-      }));
-
-      console.log(
-        `[Shopify Sync] Fetched/Simulated shop: ${shop.name}. Orders: ${orders.length}. Products: ${products.length}.`,
-      );
-
-      // 4. Normalize to M&A metrics (Gemini, or rule-based fallback).
-      return await normalizeStoreData({
-        shopDataSummary,
-        ordersSummary,
-        productsSummary,
-        industry,
-      });
-    } catch (error) {
-      console.error("[Shopify Sync] Error during sync:", error);
-      throw new Error(
-        (error instanceof Error && error.message) ||
-          "An unexpected error occurred during Shopify synchronization.",
-      );
-    }
-  });
-
-// Resolve the Gemini key from server env (or Vite-injected env) — server-only.
-function resolveGeminiKey(): string | undefined {
-  const importMetaEnv = (
-    import.meta as unknown as { env?: Record<string, string | undefined> }
-  ).env;
-  return (
-    process.env.VITE_GEMINI_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    importMetaEnv?.VITE_GEMINI_API_KEY ||
-    importMetaEnv?.GEMINI_API_KEY
-  );
-}
-
-// Shared normalizer: given condensed store summaries, produce the ExitEcom
-// metrics payload via Gemini, falling back to deterministic math without a key.
-async function normalizeStoreData(args: {
-  shopDataSummary: ShopSummary;
-  ordersSummary: OrderSummary[];
-  productsSummary: ProductSummary[];
-  industry: string;
-}) {
-  const { shopDataSummary, ordersSummary, productsSummary, industry } = args;
-  const apiKey = resolveGeminiKey();
-
-  // Without a key, run the deterministic rule-based fallback.
-  if (!apiKey) {
-    console.warn(
-      "[Shopify Sync] No Gemini API key provided. Using rule-based fallback normalization.",
-    );
-    return getFallbackNormalization({
-      shopDataSummary,
-      ordersSummary,
-      productsSummary,
-      industry,
-    });
-  }
-
-  // Invoke Gemini API
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-  const prompt = `
-You are an expert M&A Advisor and E-commerce Financial Analyst. Your job is to analyze raw store data from a Shopify backend and normalize the metrics for ExitEcom's Valuation and Exit Readiness Engine.
-
-Here is the raw Shopify store details, products, and order history:
----
-Shop Information:
-${JSON.stringify(shopDataSummary, null, 2)}
-
-Products List:
-${JSON.stringify(productsSummary, null, 2)}
-
-Recent Orders (Sample of up to 50):
-${JSON.stringify(ordersSummary, null, 2)}
----
-
-Guidelines for metrics normalization:
-1. **Revenue TTM:** Look at the orders. Project/extrapolate the annual revenue (TTM) based on the sample frequency and currency. If the sample spans X days with total revenue Y, project annual as Y * (365 / X). Ensure the number is a realistic annual volume (e.g. between £100,000 and £5,000,000).
-2. **Gross Margin & Profits:** For the given industry "${industry}", use industry-standard benchmarks. For skincare/apparel, typical gross margins are 60-70%. For electronics, 25-40%. Calculate COGS and Gross Profit accordingly.
-3. **EBITDA & SDE:** Standard e-commerce net profit (EBITDA) is 15-25% of revenue, and SDE (Seller's Discretionary Earnings) is slightly higher (e.g. adding back founder salary). Calculate these realistically based on TTM revenue.
-4. **Average Order Value (AOV):** Calculate exactly from the orders sample. AOV = sum(total_price) / count(orders).
-5. **Repeat Purchase Rate:** Calculate from the orders sample. It is the percentage of orders from returning customers (customers who placed more than one order in the sample), or unique customers who appear multiple times. If sample size is small or no customer data, assume a reasonable repeat rate between 15% and 35%.
-6. **Product Concentration:** Analyze the line items. What percentage of total sample revenue comes from the top-selling product? Return this as a decimal between 0 and 1.
-7. **Exit Score:** Rate from 10-100. Base it on:
-   - Low product concentration is positive (+10 points).
-   - High repeat rate (>25%) is positive (+10 points).
-   - High revenue scales increases score.
-   - Return a score, plus a 'scoreTier' ("Emerging", "Solid Asset", "Strong Asset", "Institutional Grade").
-8. **Valuation Range:** Low, Mid, High, and Optimised valuations. Low is SDE * 1.5. Mid is SDE * 2.0. High is SDE * 2.5. Optimised is SDE * 3.2. Current Multiple is valuationMid / SDE. Optimised Multiple is valuationOptimised / SDE. Value Gap is valuationOptimised - valuationMid.
-9. **Risks:** Provide 3 detailed risks specific to their data (e.g. if AOV is low, product concentration is high, or marketing dependencies).
-10. **Actions:** Provide 3 step-by-step actionable recommendations to prepare for an exit.
-
-Return ONLY a valid, parseable JSON object. No Markdown code fences, no extra text, just raw JSON. The JSON structure MUST match this exact shape:
-{
-  "businessUpdate": {
-    "name": "Shop Name",
-    "ownerName": "Founder",
-    "industry": "${industry}",
-    "channel": "Shopify Connect",
-    "age": "2.5 years",
-    "country": "Shop Country",
-    "url": "Shop Domain",
-    "revenueTTM": 450000,
-    "ebitda": 90000,
-    "sde": 115000,
-    "grossMargin": 0.65,
-    "netMargin": 0.20,
-    "adSpend": 110000,
-    "cogs": 157500,
-    "grossProfit": 292500,
-    "opex": 147500,
-    "grossRevenue": 450000,
-    "netRevenue": 435000,
-    "exitScore": 72,
-    "scoreTier": "Strong Asset",
-    "valuationLow": 172500,
-    "valuationMid": 230000,
-    "valuationHigh": 287500,
-    "valuationOptimised": 368000,
-    "currentMultiple": 2.0,
-    "optimisedMultiple": 3.2,
-    "quickSale": 172500,
-    "fairMarket": 230000,
-    "optimised": 368000,
-    "adjustedEarnings": 115000,
-    "valueGap": 138000,
-    "repeatRate": 0.28,
-    "avgOrderValue": 68.5,
-    "roas": 2.8,
-    "topProductShare": 0.42,
-    "riskScore": 38,
-    "totalValueLost": 95000,
-    "dataConfidence": 88
-  },
-  "risks": [
-    {
-      "title": "Risk Title",
-      "severity": "high", // high, medium, low
-      "description": "Detailed description...",
-      "impact": -35000,
-      "buyerSees": "What the buyer sees...",
-      "buyerFears": "What they fear...",
-      "buyerDoes": "What they will do...",
-      "recommendation": "How to fix..."
-    }
-  ],
-  "actions": [
-    {
-      "title": "Action Title",
-      "priority": "high", // high, medium, low
-      "uplift": 35000,
-      "time": "2-4 weeks",
-      "problem": "What problem this solves...",
-      "steps": ["Step 1", "Step 2", "Step 3"]
-    }
-  ]
-}
-`;
-
-  const response = await model.generateContent(prompt);
-  const responseText = response.response.text();
-  console.log("[Shopify Sync] Gemini Raw Response Received.");
-
-  // Clean up markdown block if returned
-  const cleanText = responseText
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .trim();
-  return JSON.parse(cleanText);
-}
-
-interface ConnectViaKeyInput {
-  connectionKey: string;
-  industry?: string;
-  // Optional override of the ExitEcom Analytic app base URL (defaults to env).
-  appUrl?: string;
-}
-
-// Shape returned by the ExitEcom Analytic Shopify app's /api/store-data endpoint.
-interface BrokerStoreData {
-  shop: {
-    name: string;
-    domain: string;
-    myshopifyDomain: string;
-    currency: string;
-    country: string;
-    createdAt: string;
-  };
-  orders: {
-    totalPrice: number;
-    createdAt: string;
-    customerId: string | null;
-    lineItems: { title: string; quantity: number; price: number }[];
-  }[];
-  products: { id: string; title: string; variantsCount: number }[];
-}
-
-// Connect via the ExitEcom Analytic Shopify app: the merchant pastes the
-// connection key shown after installing the app. We pull their store data from
-// the app's broker endpoint (the Shopify token never reaches us), then run the
-// same normalization pipeline as the direct-token path.
-export const connectShopifyViaKeyFn = createServerFn({ method: "POST" })
-  .inputValidator((input: ConnectViaKeyInput) => input)
-  .handler(async ({ data }) => {
-    const { connectionKey, industry = "Beauty & Skincare" } = data;
-
-    if (!connectionKey || !connectionKey.trim()) {
-      throw new Error("Please paste your ExitEcom connection key.");
-    }
-
-    const baseUrl = (
-      data.appUrl ||
-      process.env.SHOPIFY_ANALYTIC_APP_URL ||
-      process.env.VITE_SHOPIFY_ANALYTIC_APP_URL ||
-      ""
-    )
-      .trim()
-      .replace(/\/+$/, "");
-
-    if (!baseUrl) {
-      throw new Error(
-        "The ExitEcom Analytic app URL is not configured. Set SHOPIFY_ANALYTIC_APP_URL.",
-      );
-    }
-
-    let store: BrokerStoreData;
-    try {
-      const res = await fetch(
-        `${baseUrl}/api/store-data?key=${encodeURIComponent(connectionKey.trim())}`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!res.ok) {
-        let message = `Connector returned status ${res.status}.`;
-        try {
-          const body = (await res.json()) as { error?: string };
-          if (body?.error) message = body.error;
-        } catch {
-          /* keep status-based message */
-        }
-        throw new Error(message);
-      }
-      store = (await res.json()) as BrokerStoreData;
-    } catch (error) {
-      console.error("[Shopify Connect] Broker fetch failed:", error);
-      throw new Error(
-        (error instanceof Error && error.message) ||
-          "Could not reach the ExitEcom Analytic connector.",
-      );
-    }
-
-    // Map the broker contract onto the condensed summaries the normalizer expects.
-    const shopDataSummary: ShopSummary = {
-      name: store.shop.name,
-      domain: store.shop.domain,
-      myshopify_domain: store.shop.myshopifyDomain,
-      currency: store.shop.currency,
-      country: store.shop.country,
-      created_at: store.shop.createdAt,
-      industry,
+        plan: shop.plan_name ?? null,
+        shopCreatedAt: shop.created_at,
+      },
+      orders: ordersPaged.items,
+      products: productsPaged.items,
+      customers: attachLastOrderDates(customersPaged.items, ordersPaged.items),
+      counts: {
+        orders: ordersPaged.items.length,
+        products: productsPaged.items.length,
+        customers: customersPaged.items.length,
+      },
+      capped: {
+        orders: ordersPaged.capped,
+        products: productsPaged.capped,
+        customers: customersPaged.capped,
+      },
+      sandbox: false,
     };
-    const ordersSummary: OrderSummary[] = (store.orders ?? []).map((o) => ({
-      total_price: String(o.totalPrice ?? 0),
-      created_at: o.createdAt,
-      customer_id: o.customerId ?? null,
-      line_items: (o.lineItems ?? []).map((li) => ({
-        title: li.title,
-        quantity: li.quantity,
-        price: String(li.price ?? 0),
-      })),
-    }));
-    const productsSummary: ProductSummary[] = (store.products ?? []).map(
-      (p) => ({
-        id: p.id,
-        title: p.title,
-        variants_count: p.variantsCount ?? 0,
-      }),
-    );
-
-    console.log(
-      `[Shopify Connect] Pulled ${ordersSummary.length} orders / ${productsSummary.length} products for ${shopDataSummary.name} via connection key.`,
-    );
-
-    return await normalizeStoreData({
-      shopDataSummary,
-      ordersSummary,
-      productsSummary,
-      industry,
-    });
   });
-
-// Helper for high-fidelity fallback calculations when no API key is provided
-function getFallbackNormalization(data: {
-  shopDataSummary: ShopSummary;
-  ordersSummary: OrderSummary[];
-  productsSummary: ProductSummary[];
-  industry: string;
-}) {
-  const { shopDataSummary, ordersSummary, productsSummary, industry } = data;
-
-  // 1. AOV calculation
-  let totalOrderVal = 0;
-  ordersSummary.forEach((o) => {
-    totalOrderVal += parseFloat(o.total_price || "0");
-  });
-  const count = ordersSummary.length || 1;
-  const avgOrderValue = Math.round((totalOrderVal / count) * 100) / 100 || 65.0;
-
-  // 2. Extrapolate TTM Revenue
-  let revenueTTM = 480000; // fallback default
-  if (ordersSummary.length > 1) {
-    const dates = ordersSummary.map((o) => new Date(o.created_at).getTime());
-    const minDate = Math.min(...dates);
-    const maxDate = Math.max(...dates);
-    const timespanMs = maxDate - minDate;
-    const timespanDays = timespanMs / (1000 * 60 * 60 * 24) || 1;
-
-    // Extrapolate
-    const extrapolatedAnnual = totalOrderVal * (365 / timespanDays);
-    if (extrapolatedAnnual > 50000) {
-      revenueTTM = Math.round(
-        Math.min(Math.max(extrapolatedAnnual, 150000), 2500000),
-      );
-    }
-  }
-
-  // 3. Repeat Rate calculation
-  let repeatRate = 0.22; // default
-  if (ordersSummary.length > 5) {
-    const customerCounts: Record<string, number> = {};
-    ordersSummary.forEach((o) => {
-      if (o.customer_id) {
-        customerCounts[o.customer_id] =
-          (customerCounts[o.customer_id] || 0) + 1;
-      }
-    });
-    const uniqueCustCount = Object.keys(customerCounts).length;
-    if (uniqueCustCount > 0) {
-      const repeatCustCount = Object.values(customerCounts).filter(
-        (c) => c > 1,
-      ).length;
-      repeatRate =
-        Math.round((repeatCustCount / uniqueCustCount) * 100) / 100 || 0.22;
-    }
-  }
-
-  // 4. Product Concentration
-  let topProductShare = 0.35;
-  if (ordersSummary.length > 0) {
-    const productRevenues: Record<string, number> = {};
-    ordersSummary.forEach((o) => {
-      o.line_items?.forEach((li) => {
-        const title = li.title || "Unknown Product";
-        const rev = parseFloat(li.price || "0") * (li.quantity || 1);
-        productRevenues[title] = (productRevenues[title] || 0) + rev;
-      });
-    });
-    const totalSampleRev = Object.values(productRevenues).reduce(
-      (a, b) => a + b,
-      0,
-    );
-    if (totalSampleRev > 0) {
-      const maxProductRev = Math.max(...Object.values(productRevenues));
-      topProductShare =
-        Math.round((maxProductRev / totalSampleRev) * 100) / 100 || 0.35;
-    }
-  }
-
-  // Margins and multiples
-  const grossMargin =
-    industry.toLowerCase().includes("beauty") ||
-    industry.toLowerCase().includes("skincare")
-      ? 0.72
-      : 0.6;
-  const netMargin = 0.18;
-  const grossProfit = Math.round(revenueTTM * grossMargin);
-  const cogs = revenueTTM - grossProfit;
-  const ebitda = Math.round(revenueTTM * netMargin);
-  const sde = Math.round(ebitda * 1.25);
-  const opex = grossProfit - ebitda;
-  const adSpend = Math.round(revenueTTM * 0.22);
-  const netRevenue = Math.round(revenueTTM * 0.95);
-  const grossRevenue = revenueTTM;
-
-  const exitScore = Math.round(60 + repeatRate * 50 - topProductShare * 30);
-  const scoreTier =
-    exitScore > 75
-      ? "Strong Asset"
-      : exitScore > 60
-        ? "Solid Asset"
-        : "Emerging";
-
-  const sdeMultiple = exitScore > 75 ? 2.6 : exitScore > 60 ? 2.1 : 1.7;
-  const optMultiple = sdeMultiple * 1.4;
-
-  const valuationMid = Math.round(sde * sdeMultiple);
-  const valuationLow = Math.round(sde * (sdeMultiple - 0.3));
-  const valuationHigh = Math.round(sde * (sdeMultiple + 0.3));
-  const valuationOptimised = Math.round(sde * optMultiple);
-  const valueGap = valuationOptimised - valuationMid;
-
-  return {
-    businessUpdate: {
-      name: shopDataSummary.name || "My Shopify Store",
-      ownerName: "Founder",
-      industry,
-      channel: "Shopify Connect (Sandbox Mode)",
-      age: "2.4 years",
-      country: shopDataSummary.country || "United Kingdom",
-      url: shopDataSummary.domain || "myshop.com",
-      revenueTTM,
-      ebitda,
-      sde,
-      grossMargin,
-      netMargin,
-      adSpend,
-      cogs,
-      grossProfit,
-      opex,
-      grossRevenue,
-      netRevenue,
-      exitScore,
-      scoreTier,
-      valuationLow,
-      valuationMid,
-      valuationHigh,
-      valuationOptimised,
-      currentMultiple: sdeMultiple,
-      optimisedMultiple: optMultiple,
-      quickSale: valuationLow,
-      fairMarket: valuationMid,
-      optimised: valuationOptimised,
-      adjustedEarnings: sde,
-      valueGap,
-      repeatRate,
-      avgOrderValue,
-      roas: 2.9,
-      topProductShare,
-      riskScore: Math.round(100 - exitScore),
-      totalValueLost: valueGap,
-      dataConfidence: 85,
-    },
-    risks: [
-      {
-        title: "Product Concentration Risk",
-        severity: topProductShare > 0.5 ? "high" : "medium",
-        description: `Your top product represents ${Math.round(topProductShare * 100)}% of recent revenue.`,
-        impact: -Math.round(valueGap * 0.35),
-        buyerSees:
-          "High vulnerability to single-item demand shifts or supply chain breaks.",
-        buyerFears:
-          "If the hero product goes out of stock or becomes obsolete, revenue collapses.",
-        buyerDoes:
-          "Lower the valuation multiple or request an earnout structure.",
-        recommendation:
-          "Launch complementary SKU bundles to distribute acquisition traffic.",
-      },
-      {
-        title: "Customer Retention Profile",
-        severity: repeatRate < 0.2 ? "medium" : "low",
-        description: `Recent cohort repeat purchase rate is sitting at ${Math.round(repeatRate * 100)}%.`,
-        impact: -Math.round(valueGap * 0.25),
-        buyerSees:
-          "High acquisition dependency. High churn risks margin stability.",
-        buyerFears:
-          "Rising ad prices on Meta/Google will erode the bottom-line margin rapidly.",
-        buyerDoes: "Incentivize retention with post-purchase workflows.",
-        recommendation:
-          "Implement automated replenishment flow and a VIP newsletter sequence.",
-      },
-      {
-        title: "Marketing Concentration",
-        severity: "medium",
-        description:
-          "Paid social represents the core revenue engine without a diversified search/email moat.",
-        impact: -Math.round(valueGap * 0.3),
-        buyerSees: "Fragile acquisition channel dependency.",
-        buyerFears:
-          "Ad account bans or algorithm changes threaten cashflow sustainability.",
-        buyerDoes: "Discount EBITDA multiple.",
-        recommendation:
-          "Establish organic SEO foundations and scale the SMS subscriber base.",
-      },
-    ],
-    actions: [
-      {
-        title: "Launch Adjacent SKU Trial",
-        priority: "high",
-        uplift: Math.round(valueGap * 0.4),
-        time: "3-6 weeks",
-        problem:
-          "Reduces product concentration to elevate the valuation multiple.",
-        steps: [
-          "Identify adjacent consumer needs matching current hero product profiles.",
-          "Run a pre-order campaign or bundle deal with existing customers.",
-          "Establish high-margin supplier agreements for the secondary product.",
-        ],
-      },
-      {
-        title: "Deploy Automated Lifecycle Sequences",
-        priority: "high",
-        uplift: Math.round(valueGap * 0.3),
-        time: "2 weeks",
-        problem:
-          "Boosts repeat purchase rates and LTV, lessening marketing reliance.",
-        steps: [
-          "Set up a 3-part replenishment reminder based on product usage timeframes.",
-          "Build a post-purchase review-acquisition sequence with dynamic discounts.",
-          "Stand up a browse abandonment flow on your ESP.",
-        ],
-      },
-      {
-        title: "Optimize COGS & Increase Contribution Margin",
-        priority: "medium",
-        uplift: Math.round(valueGap * 0.2),
-        time: "4 weeks",
-        problem:
-          "Improves EBITDA margin, yielding a direct multiplier effect on valuation.",
-        steps: [
-          "Negotiate bulk volume pricing with your main manufacturer.",
-          "Optimize primary custom packaging size to reduce domestic shipping fees.",
-          "Consolidate shipping partners to negotiate lower outbound postage costs.",
-        ],
-      },
-    ],
-  };
-}
