@@ -352,6 +352,64 @@ function buildSandbox(shopDomain: string): ShopifySyncResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// ExitEcom Analytic connector (connection-key path).
+//
+// Instead of pasting a custom-app Admin token, the merchant installs the
+// official ExitEcom app via OAuth (handled by the separate ExitEcom Analytic
+// service). That service mints a per-store "connection key" and holds the
+// Shopify token server-side. Here we exchange that key for the full dataset by
+// calling `<SHOPIFY_ANALYTIC_APP_URL>/api/store-data?key=…`, which returns the
+// exact same ShopifySyncResult shape the custom-app path produces — so the rest
+// of the app (persistence, reports) is identical regardless of connector.
+// ---------------------------------------------------------------------------
+
+export interface AnalyticSyncInput {
+  connectionKey: string;
+}
+
+export const syncViaConnectionKeyFn = createServerFn({ method: "POST" })
+  .inputValidator((input: AnalyticSyncInput) => input)
+  .handler(async ({ data }): Promise<ShopifySyncResult> => {
+    const connectionKey = data.connectionKey?.trim();
+    if (!connectionKey) {
+      throw new Error("An ExitEcom Analytic connection key is required.");
+    }
+
+    let base = (process.env.SHOPIFY_ANALYTIC_APP_URL ?? "")
+      .trim()
+      .replace(/\/+$/, "");
+
+    // Demo keys, or no configured backend, short-circuit to deterministic
+    // sandbox data so the flow is fully usable in local/demo environments.
+    if (!base || /test|demo|sandbox/i.test(connectionKey)) {
+      return buildSandbox("exitecom-analytic-demo.myshopify.com");
+    }
+
+    if (!/^https?:\/\//.test(base)) base = `https://${base}`;
+
+    const res = await fetch(
+      `${base}/api/store-data?key=${encodeURIComponent(connectionKey)}`,
+      { headers: { Accept: "application/json" } },
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        res.status === 401 || res.status === 400
+          ? "That connection key wasn't recognised. Re-install ExitEcom on your store and copy the key shown after install."
+          : `The ExitEcom Analytic service is unavailable (returned ${res.status}). Please try again shortly.`,
+      );
+    }
+
+    const result = (await res.json()) as ShopifySyncResult;
+    if (!result?.shop?.shopDomain) {
+      throw new Error(
+        "The ExitEcom Analytic service returned an unexpected response.",
+      );
+    }
+    return result;
+  });
+
 export const syncShopifyStoreFn = createServerFn({ method: "POST" })
   .inputValidator((input: ShopifySyncInput) => input)
   .handler(async ({ data }): Promise<ShopifySyncResult> => {
