@@ -57,9 +57,15 @@ regenerates on dev/build.
 - **`index.tsx`** is a pure redirect (`beforeLoad → redirect({ to: "/signup" })`).
   There is intentionally no marketing landing page in the app.
 
-> Note: route components currently render regardless of auth state (no global
-> auth guard / `beforeLoad` redirect on `/app/*`). Auth gating is a known gap —
-> add it in `app.tsx`'s `beforeLoad` if you need to enforce it.
+> Auth gating: `app.tsx` wraps the shared `/app` layout in `<RequireAuth>`
+> (`src/components/auth/RouteGuards.tsx`), so every `/app/*` page is guarded at
+> once. The guard shows a loader while auth resolves, redirects unauthenticated
+> visitors to `/login` (remembering their target via a `redirect` search param),
+> and reacts to mid-session expiry. Public-only pages use `<RequireGuest>`.
+>
+> Inside the guard, `app.tsx` also mounts `<BusinessDataProvider>` so the Sidebar
+> and the routed page share a single business-data instance (one backend
+> hydration per session, not one per consuming component).
 
 ---
 
