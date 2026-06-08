@@ -11,16 +11,24 @@ export const Route = createFileRoute("/_app/data-sources")({
 });
 
 function DataSources() {
-  const { business, disconnectShopify, disconnectMeta } = useBusinessData();
+  const { business, disconnectShopify, disconnectMeta, disconnectGoogle } =
+    useBusinessData();
 
   const disconnectFor = (name: string) =>
-    name === "Meta Ads" ? disconnectMeta : disconnectShopify;
+    name === "Meta Ads"
+      ? disconnectMeta
+      : name === "Google Ads"
+        ? disconnectGoogle
+        : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
   );
   const isMetaConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("meta"),
+  );
+  const isGoogleConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("google"),
   );
 
   const platforms = [
@@ -43,9 +51,10 @@ function DataSources() {
     },
     {
       name: "Google Ads",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
+      section: "Marketing",
+      status: isGoogleConnected ? "connected" : "missing",
+      sync: isGoogleConnected ? "Synced live" : "—",
+      impact: "ROAS verified on high-intent channels",
       explanation: "Verify ROAS on high-intent channels.",
     },
     {
@@ -176,6 +185,17 @@ function DataSources() {
                               p.status === "connected"
                                 ? "/meta-data"
                                 : "/meta-connect"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ) : p.name === "Google Ads" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/google-data"
+                                : "/google-connect"
                             }
                             className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                           >

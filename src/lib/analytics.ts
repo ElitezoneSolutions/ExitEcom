@@ -81,13 +81,17 @@ export interface AnalyticsMeta {
   campaigns: AnalyticsMetaCampaign[];
 }
 
+// Both ad platforms share the same feed shape, so they're scored uniformly.
+export type AnalyticsAdsFeed = AnalyticsMeta;
+
 export interface AnalyticsInput {
   store: AnalyticsStore | null;
   orders: AnalyticsOrder[];
   products: AnalyticsProduct[];
   customers: AnalyticsCustomer[];
   industry: string;
-  meta?: AnalyticsMeta | null;
+  meta?: AnalyticsAdsFeed | null;
+  google?: AnalyticsAdsFeed | null;
 }
 
 export interface ProductRevenue {
@@ -121,14 +125,17 @@ export interface StoreMetrics {
   ebitda: number;
   sde: number;
   opex: number;
-  adSpend: number;
-  roas: number;
-  // Meta Ads signals — populated only when a Meta feed is supplied. When
-  // adSpendVerified is false, adSpend is a benchmark estimate and roas is 0.
+  adSpend: number; // total verified ad spend (sum across connected platforms)
+  roas: number; // headline overall ROAS = total conversion value ÷ total spend
+  // Ad-platform signals — populated when any ad feed (Meta/Google) is supplied.
+  // When adSpendVerified is false, adSpend is a benchmark estimate and roas is 0.
   adSpendVerified: boolean;
-  blendedCac: number; // ad spend ÷ new customers (buyer-credible, not Meta ROAS)
-  adSpendStability: number; // 0–1; 1 = perfectly steady monthly spend
-  topCampaignShare: number; // 0–1; spend concentration in the top campaign
+  blendedCac: number; // total ad spend ÷ new customers (buyer-credible)
+  adSpendStability: number; // 0–1; avg monthly-spend steadiness across platforms
+  topCampaignShare: number; // 0–1; worst single-campaign spend concentration
+  // 0–1 Marketing Efficiency score: average of each connected platform's own
+  // (ROAS + stability) score, so platforms are scored separately not blended.
+  marketingEfficiencyRatio: number;
   businessAgeYears: number;
   businessAge: string;
   growthRate: number;
@@ -314,36 +321,58 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   const opex = round(grossProfit - ebitda);
   const netRevenue = round(revenueTTM * 0.95);
 
-  // Ad spend + ROAS: use the real Meta feed when supplied, else a benchmark
-  // estimate. Meta's reported ROAS is self-attributed (view-through + 7-day
-  // click), so the buyer-credible figure we lead with is blended CAC = ad spend
-  // ÷ new customers — computed below, not taken from Meta.
-  const meta = input.meta;
-  const metaConnected = !!meta && meta.monthly.length > 0;
+  // Ad spend + ROAS from the real ad feeds (Meta and/or Google), else a benchmark
+  // estimate. Platforms are scored SEPARATELY: each contributes its own ROAS +
+  // spend-stability score, and Marketing Efficiency is their average (so a weak
+  // channel isn't masked by a strong one). Total spend is summed for the
+  // buyer-credible blended CAC = total ad spend ÷ new customers (computed below).
+  const adFeeds = [input.meta, input.google].filter(
+    (f): f is AnalyticsAdsFeed => !!f && f.monthly.length > 0,
+  );
+  const adSpendVerified = adFeeds.length > 0;
   let adSpend = round(revenueTTM * 0.22);
   let roas = 0;
   let blendedCac = 0;
   let adSpendStability = 0;
   let topCampaignShare = 0;
-  if (metaConnected) {
-    const months = meta!.monthly;
-    const metaSpend = months.reduce((s, m) => s + m.spend, 0);
-    const metaValue = months.reduce((s, m) => s + m.conversionValue, 0);
-    adSpend = round(metaSpend);
-    roas = metaSpend > 0 ? round2(metaValue / metaSpend) : 0;
-    // Coefficient of variation of monthly spend → stability (1 = perfectly flat).
-    const mean = metaSpend / months.length;
-    if (mean > 0) {
-      const variance =
-        months.reduce((s, m) => s + (m.spend - mean) ** 2, 0) / months.length;
-      adSpendStability = clamp01(1 - Math.sqrt(variance) / mean);
-    }
-    const campSpend = meta!.campaigns.reduce((s, c) => s + c.spend, 0);
-    const topSpend = meta!.campaigns.reduce(
-      (mx, c) => Math.max(mx, c.spend),
-      0,
+  let marketingEfficiencyRatio = 0;
+  if (adSpendVerified) {
+    const summaries = adFeeds.map((f) => {
+      const spend = f.monthly.reduce((s, m) => s + m.spend, 0);
+      const value = f.monthly.reduce((s, m) => s + m.conversionValue, 0);
+      const mean = spend / f.monthly.length;
+      let stability = 0;
+      if (mean > 0) {
+        const variance =
+          f.monthly.reduce((s, m) => s + (m.spend - mean) ** 2, 0) /
+          f.monthly.length;
+        stability = clamp01(1 - Math.sqrt(variance) / mean);
+      }
+      const campSpend = f.campaigns.reduce((s, c) => s + c.spend, 0);
+      const topSpend = f.campaigns.reduce((mx, c) => Math.max(mx, c.spend), 0);
+      return {
+        spend,
+        value,
+        stability,
+        roas: spend > 0 ? value / spend : 0,
+        topShare: campSpend > 0 ? topSpend / campSpend : 0,
+      };
+    });
+    const totalSpend = summaries.reduce((s, p) => s + p.spend, 0);
+    const totalValue = summaries.reduce((s, p) => s + p.value, 0);
+    adSpend = round(totalSpend);
+    roas = totalSpend > 0 ? round2(totalValue / totalSpend) : 0;
+    adSpendStability = round2(
+      summaries.reduce((s, p) => s + p.stability, 0) / summaries.length,
     );
-    topCampaignShare = campSpend > 0 ? topSpend / campSpend : 0;
+    topCampaignShare = summaries.reduce((mx, p) => Math.max(mx, p.topShare), 0);
+    // Separate scoring: average of each platform's own (ROAS + stability) score.
+    marketingEfficiencyRatio = clamp01(
+      summaries.reduce(
+        (s, p) => s + (0.6 * clamp01(p.roas / 3) + 0.4 * p.stability),
+        0,
+      ) / summaries.length,
+    );
   }
 
   // Business age from store creation date.
@@ -358,7 +387,7 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     businessAgeYears > 0 ? `${businessAgeYears.toFixed(1)} years` : "—";
 
   const newCustomers = Math.max(0, totalCustomers - returningCustomers);
-  if (metaConnected) {
+  if (adSpendVerified) {
     blendedCac = round2(adSpend / Math.max(1, newCustomers));
   }
 
@@ -387,10 +416,11 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     opex,
     adSpend,
     roas,
-    adSpendVerified: metaConnected,
+    adSpendVerified,
     blendedCac,
     adSpendStability,
     topCampaignShare,
+    marketingEfficiencyRatio,
     businessAgeYears,
     businessAge,
     growthRate,
@@ -422,11 +452,10 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
       "marketingEfficiency",
       "Marketing Efficiency & Stability",
       15,
-      // With a verified Meta feed: blend ROAS (3x = strong) with monthly spend
-      // stability. Without it, fall back to the repeat-rate proxy.
-      m.adSpendVerified
-        ? 0.6 * clamp01(m.roas / 3) + 0.4 * m.adSpendStability
-        : m.repeatRate / 0.3,
+      // With a verified ad feed: the average of each connected platform's own
+      // ROAS+stability score (computed in computeMetrics — platforms scored
+      // separately). Without one, fall back to the repeat-rate proxy.
+      m.adSpendVerified ? m.marketingEfficiencyRatio : m.repeatRate / 0.3,
     ),
     dim(
       "customerEconomics",
@@ -600,14 +629,14 @@ export function computeRisks(m: StoreMetrics, v: ValuationResult): RiskItem[] {
       title: "Single-Channel Dependency",
       severity: "medium",
       description: m.adSpendVerified
-        ? `All tracked revenue flows through Shopify, with acquisition concentrated on Meta (top campaign is ${pct(m.topCampaignShare)} of ad spend).`
+        ? `All tracked revenue flows through Shopify, with paid acquisition concentrated in a few campaigns (the top campaign is ${pct(m.topCampaignShare)} of ad spend).`
         : "All tracked revenue flows through Shopify with no diversified channel evidence connected.",
       impact: -round(gap * 0.2),
       buyerSees: "A business renting one storefront/acquisition stack.",
       buyerFears: "Platform, ad-account or algorithm shifts threaten cashflow.",
       buyerDoes: "Require channel-diversification proof before closing.",
       recommendation: m.adSpendVerified
-        ? "Diversify acquisition beyond Meta and build an owned audience (email/SMS) to de-risk the ad stack."
+        ? "Diversify acquisition across channels and build an owned audience (email/SMS) to de-risk the ad stack."
         : "Connect ad and analytics sources, and build an owned audience.",
     },
   ];
