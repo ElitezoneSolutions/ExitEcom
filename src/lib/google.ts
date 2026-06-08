@@ -155,25 +155,84 @@ function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Pull the human-readable reason out of a Google Ads API error body so the real
-// cause (wrong API version, manager account, unapproved token, etc.) surfaces
-// instead of a generic message.
-function googleErrorDetail(body: string): string {
+// Dig the specific Google Ads error out of a response body. A 403/400 from the
+// Ads API wraps the real cause in a GoogleAdsFailure
+// (details[].errors[].errorCode → { someError: "ENUM_VALUE" }, plus a message),
+// while the top-level message is just a generic "caller does not have permission".
+// Returns the most specific enum code (e.g. USER_PERMISSION_DENIED) + message.
+function parseGoogleAdsFailure(body: string): {
+  code: string;
+  message: string;
+} {
   try {
     const j = JSON.parse(body) as {
-      error?: { message?: string; details?: unknown[] };
+      error?: {
+        message?: string;
+        details?: {
+          "@type"?: string;
+          errors?: {
+            errorCode?: Record<string, string>;
+            message?: string;
+          }[];
+        }[];
+      };
     };
-    if (j.error?.message) return j.error.message;
+    const topMessage = j.error?.message ?? "";
+    for (const d of j.error?.details ?? []) {
+      for (const e of d.errors ?? []) {
+        // errorCode is an object with a single key, e.g.
+        // { "authorizationError": "USER_PERMISSION_DENIED" }.
+        const enumValue = e.errorCode
+          ? Object.values(e.errorCode).find(Boolean)
+          : undefined;
+        if (enumValue) {
+          return { code: enumValue, message: e.message ?? topMessage };
+        }
+        if (e.message) return { code: "", message: e.message };
+      }
+    }
+    if (topMessage) return { code: "", message: topMessage };
   } catch {
     /* not JSON */
   }
-  return body.slice(0, 300);
+  return { code: "", message: body.slice(0, 300) };
+}
+
+// Map a Google Ads error code to a one-line, actionable hint so the user knows
+// exactly what to change. Falls back to "" when we have no specific advice.
+function hintForCode(code: string): string {
+  switch (code) {
+    case "USER_PERMISSION_DENIED":
+      return "The Google account you signed in with has no access to this Ads account. Make sure that exact account is added as a user on the Ads account (or its manager), and that you picked an account it can actually see.";
+    case "DEVELOPER_TOKEN_NOT_APPROVED":
+      return "Your developer token still has TEST access, so it can only read test accounts. Apply for Basic access in your manager account's API Center and wait for approval.";
+    case "DEVELOPER_TOKEN_PROHIBITED":
+      return "This developer token isn't allowed to call the API. Use the token from the manager (MCC) account where it was issued.";
+    case "NOT_ADS_USER":
+      return "The signed-in Google account isn't a Google Ads user at all. Connect with the account that has access to the Ads account.";
+    case "CUSTOMER_NOT_ENABLED":
+      return "This Ads account is cancelled or not fully set up, so its data can't be read. Pick an active account.";
+    case "CUSTOMER_NOT_FOUND":
+    case "INVALID_CUSTOMER_ID":
+      return "That customer id couldn't be found. Reconnect and pick an account from the list.";
+    default:
+      return "";
+  }
 }
 
 function metricsError(status: number, body = ""): string {
-  const detail = body ? ` ${googleErrorDetail(body)}` : "";
+  const { code, message } = body
+    ? parseGoogleAdsFailure(body)
+    : { code: "", message: "" };
+  const hint = hintForCode(code);
+  // When we recognise the specific code, lead with the actionable hint.
+  if (hint) {
+    const label = code ? `${code}: ` : "";
+    return `${hint} (${label}${message})`;
+  }
+  const detail = message ? ` ${code ? `${code}: ` : ""}${message}` : "";
   if (status === 401 || status === 403) {
-    return `Google rejected the request — check the developer token is approved (Basic access) and the account granted the ads_read scope.${detail}`;
+    return `Google rejected the request — check the developer token is approved (Basic access) and the signed-in account has access to this Ads account.${detail}`;
   }
   if (status === 404) {
     return `Google Ads API returned 404 — the API version may be retired (set GOOGLE_ADS_API_VERSION to a current major), or the customer id wasn't found.${detail}`;
