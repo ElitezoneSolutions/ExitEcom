@@ -28,16 +28,25 @@ In **App Settings → Basic**, the **App Type** must be **Business** (required f
 
 ### Step 3 — Add Facebook Login
 1. Left sidebar → **Add Product** → **Facebook Login** → **Set Up** → **Web**.
-2. Site URL: your app origin (e.g. `https://dash.exitecom.com`, or `http://localhost:<port>` for dev).
+2. Site URL: your app origin (e.g. `https://dash.exitecom.com`, or
+   `http://localhost:8080` for local dev).
+
+> **Skip the Quickstart / JavaScript SDK snippet.** The Quickstart page offers a
+> `connect.facebook.net/sdk.js` snippet (`FB.init` / `FB.login`). This app does
+> **not** use it — we use the server-side redirect flow ("manually build a login
+> flow"). Ignore that step and go straight to **Facebook Login → Settings**.
 
 ### Step 4 — Configure OAuth Redirect URIs
 **Facebook Login → Settings → Valid OAuth Redirect URIs** — add the routes on
-**this app's own origin** (must match `META_OAUTH_REDIRECT_URI` exactly):
+**this app's own origin**. The value must match `META_OAUTH_REDIRECT_URI`
+**exactly** (scheme, host, port, path — no trailing slash, no stray characters):
 ```
 https://dash.exitecom.com/meta-oauth-callback
-http://localhost:<port-vite-prints>/meta-oauth-callback
+http://localhost:8080/meta-oauth-callback
 ```
-Enable **Client OAuth Login** and **Web OAuth Login**, then **Save Changes**.
+- Toggle **ON**: **Client OAuth Login** and **Web OAuth Login**.
+- **App Settings → Basic → App Domains**: add `dash.exitecom.com`.
+- **Save Changes**.
 
 ### Step 5 — Privacy Policy (required to go Live)
 **App Settings → Basic** — fill in **Privacy Policy URL** (and ideally Terms of
@@ -66,8 +75,12 @@ browser bundle). See `.env.example`.
 FACEBOOK_APP_ID=your_app_id
 FACEBOOK_APP_SECRET=your_app_secret
 META_OAUTH_REDIRECT_URI=https://dash.exitecom.com/meta-oauth-callback   # prod
-# Local dev: http://localhost:<port-vite-prints>/meta-oauth-callback
+# Local dev: http://localhost:8080/meta-oauth-callback
 ```
+
+> **Production:** set these in your hosting platform's environment, not just the
+> local `.env` — the server reads them at boot, so the live site won't pick up a
+> value that only exists on your laptop.
 
 - Read only inside `getMetaOAuthUrlFn` and `exchangeMetaOAuthCodeFn` in
   `src/lib/meta.ts` (Nitro server functions). The App Secret never reaches the client.
@@ -76,9 +89,10 @@ META_OAUTH_REDIRECT_URI=https://dash.exitecom.com/meta-oauth-callback   # prod
 - The connected token + ad-account metadata are stored in Supabase `meta_accounts`
   (`source = 'oauth'`), under the user's row-level security — no `tokens.json`, no sessions.
 
-> Dev port: not pinned in `vite.config.ts` (it uses `@lovable.dev/vite-tanstack-config`;
-> Vite's default is 5173, but this sandbox config may pick another). Use whatever port
-> `npm run dev` prints, and make `META_OAUTH_REDIRECT_URI` + the Meta portal match it.
+> Dev port: `npm run dev` serves on **8080** in this project. If your machine uses a
+> different port, use whatever `npm run dev` prints, and make `META_OAUTH_REDIRECT_URI`
+> + the Meta portal's Valid OAuth Redirect URI match it exactly. Restart the dev server
+> after changing any of these env vars — they're read at server boot.
 
 ---
 
@@ -119,7 +133,7 @@ approves) — unavoidable for any OAuth. Everything else runs on this app.
 | Problem | Fix |
 |---|---|
 | `ads_read` not available | App Type must be **Business**. |
-| "URL blocked / redirect URI mismatch" | The Meta portal's Valid OAuth Redirect URI must **exactly** equal `META_OAUTH_REDIRECT_URI` (scheme, host, port, path). |
+| "URL blocked: This redirect failed because the redirect URI is not white-listed" | The Meta portal's Valid OAuth Redirect URI must **exactly** equal `META_OAUTH_REDIRECT_URI` — check for: a typo / stray characters in the env value, `http` vs `https`, wrong port, a trailing slash, `localhost` vs `127.0.0.1`. Also enable **Client OAuth Login** + **Web OAuth Login**, add the host to **App Domains**, and restart/redeploy after editing the env var. |
 | OAuth tab says "not configured" | Set `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `META_OAUTH_REDIRECT_URI` in the server env. |
 | App stuck in Development | Add a Privacy Policy URL, then flip to **Live**. |
 | Other users can't connect | App must be **Live** and `ads_read` approved via **App Review**. |
