@@ -6,7 +6,9 @@ import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { dataRoomCategories } from "@/lib/mock";
 
-export const Route = createFileRoute("/_app/data-room")({ component: DataRoom });
+export const Route = createFileRoute("/_app/data-room")({
+  component: DataRoom,
+});
 
 function DataRoom() {
   const { isShopifyConnected } = useBusinessData();
