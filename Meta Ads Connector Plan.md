@@ -29,7 +29,7 @@ This maps onto Shopify's existing two-path design. We build the same two paths:
 ### Path A — in-app Facebook OAuth (production) ✅ recommended
 The OAuth flow is handled **entirely inside this app** — no external service, no
 extra domain. The App ID/Secret live in this app's server env; the redirect URI is
-a route on this app's own origin. Flow (see `facebook-oauth-setup.md`):
+a route on this app's own origin. Flow (see `docs/facebook-oauth-setup.md`):
 
 1. `/meta-connect` "OAuth" tab → `getMetaOAuthUrlFn` builds the Facebook consent
    URL (App ID from env) and the browser redirects to Facebook.
@@ -53,7 +53,7 @@ sandbox creds, and unblocks the score integration without waiting on Meta App
 Review. Path A (in-app OAuth) is the production finish; it lives entirely in this
 app (`getMetaOAuthUrlFn` + `exchangeMetaOAuthCodeFn` + `/meta-oauth-callback`),
 needs `FACEBOOK_APP_ID`/`FACEBOOK_APP_SECRET`/`META_OAUTH_REDIRECT_URI`, and Meta
-App Review for `ads_read` to serve other users. See `facebook-oauth-setup.md`.
+App Review for `ads_read` to serve other users. See `docs/facebook-oauth-setup.md`.
 
 ---
 
