@@ -107,7 +107,9 @@ syncGoogleViaOAuth(customerId, refreshToken)  → syncGoogleAdsFn pull (GAQL) + 
 | OAuth tab says "not configured" | Set `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_OAUTH_REDIRECT_URI`. |
 | `DEVELOPER_TOKEN_NOT_APPROVED` / works only on test accounts | Apply for **Basic access** for your developer token in the Manager account's API Center. |
 | 404 / "API version may be retired" | Google Ads API majors sunset ~monthly. The code defaults to a current major; if it lags, set `GOOGLE_ADS_API_VERSION` (e.g. `v23`) — see the [sunset dates](https://developers.google.com/google-ads/api/docs/sunset-dates). |
-| 400 / "Metrics cannot be requested for a manager account" | You selected a Manager (MCC) account, which has no campaigns. Pick a client account, and set `GOOGLE_LOGIN_CUSTOMER_ID` to your MCC id so it's sent as `login-customer-id`. |
+| 400 / "Metrics cannot be requested for a manager account" | You picked a Manager (MCC) account, which has no campaigns. The OAuth picker now expands managers into their client accounts automatically — pick a client account from the list. |
+| 403 / `USER_PERMISSION_DENIED` | The signed-in Google account has no access to that Ads account. Add that exact account as a user on the Ads account (or its manager), then reconnect. |
+| 403 / `DEVELOPER_TOKEN_NOT_APPROVED` | The developer token still has **Test** access. Apply for **Basic access** in the Manager account's API Center; until then only test accounts (and the `demo` sandbox) work. |
 | "Google didn't return a refresh token" | Remove the app from your Google account's third-party access and reconnect, so Google re-prompts for offline consent. |
 | No accounts found | The Google login has no Google Ads account access — grant it in the account/MCC. |
-| Account under a manager | MVP targets directly-accessible accounts; manager-only customers may need a `login-customer-id` (not yet wired). |
+| Account under a manager | Handled automatically: the connector discovers each user's hierarchy at OAuth time and stores the right `login-customer-id` per connection (`google_accounts.login_customer_id`). The `GOOGLE_LOGIN_CUSTOMER_ID` env var is only a legacy fallback and isn't needed. |
