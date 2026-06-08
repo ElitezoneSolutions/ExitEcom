@@ -233,6 +233,20 @@ function PrivacyPolicy() {
               >
                 {CONTACT_EMAIL}
               </a>
+              . See also our{" "}
+              <Link
+                to="/terms"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Terms &amp; Conditions
+              </Link>{" "}
+              and{" "}
+              <Link
+                to="/data-deletion"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Data Deletion Instructions
+              </Link>
               .
             </p>
           </Section>

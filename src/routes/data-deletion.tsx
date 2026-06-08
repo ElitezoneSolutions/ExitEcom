@@ -139,6 +139,13 @@ function DataDeletion() {
                 className="text-[var(--accent)] hover:underline"
               >
                 Privacy Policy
+              </Link>{" "}
+              and{" "}
+              <Link
+                to="/terms"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Terms &amp; Conditions
               </Link>
               .
             </p>

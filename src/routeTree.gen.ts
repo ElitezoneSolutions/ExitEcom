@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
@@ -40,6 +41,11 @@ import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppBuyerMatchingRouteImport } from './routes/_app.buyer-matching'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/billing': typeof AppBillingRoute
   '/buyer-matching': typeof AppBuyerMatchingRoute
   '/dashboard': typeof AppDashboardRoute
@@ -229,6 +236,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/billing': typeof AppBillingRoute
   '/buyer-matching': typeof AppBuyerMatchingRoute
   '/dashboard': typeof AppDashboardRoute
@@ -262,6 +270,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/terms': typeof TermsRoute
   '/_app/billing': typeof AppBillingRoute
   '/_app/buyer-matching': typeof AppBuyerMatchingRoute
   '/_app/dashboard': typeof AppDashboardRoute
@@ -295,6 +304,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/privacy'
     | '/signup'
+    | '/terms'
     | '/billing'
     | '/buyer-matching'
     | '/dashboard'
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/privacy'
     | '/signup'
+    | '/terms'
     | '/billing'
     | '/buyer-matching'
     | '/dashboard'
@@ -358,6 +369,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/privacy'
     | '/signup'
+    | '/terms'
     | '/_app/billing'
     | '/_app/buyer-matching'
     | '/_app/dashboard'
@@ -391,10 +403,18 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
+  TermsRoute: typeof TermsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -669,6 +689,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
+  TermsRoute: TermsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
