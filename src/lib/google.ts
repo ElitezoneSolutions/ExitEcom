@@ -342,8 +342,7 @@ async function searchStream(
   // When the analysed account is reached through a Manager, Google requires that
   // manager's id as login-customer-id. Prefer the per-connection value discovered
   // during OAuth; fall back to the optional global env default if one is set.
-  const lcid =
-    (loginCustomerId ?? "").replace(/[^\d]/g, "") || env.loginCustomerId;
+  const lcid = normalizeCustomerId(loginCustomerId ?? "") || env.loginCustomerId;
   if (lcid) headers["login-customer-id"] = lcid;
   const res = await fetch(
     `${adsBase()}/customers/${customerId}/googleAds:searchStream`,
@@ -371,7 +370,7 @@ const ACCOUNT_QUERY =
 // the manager with login-customer-id = that manager. Used to expand a manager the
 // user logs in through into the real, queryable accounts to pick from.
 const CUSTOMER_CLIENT_QUERY =
-  "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.time_zone, customer_client.status, customer_client.manager FROM customer_client WHERE customer_client.manager = false";
+  "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.time_zone, customer_client.status, customer_client.manager FROM customer_client WHERE customer_client.manager = false LIMIT 51";
 const MONTHLY_QUERY =
   "SELECT segments.month, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_365_DAYS";
 const CAMPAIGN_QUERY =
@@ -384,22 +383,15 @@ async function pull(
   accessToken: string,
   loginCustomerId?: string,
 ): Promise<GoogleSyncResult> {
-  // 1. Account metadata.
-  const acctRows = await searchStream(
-    customerId,
-    accessToken,
-    ACCOUNT_QUERY,
-    loginCustomerId,
-  );
+  // Fetch all three datasets in parallel — independent queries on the same customer.
+  const [acctRows, monthlyRows, campaignRows] = await Promise.all([
+    searchStream(customerId, accessToken, ACCOUNT_QUERY, loginCustomerId),
+    searchStream(customerId, accessToken, MONTHLY_QUERY, loginCustomerId),
+    searchStream(customerId, accessToken, CAMPAIGN_QUERY, loginCustomerId),
+  ]);
   const c = acctRows[0]?.customer ?? {};
 
   // 2. Monthly series — sum campaign rows by month.
-  const monthlyRows = await searchStream(
-    customerId,
-    accessToken,
-    MONTHLY_QUERY,
-    loginCustomerId,
-  );
   const byMonth = new Map<string, RawGoogleMonthly>();
   for (const r of monthlyRows) {
     const month = (r.segments?.month ?? "").slice(0, 7);
@@ -432,12 +424,6 @@ async function pull(
     }));
 
   // 3. Per-campaign breakdown.
-  const campaignRows = await searchStream(
-    customerId,
-    accessToken,
-    CAMPAIGN_QUERY,
-    loginCustomerId,
-  );
   const byCampaign = new Map<string, RawGoogleCampaign>();
   for (const r of campaignRows) {
     const id = r.campaign?.id ?? "";
@@ -576,7 +562,8 @@ export const syncGoogleAdsFn = createServerFn({ method: "POST" })
     }
 
     const accessToken = await refreshToAccessToken(refreshToken);
-    return pull(customerId, accessToken, data.loginCustomerId);
+    const loginCustomerId = normalizeCustomerId(data.loginCustomerId ?? "") || undefined;
+    return pull(customerId, accessToken, loginCustomerId);
   });
 
 // ---------------------------------------------------------------------------
@@ -585,8 +572,8 @@ export const syncGoogleAdsFn = createServerFn({ method: "POST" })
 export interface GoogleOAuthAccount {
   customerId: string;
   // The manager (MCC) id to query this account through, discovered from the
-  // user's own hierarchy. Equals the account itself when it's directly accessible.
-  loginCustomerId: string;
+  // user's own hierarchy. null for standalone (directly-accessible) accounts.
+  loginCustomerId: string | null;
   name: string;
   currency: string;
   timezone: string;
@@ -640,13 +627,7 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
   .inputValidator((input: GoogleOAuthExchangeInput) => input)
   .handler(async ({ data }): Promise<GoogleOAuthExchangeResult> => {
     const code = data.code?.trim();
-    const {
-      clientId,
-      clientSecret,
-      developerToken,
-      redirectUri,
-      loginCustomerId,
-    } = readOAuthEnv();
+    const { clientId, clientSecret, developerToken, redirectUri } = readOAuthEnv();
     if (!clientId || !clientSecret || !developerToken || !redirectUri) {
       throw new Error(
         "Google OAuth isn't configured on this deployment (missing GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET / GOOGLE_ADS_DEVELOPER_TOKEN / GOOGLE_OAUTH_REDIRECT_URI).",
@@ -690,7 +671,6 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
       "developer-token": developerToken,
       Accept: "application/json",
     };
-    if (loginCustomerId) listHeaders["login-customer-id"] = loginCustomerId;
     const listRes = await fetch(
       `${adsBase()}/customers:listAccessibleCustomers`,
       { headers: listHeaders },
@@ -714,15 +694,15 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
     const customers: GoogleOAuthAccount[] = [];
 
     const addAccount = (acct: GoogleOAuthAccount) => {
-      if (!acct.customerId || seen.has(acct.customerId)) return;
+      if (!acct.customerId || seen.has(acct.customerId) || customers.length >= 50) return;
       seen.add(acct.customerId);
       customers.push(acct);
     };
 
-    for (const seedId of ids) {
-      try {
-        // Query the seed THROUGH itself; this works whether it's a manager or a
-        // directly-accessible account, and tells us which one it is.
+    // Resolve all seeds in parallel — each is an independent API call.
+    await Promise.allSettled(
+      ids.map(async (seedId) => {
+        // Query the seed THROUGH itself; tells us whether it's a manager.
         const rows = await searchStream(
           seedId,
           accessToken,
@@ -741,7 +721,7 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
           );
           for (const cr of clientRows) {
             const cc = cr.customerClient;
-            const cid = cc?.id ?? "";
+            const cid = normalizeCustomerId(cc?.id ?? "");
             if (!cid) continue;
             addAccount({
               customerId: cid,
@@ -753,29 +733,21 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
             });
           }
         } else {
-          // Standalone / directly-accessible account — query it through itself.
+          // Standalone / directly-accessible account — no manager header needed.
           addAccount({
             customerId: seedId,
-            loginCustomerId: seedId,
+            loginCustomerId: null,
             name: c.descriptiveName || seedId,
             currency: c.currencyCode || "USD",
             timezone: c.timeZone || "",
             accountStatus: (c.status || "unknown").toLowerCase(),
           });
         }
-      } catch {
-        // Couldn't introspect this seed (often a manager-only token); still offer
-        // it directly so the user isn't blocked.
-        addAccount({
-          customerId: seedId,
-          loginCustomerId: seedId,
-          name: seedId,
-          currency: "USD",
-          timezone: "",
-          accountStatus: "unknown",
-        });
-      }
-    }
+        // Rejected promises are silently skipped by allSettled — seeds that
+        // fail introspection are dropped rather than offered as stubs that would
+        // fail again when the user tries to connect them.
+      }),
+    );
 
     return {
       refreshToken: tokenJson.refresh_token,
