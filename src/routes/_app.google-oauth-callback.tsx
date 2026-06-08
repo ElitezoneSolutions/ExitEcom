@@ -51,7 +51,11 @@ function GoogleOAuthCallback() {
   const pickAccount = async (account: GoogleOAuthAccount) => {
     setPhase("saving");
     try {
-      await syncGoogleViaOAuth(account.customerId, tokenRef.current);
+      await syncGoogleViaOAuth(
+        account.customerId,
+        tokenRef.current,
+        account.loginCustomerId,
+      );
       navigate({ to: "/google-data" });
     } catch (err) {
       fail(

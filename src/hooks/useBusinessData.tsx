@@ -579,11 +579,13 @@ function useBusinessDataImpl() {
   const [googleLastSyncedAt, setGoogleLastSyncedAt] = useState<string | null>(
     () => readGoogleCache()?.lastSyncedAt ?? null,
   );
-  // Stored Google credentials (the durable refresh token), used only to refresh.
+  // Stored Google credentials (the durable refresh token + the manager id the
+  // account is queried through), used only to refresh.
   const [googleCreds, setGoogleCreds] = useState<{
     source: "oauth" | "manual";
     customerId: string;
     refreshToken: string | null;
+    loginCustomerId: string | null;
   } | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -1014,6 +1016,7 @@ function useBusinessDataImpl() {
               source: (acctRow.source as "oauth" | "manual") ?? "oauth",
               customerId: acctRow.customer_id,
               refreshToken: acctRow.refresh_token ?? null,
+              loginCustomerId: acctRow.login_customer_id ?? null,
             }
           : null,
       );
@@ -1611,6 +1614,7 @@ function useBusinessDataImpl() {
       source: "oauth" | "manual";
       customerId: string;
       refreshToken: string | null;
+      loginCustomerId: string | null;
     },
   ) => {
     setGoogleAccount(result.account);
@@ -1638,6 +1642,7 @@ function useBusinessDataImpl() {
           business_id: businessId,
           customer_id: result.account.customerId,
           refresh_token: creds.refreshToken,
+          login_customer_id: creds.loginCustomerId,
           source: creds.source,
           name: result.account.name,
           currency: result.account.currency,
@@ -1720,31 +1725,48 @@ function useBusinessDataImpl() {
   };
 
   // Connect / refresh via the manual connector (pasted customer id + refresh token).
-  const syncGoogle = async (customerId: string, refreshToken: string) => {
+  // loginCustomerId is optional (standalone accounts query through themselves).
+  const syncGoogle = async (
+    customerId: string,
+    refreshToken: string,
+    loginCustomerId?: string | null,
+  ) => {
     const result = await syncGoogleAdsFn({
-      data: { customerId, refreshToken },
+      data: {
+        customerId,
+        refreshToken,
+        loginCustomerId: loginCustomerId ?? undefined,
+      },
     });
     return commitGoogleSync(result, {
       source: "manual",
       customerId: result.account.customerId,
       refreshToken,
+      loginCustomerId: loginCustomerId ?? null,
     });
   };
 
   // Commit a dataset pulled via the in-app OAuth flow. The OAuth callback has
-  // exchanged the code for a refresh token and picked a customer; we pull and
-  // store it with source 'oauth' so a later refresh reuses the refresh token.
+  // exchanged the code for a refresh token and picked a customer (with the manager
+  // id to query it through); we pull and store it with source 'oauth' so a later
+  // refresh reuses both the refresh token and the right login-customer-id.
   const syncGoogleViaOAuth = async (
     customerId: string,
     refreshToken: string,
+    loginCustomerId?: string | null,
   ) => {
     const result = await syncGoogleAdsFn({
-      data: { customerId, refreshToken },
+      data: {
+        customerId,
+        refreshToken,
+        loginCustomerId: loginCustomerId ?? undefined,
+      },
     });
     return commitGoogleSync(result, {
       source: "oauth",
       customerId: result.account.customerId,
       refreshToken,
+      loginCustomerId: loginCustomerId ?? null,
     });
   };
 
@@ -1758,7 +1780,7 @@ function useBusinessDataImpl() {
       }
       const { data, error } = await supabase
         .from("google_accounts")
-        .select("customer_id, refresh_token, source")
+        .select("customer_id, refresh_token, source, login_customer_id")
         .eq("business_id", business.id)
         .maybeSingle();
       if (error) throw describeDbError(error, "Google");
@@ -1771,6 +1793,7 @@ function useBusinessDataImpl() {
         source: (data.source as "oauth" | "manual") ?? "oauth",
         customerId: data.customer_id,
         refreshToken: data.refresh_token ?? null,
+        loginCustomerId: data.login_customer_id ?? null,
       };
       setGoogleCreds(creds);
     }
@@ -1778,7 +1801,11 @@ function useBusinessDataImpl() {
     if (!creds.refreshToken) {
       throw new Error("No stored Google credentials — reconnect the account.");
     }
-    return syncGoogle(creds.customerId, creds.refreshToken);
+    return syncGoogle(
+      creds.customerId,
+      creds.refreshToken,
+      creds.loginCustomerId,
+    );
   };
 
   // Disconnect Google: delete all stored Google data + credentials, drop the
