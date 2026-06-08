@@ -10,9 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppValuationRouteImport } from './routes/_app.valuation'
@@ -23,6 +25,9 @@ import { Route as AppRiskScannerRouteImport } from './routes/_app.risk-scanner'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppProfileRouteImport } from './routes/_app.profile'
 import { Route as AppOptimizationRouteImport } from './routes/_app.optimization'
+import { Route as AppMetaOauthCallbackRouteImport } from './routes/_app.meta-oauth-callback'
+import { Route as AppMetaDataRouteImport } from './routes/_app.meta-data'
+import { Route as AppMetaConnectRouteImport } from './routes/_app.meta-connect'
 import { Route as AppInvestmentMemoRouteImport } from './routes/_app.investment-memo'
 import { Route as AppFinancialNormalizerRouteImport } from './routes/_app.financial-normalizer'
 import { Route as AppExitScoreRouteImport } from './routes/_app.exit-score'
@@ -35,6 +40,11 @@ import { Route as AppBillingRouteImport } from './routes/_app.billing'
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -50,6 +60,11 @@ const LoginRoute = LoginRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataDeletionRoute = DataDeletionRouteImport.update({
+  id: '/data-deletion',
+  path: '/data-deletion',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -101,6 +116,21 @@ const AppOptimizationRoute = AppOptimizationRouteImport.update({
   path: '/optimization',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMetaOauthCallbackRoute = AppMetaOauthCallbackRouteImport.update({
+  id: '/meta-oauth-callback',
+  path: '/meta-oauth-callback',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMetaDataRoute = AppMetaDataRouteImport.update({
+  id: '/meta-data',
+  path: '/meta-data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMetaConnectRoute = AppMetaConnectRouteImport.update({
+  id: '/meta-connect',
+  path: '/meta-connect',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppInvestmentMemoRoute = AppInvestmentMemoRouteImport.update({
   id: '/investment-memo',
   path: '/investment-memo',
@@ -144,9 +174,11 @@ const AppBillingRoute = AppBillingRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/data-deletion': typeof DataDeletionRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/billing': typeof AppBillingRoute
   '/buyer-matching': typeof AppBuyerMatchingRoute
@@ -156,6 +188,9 @@ export interface FileRoutesByFullPath {
   '/exit-score': typeof AppExitScoreRoute
   '/financial-normalizer': typeof AppFinancialNormalizerRoute
   '/investment-memo': typeof AppInvestmentMemoRoute
+  '/meta-connect': typeof AppMetaConnectRoute
+  '/meta-data': typeof AppMetaDataRoute
+  '/meta-oauth-callback': typeof AppMetaOauthCallbackRoute
   '/optimization': typeof AppOptimizationRoute
   '/profile': typeof AppProfileRoute
   '/reports': typeof AppReportsRoute
@@ -167,9 +202,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/data-deletion': typeof DataDeletionRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/billing': typeof AppBillingRoute
   '/buyer-matching': typeof AppBuyerMatchingRoute
@@ -179,6 +216,9 @@ export interface FileRoutesByTo {
   '/exit-score': typeof AppExitScoreRoute
   '/financial-normalizer': typeof AppFinancialNormalizerRoute
   '/investment-memo': typeof AppInvestmentMemoRoute
+  '/meta-connect': typeof AppMetaConnectRoute
+  '/meta-data': typeof AppMetaDataRoute
+  '/meta-oauth-callback': typeof AppMetaOauthCallbackRoute
   '/optimization': typeof AppOptimizationRoute
   '/profile': typeof AppProfileRoute
   '/reports': typeof AppReportsRoute
@@ -192,9 +232,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/data-deletion': typeof DataDeletionRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/_app/billing': typeof AppBillingRoute
   '/_app/buyer-matching': typeof AppBuyerMatchingRoute
@@ -204,6 +246,9 @@ export interface FileRoutesById {
   '/_app/exit-score': typeof AppExitScoreRoute
   '/_app/financial-normalizer': typeof AppFinancialNormalizerRoute
   '/_app/investment-memo': typeof AppInvestmentMemoRoute
+  '/_app/meta-connect': typeof AppMetaConnectRoute
+  '/_app/meta-data': typeof AppMetaDataRoute
+  '/_app/meta-oauth-callback': typeof AppMetaOauthCallbackRoute
   '/_app/optimization': typeof AppOptimizationRoute
   '/_app/profile': typeof AppProfileRoute
   '/_app/reports': typeof AppReportsRoute
@@ -217,9 +262,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/data-deletion'
     | '/forgot-password'
     | '/login'
     | '/onboarding'
+    | '/privacy'
     | '/signup'
     | '/billing'
     | '/buyer-matching'
@@ -229,6 +276,9 @@ export interface FileRouteTypes {
     | '/exit-score'
     | '/financial-normalizer'
     | '/investment-memo'
+    | '/meta-connect'
+    | '/meta-data'
+    | '/meta-oauth-callback'
     | '/optimization'
     | '/profile'
     | '/reports'
@@ -240,9 +290,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/data-deletion'
     | '/forgot-password'
     | '/login'
     | '/onboarding'
+    | '/privacy'
     | '/signup'
     | '/billing'
     | '/buyer-matching'
@@ -252,6 +304,9 @@ export interface FileRouteTypes {
     | '/exit-score'
     | '/financial-normalizer'
     | '/investment-memo'
+    | '/meta-connect'
+    | '/meta-data'
+    | '/meta-oauth-callback'
     | '/optimization'
     | '/profile'
     | '/reports'
@@ -264,9 +319,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/data-deletion'
     | '/forgot-password'
     | '/login'
     | '/onboarding'
+    | '/privacy'
     | '/signup'
     | '/_app/billing'
     | '/_app/buyer-matching'
@@ -276,6 +333,9 @@ export interface FileRouteTypes {
     | '/_app/exit-score'
     | '/_app/financial-normalizer'
     | '/_app/investment-memo'
+    | '/_app/meta-connect'
+    | '/_app/meta-data'
+    | '/_app/meta-oauth-callback'
     | '/_app/optimization'
     | '/_app/profile'
     | '/_app/reports'
@@ -289,9 +349,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  DataDeletionRoute: typeof DataDeletionRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
 }
 
@@ -302,6 +364,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -323,6 +392,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-deletion': {
+      id: '/data-deletion'
+      path: '/data-deletion'
+      fullPath: '/data-deletion'
+      preLoaderRoute: typeof DataDeletionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -395,6 +471,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOptimizationRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/meta-oauth-callback': {
+      id: '/_app/meta-oauth-callback'
+      path: '/meta-oauth-callback'
+      fullPath: '/meta-oauth-callback'
+      preLoaderRoute: typeof AppMetaOauthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/meta-data': {
+      id: '/_app/meta-data'
+      path: '/meta-data'
+      fullPath: '/meta-data'
+      preLoaderRoute: typeof AppMetaDataRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/meta-connect': {
+      id: '/_app/meta-connect'
+      path: '/meta-connect'
+      fullPath: '/meta-connect'
+      preLoaderRoute: typeof AppMetaConnectRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/investment-memo': {
       id: '/_app/investment-memo'
       path: '/investment-memo'
@@ -463,6 +560,9 @@ interface AppRouteChildren {
   AppExitScoreRoute: typeof AppExitScoreRoute
   AppFinancialNormalizerRoute: typeof AppFinancialNormalizerRoute
   AppInvestmentMemoRoute: typeof AppInvestmentMemoRoute
+  AppMetaConnectRoute: typeof AppMetaConnectRoute
+  AppMetaDataRoute: typeof AppMetaDataRoute
+  AppMetaOauthCallbackRoute: typeof AppMetaOauthCallbackRoute
   AppOptimizationRoute: typeof AppOptimizationRoute
   AppProfileRoute: typeof AppProfileRoute
   AppReportsRoute: typeof AppReportsRoute
@@ -482,6 +582,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppExitScoreRoute: AppExitScoreRoute,
   AppFinancialNormalizerRoute: AppFinancialNormalizerRoute,
   AppInvestmentMemoRoute: AppInvestmentMemoRoute,
+  AppMetaConnectRoute: AppMetaConnectRoute,
+  AppMetaDataRoute: AppMetaDataRoute,
+  AppMetaOauthCallbackRoute: AppMetaOauthCallbackRoute,
   AppOptimizationRoute: AppOptimizationRoute,
   AppProfileRoute: AppProfileRoute,
   AppReportsRoute: AppReportsRoute,
@@ -497,9 +600,11 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  DataDeletionRoute: DataDeletionRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
 }
 export const routeTree = rootRouteImport

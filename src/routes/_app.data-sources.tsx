@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { StatusBadge } from "@/components/ex/StatusBadge";
 import { ScoreRing } from "@/components/ex/ScoreRing";
+import { DisconnectButton } from "@/components/ex/DisconnectButton";
 import { useBusinessData } from "@/hooks/useBusinessData";
 
 export const Route = createFileRoute("/_app/data-sources")({
@@ -10,10 +11,16 @@ export const Route = createFileRoute("/_app/data-sources")({
 });
 
 function DataSources() {
-  const { business } = useBusinessData();
+  const { business, disconnectShopify, disconnectMeta } = useBusinessData();
+
+  const disconnectFor = (name: string) =>
+    name === "Meta Ads" ? disconnectMeta : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
+  );
+  const isMetaConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("meta"),
   );
 
   const platforms = [
@@ -28,9 +35,10 @@ function DataSources() {
     },
     {
       name: "Meta Ads",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
+      section: "Marketing",
+      status: isMetaConnected ? "connected" : "missing",
+      sync: isMetaConnected ? "Synced live" : "—",
+      impact: "Marketing efficiency verified with real ROAS",
       explanation: "Verify acquisition costs and blended ROAS.",
     },
     {
@@ -98,7 +106,14 @@ function DataSources() {
     },
   ] as const;
 
-  const sections = ["Store", "Coming Soon"] as const;
+  const sections = ["Store", "Marketing", "Coming Soon"] as const;
+
+  const sectionLabel = (sec: (typeof sections)[number]) =>
+    sec === "Coming Soon"
+      ? "More Integrations — Coming Soon"
+      : sec === "Marketing"
+        ? "Connect Your Marketing"
+        : "Connect Your Store";
 
   return (
     <>
@@ -128,11 +143,7 @@ function DataSources() {
       />
       {sections.map((sec) => (
         <div key={sec} className="mb-10">
-          <SectionLabel>
-            {sec === "Coming Soon"
-              ? "More Integrations — Coming Soon"
-              : "Connect Your Store"}
-          </SectionLabel>
+          <SectionLabel>{sectionLabel(sec)}</SectionLabel>
           <div className="mt-4 grid sm:grid-cols-2 gap-3">
             {platforms
               .filter((p) => p.section === sec)
@@ -158,17 +169,35 @@ function DataSources() {
                             : (p.status as "connected" | "missing")
                         }
                       />
-                      {sec !== "Coming Soon" && (
-                        <Link
-                          to={
-                            p.status === "connected"
-                              ? "/store-data"
-                              : "/shopify-connect"
-                          }
-                          className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
-                        >
-                          {p.status === "connected" ? "Manage" : "Connect"}
-                        </Link>
+                      {sec !== "Coming Soon" &&
+                        (p.name === "Meta Ads" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/meta-data"
+                                : "/meta-connect"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ) : (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/store-data"
+                                : "/shopify-connect"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ))}
+                      {sec !== "Coming Soon" && p.status === "connected" && (
+                        <DisconnectButton
+                          name={p.name}
+                          onConfirm={disconnectFor(p.name)}
+                        />
                       )}
                     </div>
                   </div>

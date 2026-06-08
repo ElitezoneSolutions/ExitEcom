@@ -61,12 +61,33 @@ export interface AnalyticsStore {
   country: string;
   shopCreatedAt: string | null;
 }
+// Optional Meta Ads feed. Field names mirror RawMetaMonthly/RawMetaCampaign so
+// callers can pass the raw arrays from useBusinessData directly. When present it
+// replaces the ad-spend estimate and drives Marketing Efficiency off real ROAS +
+// spend stability rather than the repeat-rate proxy.
+export interface AnalyticsMetaMonthly {
+  month: string;
+  spend: number;
+  conversions: number;
+  conversionValue: number;
+  roas: number;
+}
+export interface AnalyticsMetaCampaign {
+  name: string;
+  spend: number;
+}
+export interface AnalyticsMeta {
+  monthly: AnalyticsMetaMonthly[];
+  campaigns: AnalyticsMetaCampaign[];
+}
+
 export interface AnalyticsInput {
   store: AnalyticsStore | null;
   orders: AnalyticsOrder[];
   products: AnalyticsProduct[];
   customers: AnalyticsCustomer[];
   industry: string;
+  meta?: AnalyticsMeta | null;
 }
 
 export interface ProductRevenue {
@@ -102,6 +123,12 @@ export interface StoreMetrics {
   opex: number;
   adSpend: number;
   roas: number;
+  // Meta Ads signals — populated only when a Meta feed is supplied. When
+  // adSpendVerified is false, adSpend is a benchmark estimate and roas is 0.
+  adSpendVerified: boolean;
+  blendedCac: number; // ad spend ÷ new customers (buyer-credible, not Meta ROAS)
+  adSpendStability: number; // 0–1; 1 = perfectly steady monthly spend
+  topCampaignShare: number; // 0–1; spend concentration in the top campaign
   businessAgeYears: number;
   businessAge: string;
   growthRate: number;
@@ -144,6 +171,7 @@ export interface ValuationResult {
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const round = (x: number) => Math.round(x);
+const round2 = (x: number) => Math.round(x * 100) / 100;
 
 function statusFor(ratio: number): "green" | "amber" | "red" {
   if (ratio >= 0.66) return "green";
@@ -284,8 +312,39 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   const ebitda = round(revenueTTM * netMargin);
   const sde = round(ebitda * 1.25);
   const opex = round(grossProfit - ebitda);
-  const adSpend = round(revenueTTM * 0.22); // benchmark estimate (no ad feed)
   const netRevenue = round(revenueTTM * 0.95);
+
+  // Ad spend + ROAS: use the real Meta feed when supplied, else a benchmark
+  // estimate. Meta's reported ROAS is self-attributed (view-through + 7-day
+  // click), so the buyer-credible figure we lead with is blended CAC = ad spend
+  // ÷ new customers — computed below, not taken from Meta.
+  const meta = input.meta;
+  const metaConnected = !!meta && meta.monthly.length > 0;
+  let adSpend = round(revenueTTM * 0.22);
+  let roas = 0;
+  let blendedCac = 0;
+  let adSpendStability = 0;
+  let topCampaignShare = 0;
+  if (metaConnected) {
+    const months = meta!.monthly;
+    const metaSpend = months.reduce((s, m) => s + m.spend, 0);
+    const metaValue = months.reduce((s, m) => s + m.conversionValue, 0);
+    adSpend = round(metaSpend);
+    roas = metaSpend > 0 ? round2(metaValue / metaSpend) : 0;
+    // Coefficient of variation of monthly spend → stability (1 = perfectly flat).
+    const mean = metaSpend / months.length;
+    if (mean > 0) {
+      const variance =
+        months.reduce((s, m) => s + (m.spend - mean) ** 2, 0) / months.length;
+      adSpendStability = clamp01(1 - Math.sqrt(variance) / mean);
+    }
+    const campSpend = meta!.campaigns.reduce((s, c) => s + c.spend, 0);
+    const topSpend = meta!.campaigns.reduce(
+      (mx, c) => Math.max(mx, c.spend),
+      0,
+    );
+    topCampaignShare = campSpend > 0 ? topSpend / campSpend : 0;
+  }
 
   // Business age from store creation date.
   let businessAgeYears = 0;
@@ -298,6 +357,11 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   const businessAge =
     businessAgeYears > 0 ? `${businessAgeYears.toFixed(1)} years` : "—";
 
+  const newCustomers = Math.max(0, totalCustomers - returningCustomers);
+  if (metaConnected) {
+    blendedCac = round2(adSpend / Math.max(1, newCustomers));
+  }
+
   return {
     currency: store?.currency || "USD",
     orderCount,
@@ -308,7 +372,7 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     revenueMonthly: monthly,
     avgOrderValue,
     repeatRate,
-    newCustomers: Math.max(0, totalCustomers - returningCustomers),
+    newCustomers,
     returningCustomers,
     topProductShare,
     productRevenue,
@@ -322,7 +386,11 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     sde,
     opex,
     adSpend,
-    roas: 0, // unknown without an ad-platform connection
+    roas,
+    adSpendVerified: metaConnected,
+    blendedCac,
+    adSpendStability,
+    topCampaignShare,
     businessAgeYears,
     businessAge,
     growthRate,
@@ -354,7 +422,11 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
       "marketingEfficiency",
       "Marketing Efficiency & Stability",
       15,
-      m.repeatRate / 0.3,
+      // With a verified Meta feed: blend ROAS (3x = strong) with monthly spend
+      // stability. Without it, fall back to the repeat-rate proxy.
+      m.adSpendVerified
+        ? 0.6 * clamp01(m.roas / 3) + 0.4 * m.adSpendStability
+        : m.repeatRate / 0.3,
     ),
     dim(
       "customerEconomics",
@@ -399,6 +471,9 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
   let dataConfidence = 50 + clamp01(m.orderCount / 200) * 30;
   if (m.customerCount > 0) dataConfidence += 10;
   if (m.productCount > 0) dataConfidence += 10;
+  // A verified ad feed materially raises confidence — marketing efficiency is no
+  // longer a proxy guess.
+  if (m.adSpendVerified) dataConfidence += 10;
   dataConfidence = Math.min(95, round(dataConfidence));
 
   return { exitScore, scoreTier, scoreBreakdown: breakdown, dataConfidence };
@@ -524,14 +599,16 @@ export function computeRisks(m: StoreMetrics, v: ValuationResult): RiskItem[] {
     {
       title: "Single-Channel Dependency",
       severity: "medium",
-      description:
-        "All tracked revenue flows through Shopify with no diversified channel evidence connected.",
+      description: m.adSpendVerified
+        ? `All tracked revenue flows through Shopify, with acquisition concentrated on Meta (top campaign is ${pct(m.topCampaignShare)} of ad spend).`
+        : "All tracked revenue flows through Shopify with no diversified channel evidence connected.",
       impact: -round(gap * 0.2),
       buyerSees: "A business renting one storefront/acquisition stack.",
       buyerFears: "Platform, ad-account or algorithm shifts threaten cashflow.",
       buyerDoes: "Require channel-diversification proof before closing.",
-      recommendation:
-        "Connect ad and analytics sources, and build an owned audience.",
+      recommendation: m.adSpendVerified
+        ? "Diversify acquisition beyond Meta and build an owned audience (email/SMS) to de-risk the ad stack."
+        : "Connect ad and analytics sources, and build an owned audience.",
     },
   ];
 }

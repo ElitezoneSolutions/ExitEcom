@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { RefreshCw, ShoppingCart, Package, Users, Store } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
-import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
+import { DisconnectButton } from "@/components/ex/DisconnectButton";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { computeMetrics } from "@/lib/analytics";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ function StoreData() {
     lastSyncedAt,
     canResync,
     resyncStore,
+    disconnectShopify,
     business,
     loading,
   } = useBusinessData();
@@ -120,16 +121,23 @@ function StoreData() {
         subtitle="Everything we pulled from your Shopify store. Reports are computed from this data on demand."
         right={
           <div className="flex flex-col items-end gap-2">
-            <button
-              onClick={() => runResync(false)}
-              disabled={syncing || !canResync}
-              className="btn-primary text-sm disabled:opacity-50"
-            >
-              <RefreshCw
-                className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+            <div className="flex items-center gap-2">
+              <DisconnectButton
+                name="Shopify"
+                onConfirm={disconnectShopify}
+                variant="button"
               />
-              {syncing ? "Syncing…" : "Sync now"}
-            </button>
+              <button
+                onClick={() => runResync(false)}
+                disabled={syncing || !canResync}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+                />
+                {syncing ? "Syncing…" : "Sync now"}
+              </button>
+            </div>
             <span className="text-[11px] text-[var(--text-muted)]">
               {lastSyncedAt
                 ? `Last synced ${new Date(lastSyncedAt).toLocaleString("en-GB")}`

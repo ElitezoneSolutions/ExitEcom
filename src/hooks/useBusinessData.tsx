@@ -18,6 +18,13 @@ import {
   type RawShopifyCustomer,
   type ShopifySyncResult,
 } from "@/lib/shopify";
+import {
+  syncMetaAdAccountFn,
+  type RawMetaAccount,
+  type RawMetaMonthly,
+  type RawMetaCampaign,
+  type MetaSyncResult,
+} from "@/lib/meta";
 
 export interface BusinessData {
   id?: string;
@@ -103,13 +110,14 @@ export interface ComputedReport {
   actions: ActionItem[];
 }
 
-// Re-export the raw Shopify shapes so pages can type their data.
+// Re-export the raw Shopify + Meta shapes so pages can type their data.
 export type {
   RawShopifyStore,
   RawShopifyOrder,
   RawShopifyProduct,
   RawShopifyCustomer,
 };
+export type { RawMetaAccount, RawMetaMonthly, RawMetaCampaign };
 
 // Empty state — what we show before any real data exists. NOT dummy/demo data:
 // every field is blank/zero until onboarding or a computed report populates it.
@@ -191,7 +199,7 @@ async function upsertChunked(
 
 // Turn a raw Supabase/Postgrest error into a clear, actionable Error. A missing
 // table means the database migration hasn't been applied to this project yet.
-function describeDbError(err: unknown): Error {
+function describeDbError(err: unknown, source = "Shopify"): Error {
   const e = err as { code?: string; message?: string } | null;
   const msg = e?.message || String(err);
   if (
@@ -199,7 +207,7 @@ function describeDbError(err: unknown): Error {
     /could not find the table|does not exist/i.test(msg)
   ) {
     return new Error(
-      "Your database isn't fully set up yet: the Shopify data tables are missing. The latest database migration needs to be applied to this Supabase project before you can connect a store.",
+      `Your database isn't fully set up yet: the ${source} data tables are missing. The latest database migration needs to be applied to this Supabase project before you can connect.`,
     );
   }
   return err instanceof Error ? err : new Error(msg);
@@ -316,6 +324,89 @@ const mapCustomerRow = (r: CustomerRow): RawShopifyCustomer => ({
   lastOrderAt: r.last_order_at ?? null,
 });
 
+// --- localStorage cache for the raw Meta data -------------------------------
+// Same approach as the Shopify cache: serve the (smaller) Meta arrays locally
+// for an instant first paint, refresh only on an actual sync. The access token
+// is never cached — it stays in the RLS-protected meta_accounts row.
+const CACHE_META = "exitecom_meta_raw_v1";
+
+interface MetaRawCache {
+  businessId: string;
+  account: RawMetaAccount | null;
+  lastSyncedAt: string | null;
+  monthly: RawMetaMonthly[];
+  campaigns: RawMetaCampaign[];
+}
+
+function readMetaCache(): MetaRawCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_META);
+    return raw ? (JSON.parse(raw) as MetaRawCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMetaCache(cache: MetaRawCache) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CACHE_META, JSON.stringify(cache));
+  } catch (err) {
+    console.warn("[Meta cache] not stored (likely too large):", err);
+    try {
+      localStorage.removeItem(CACHE_META);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function clearMetaCache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CACHE_META);
+}
+
+interface MetaMonthlyRow {
+  month: string;
+  spend: number | string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+interface MetaCampaignRow {
+  meta_campaign_id: string;
+  name: string | null;
+  objective: string | null;
+  status: string | null;
+  spend: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+
+const mapMetaMonthlyRow = (r: MetaMonthlyRow): RawMetaMonthly => ({
+  month: r.month,
+  spend: Number(r.spend ?? 0),
+  impressions: Number(r.impressions ?? 0),
+  clicks: Number(r.clicks ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+const mapMetaCampaignRow = (r: MetaCampaignRow): RawMetaCampaign => ({
+  metaCampaignId: r.meta_campaign_id,
+  name: r.name ?? "",
+  objective: r.objective ?? null,
+  status: r.status ?? null,
+  spend: Number(r.spend ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
 // that called this (the Sidebar + each page + useReport) would spin up its own
@@ -364,6 +455,29 @@ function useBusinessDataImpl() {
     connectionKey: string | null;
   } | null>(null);
 
+  // Raw Meta Ads data — same cache-first seeding as Shopify above.
+  const [metaAccount, setMetaAccount] = useState<RawMetaAccount | null>(
+    () => readMetaCache()?.account ?? null,
+  );
+  const [metaMonthly, setMetaMonthly] = useState<RawMetaMonthly[]>(
+    () => readMetaCache()?.monthly ?? [],
+  );
+  const [metaCampaigns, setMetaCampaigns] = useState<RawMetaCampaign[]>(
+    () => readMetaCache()?.campaigns ?? [],
+  );
+  const [metaLastSyncedAt, setMetaLastSyncedAt] = useState<string | null>(
+    () => readMetaCache()?.lastSyncedAt ?? null,
+  );
+  // Stored Meta credentials, used only to refresh (never rendered). `source`
+  // distinguishes the pasted-token path from the in-app OAuth path. Both store a
+  // long-lived access token, so refresh treats them identically.
+  const [metaCreds, setMetaCreds] = useState<{
+    source: "direct" | "oauth";
+    adAccountId: string;
+    accessToken: string | null;
+    connectionKey: string | null;
+  } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
@@ -394,10 +508,16 @@ function useBusinessDataImpl() {
         setProducts([]);
         setCustomers([]);
         setLastSyncedAt(null);
+        setMetaAccount(null);
+        setMetaMonthly([]);
+        setMetaCampaigns([]);
+        setMetaLastSyncedAt(null);
+        setMetaCreds(null);
         localStorage.removeItem(CACHE_BUSINESS);
         localStorage.removeItem(CACHE_RISKS);
         localStorage.removeItem(CACHE_ACTIONS);
         clearShopifyCache();
+        clearMetaCache();
         setLoading(false);
         return;
       }
@@ -477,10 +597,11 @@ function useBusinessDataImpl() {
       if (docsData && docsData.length > 0)
         setDocuments(docsData as DocumentItem[]);
 
-      // Raw Shopify data is optional and loaded independently: a user who
-      // hasn't connected a store (or a project where the shopify_* tables
-      // aren't migrated yet) should NOT see a failure — just no store data.
+      // Raw Shopify + Meta data are optional and loaded independently: a user
+      // who hasn't connected a source (or a project where those tables aren't
+      // migrated yet) should NOT see a failure — just no data for that source.
       await loadShopifyData(bizData.id);
+      await loadMetaData(bizData.id);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -602,6 +723,102 @@ function useBusinessDataImpl() {
       });
     } catch (err) {
       console.warn("[Shopify data] load skipped:", err);
+    }
+  };
+
+  // Read the raw Meta tables (monthly insights + campaigns) from Supabase.
+  const fetchMetaArrays = async (businessId: string) => {
+    const [
+      { data: monthlyRows, error: mErr },
+      { data: campaignRows, error: cErr },
+    ] = await Promise.all([
+      supabase
+        .from("meta_monthly_insights")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("month", { ascending: true }),
+      supabase
+        .from("meta_campaigns")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("spend", { ascending: false }),
+    ]);
+    const err = mErr || cErr;
+    if (err) throw err;
+    return {
+      monthly: ((monthlyRows ?? []) as MetaMonthlyRow[]).map(mapMetaMonthlyRow),
+      campaigns: ((campaignRows ?? []) as MetaCampaignRow[]).map(
+        mapMetaCampaignRow,
+      ),
+    };
+  };
+
+  // Load the raw Meta data. Mirrors loadShopifyData: warm cache serves locally,
+  // a cold load reads the account row (+ credentials) and arrays from Supabase
+  // once, then caches them. Degrades silently if the tables are absent/empty.
+  const loadMetaData = async (businessId: string) => {
+    try {
+      const cache = readMetaCache();
+      if (cache && cache.businessId === businessId && cache.account) {
+        setMetaAccount(cache.account);
+        setMetaLastSyncedAt(cache.lastSyncedAt);
+        setMetaMonthly(cache.monthly);
+        setMetaCampaigns(cache.campaigns);
+        return;
+      }
+
+      const { data: acctRow, error: acctError } = await supabase
+        .from("meta_accounts")
+        .select("*")
+        .eq("business_id", businessId)
+        .maybeSingle();
+
+      if (acctError) {
+        console.warn("[Meta data] not available yet:", acctError.message);
+        return;
+      }
+
+      if (!acctRow) {
+        setMetaAccount(null);
+        setMetaLastSyncedAt(null);
+        setMetaCreds(null);
+        setMetaMonthly([]);
+        setMetaCampaigns([]);
+        clearMetaCache();
+        return;
+      }
+
+      const accountMeta: RawMetaAccount = {
+        adAccountId: acctRow.ad_account_id,
+        name: acctRow.name ?? "",
+        currency: acctRow.currency ?? "",
+        timezone: acctRow.timezone ?? "",
+        accountStatus: acctRow.account_status ?? "",
+      };
+      setMetaAccount(accountMeta);
+      setMetaLastSyncedAt(acctRow.last_synced_at ?? null);
+      setMetaCreds(
+        acctRow.access_token
+          ? {
+              source: (acctRow.source as "direct" | "oauth") ?? "direct",
+              adAccountId: acctRow.ad_account_id,
+              accessToken: acctRow.access_token ?? null,
+              connectionKey: null,
+            }
+          : null,
+      );
+
+      const arrays = await fetchMetaArrays(businessId);
+      setMetaMonthly(arrays.monthly);
+      setMetaCampaigns(arrays.campaigns);
+      writeMetaCache({
+        businessId,
+        account: accountMeta,
+        lastSyncedAt: acctRow.last_synced_at ?? null,
+        ...arrays,
+      });
+    } catch (err) {
+      console.warn("[Meta data] load skipped:", err);
     }
   };
 
@@ -889,6 +1106,293 @@ function useBusinessDataImpl() {
     return syncStore(creds.shopDomain, creds.accessToken, { incremental });
   };
 
+  // Disconnect Shopify: delete all stored Shopify data + credentials, drop the
+  // source, and clear local state/cache. A previously computed report is left as
+  // a stale snapshot — the user can re-run once data is reconnected.
+  const disconnectShopify = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("shopify"),
+    );
+
+    // Clear local state/cache immediately (works even without Supabase).
+    setStore(null);
+    setOrders([]);
+    setProducts([]);
+    setCustomers([]);
+    setLastSyncedAt(null);
+    setStoreCreds(null);
+    clearShopifyCache();
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Shopify disconnected.");
+      return;
+    }
+
+    const businessId = business.id;
+    try {
+      // Child rows first (FK cascade would handle it, but be explicit).
+      await supabase
+        .from("shopify_orders")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("shopify_products")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("shopify_customers")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("shopify_stores")
+        .delete()
+        .eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+      toast.success("Shopify disconnected.");
+    } catch (err) {
+      throw describeDbError(err);
+    }
+  };
+
+  // Persist a freshly pulled Meta dataset to Supabase + local cache/state.
+  // Shared by both Meta connectors. `creds` records how to refresh later (the
+  // pasted token, or the OAuth long-lived token). Meta connectors always do a
+  // full pull (the API returns the whole reporting window each time), so there is
+  // no incremental path — the monthly + campaign sets are replaced wholesale.
+  const commitMetaSync = async (
+    result: MetaSyncResult,
+    creds: {
+      source: "direct" | "oauth";
+      adAccountId: string;
+      accessToken: string | null;
+      connectionKey: string | null;
+    },
+  ) => {
+    // Reflect immediately in local state (works even without Supabase).
+    setMetaAccount(result.account);
+    setMetaMonthly(result.monthly);
+    setMetaCampaigns(result.campaigns);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "meta"])),
+      missingSources: b.missingSources.filter(
+        (s) => s.toLowerCase() !== "meta",
+      ),
+    }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Meta Ads synced (local sandbox).");
+      return result;
+    }
+
+    const businessId = business.id;
+    const nowISO = new Date().toISOString();
+
+    try {
+      const { error: acctErr } = await supabase.from("meta_accounts").upsert(
+        {
+          business_id: businessId,
+          ad_account_id: result.account.adAccountId,
+          access_token: creds.accessToken,
+          connection_key: creds.connectionKey,
+          source: creds.source,
+          name: result.account.name,
+          currency: result.account.currency,
+          timezone: result.account.timezone,
+          account_status: result.account.accountStatus,
+          last_synced_at: nowISO,
+          synced_at: nowISO,
+        },
+        { onConflict: "business_id" },
+      );
+      if (acctErr) throw acctErr;
+
+      // Replace the prior window so removed campaigns/months don't linger.
+      await supabase
+        .from("meta_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("meta_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+
+      await upsertChunked(
+        "meta_monthly_insights",
+        result.monthly.map((m) => ({
+          business_id: businessId,
+          month: m.month,
+          spend: m.spend,
+          impressions: m.impressions,
+          clicks: m.clicks,
+          conversions: m.conversions,
+          conversion_value: m.conversionValue,
+          roas: m.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,month",
+      );
+
+      await upsertChunked(
+        "meta_campaigns",
+        result.campaigns.map((c) => ({
+          business_id: businessId,
+          meta_campaign_id: c.metaCampaignId,
+          name: c.name,
+          objective: c.objective,
+          status: c.status,
+          spend: c.spend,
+          conversions: c.conversions,
+          conversion_value: c.conversionValue,
+          roas: c.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,meta_campaign_id",
+      );
+
+      const sources = Array.from(
+        new Set([...business.connectedSources, "meta"]),
+      );
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: sources },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+    } catch (err) {
+      throw describeDbError(err, "Meta");
+    }
+
+    setMetaLastSyncedAt(nowISO);
+    setMetaCreds(creds);
+    writeMetaCache({
+      businessId,
+      account: result.account,
+      lastSyncedAt: nowISO,
+      monthly: result.monthly,
+      campaigns: result.campaigns,
+    });
+
+    return result;
+  };
+
+  // Connect / refresh a Meta ad account via the direct-token connector.
+  const syncMeta = async (adAccountId: string, accessToken: string) => {
+    const result = await syncMetaAdAccountFn({
+      data: { adAccountId, accessToken },
+    });
+    return commitMetaSync(result, {
+      source: "direct",
+      adAccountId: result.account.adAccountId,
+      accessToken,
+      connectionKey: null,
+    });
+  };
+
+  // Commit a dataset pulled via the in-app OAuth flow. The OAuth callback has
+  // already exchanged the code for a long-lived token and picked an ad account;
+  // here we run the same pull as the direct path and store it with source 'oauth'
+  // so a later refresh reuses the stored token.
+  const syncMetaViaOAuth = async (adAccountId: string, accessToken: string) => {
+    const result = await syncMetaAdAccountFn({
+      data: { adAccountId, accessToken },
+    });
+    return commitMetaSync(result, {
+      source: "oauth",
+      adAccountId: result.account.adAccountId,
+      accessToken,
+      connectionKey: null,
+    });
+  };
+
+  // Refresh using stored Meta credentials (fetched from Supabase on demand —
+  // never cached in the browser, mirroring resyncStore). Both the direct and
+  // OAuth paths store a long-lived access token, so refresh is identical.
+  const resyncMeta = async () => {
+    let creds = metaCreds;
+    if (!creds) {
+      if (!isSupabaseConfigured || !user || !business.id) {
+        throw new Error("Connect a Meta ad account first.");
+      }
+      const { data, error } = await supabase
+        .from("meta_accounts")
+        .select("ad_account_id, access_token, source")
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (error) throw describeDbError(error, "Meta");
+      if (!data?.access_token) {
+        throw new Error("No stored Meta credentials — reconnect the account.");
+      }
+      creds = {
+        source: (data.source as "direct" | "oauth") ?? "direct",
+        adAccountId: data.ad_account_id,
+        accessToken: data.access_token ?? null,
+        connectionKey: null,
+      };
+      setMetaCreds(creds);
+    }
+
+    if (!creds.accessToken) {
+      throw new Error("No stored Meta credentials — reconnect the account.");
+    }
+    return syncMeta(creds.adAccountId, creds.accessToken);
+  };
+
+  // Disconnect Meta: delete all stored Meta data + credentials, drop the source,
+  // and clear local state/cache. Mirrors disconnectShopify.
+  const disconnectMeta = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("meta"),
+    );
+
+    setMetaAccount(null);
+    setMetaMonthly([]);
+    setMetaCampaigns([]);
+    setMetaLastSyncedAt(null);
+    setMetaCreds(null);
+    clearMetaCache();
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Meta Ads disconnected.");
+      return;
+    }
+
+    const businessId = business.id;
+    try {
+      await supabase
+        .from("meta_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("meta_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("meta_accounts")
+        .delete()
+        .eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+      toast.success("Meta Ads disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "Meta");
+    }
+  };
+
   // Persist an on-demand computed report snapshot.
   const saveComputedReport = async (report: ComputedReport) => {
     const updatedBusiness: BusinessData = {
@@ -996,6 +1500,9 @@ function useBusinessDataImpl() {
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
   );
+  const isMetaConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("meta"),
+  );
 
   return {
     business,
@@ -1005,20 +1512,32 @@ function useBusinessDataImpl() {
     loading,
     error,
     isShopifyConnected,
+    isMetaConnected,
     // Raw Shopify data
     store,
     orders,
     products,
     customers,
     lastSyncedAt,
+    // Raw Meta Ads data
+    metaAccount,
+    metaMonthly,
+    metaCampaigns,
+    metaLastSyncedAt,
     // Connected stores can always resync — the token is fetched on demand.
     canResync: !!store || isShopifyConnected,
+    canResyncMeta: !!metaAccount || isMetaConnected,
     // Actions
     refetch: fetchData,
     updateBusiness,
     syncStore,
     syncStoreViaKey,
     resyncStore,
+    disconnectShopify,
+    syncMeta,
+    syncMetaViaOAuth,
+    resyncMeta,
+    disconnectMeta,
     saveComputedReport,
   };
 }

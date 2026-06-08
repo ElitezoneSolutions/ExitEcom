@@ -20,6 +20,8 @@ export function useReport() {
     customers,
     business,
     risks,
+    metaMonthly,
+    metaCampaigns,
     saveComputedReport,
   } = bd;
   const [computing, setComputing] = useState(false);
@@ -39,8 +41,22 @@ export function useReport() {
       products,
       customers,
       industry: business.industry || "E-commerce",
+      // RawMetaMonthly/RawMetaCampaign are structurally compatible with the
+      // AnalyticsMeta shapes. Only supply a feed when an account is connected.
+      meta:
+        metaMonthly.length > 0
+          ? { monthly: metaMonthly, campaigns: metaCampaigns }
+          : null,
     }),
-    [store, orders, products, customers, business.industry],
+    [
+      store,
+      orders,
+      products,
+      customers,
+      business.industry,
+      metaMonthly,
+      metaCampaigns,
+    ],
   );
 
   const hasData = orders.length > 0;
