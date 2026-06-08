@@ -18,12 +18,21 @@ import { createServerFn } from "@tanstack/react-start";
 // (non-test) accounts; until then, use the sandbox creds below.
 // ---------------------------------------------------------------------------
 
-const API_VERSION = "v18";
-const ADS_BASE = `https://googleads.googleapis.com/${API_VERSION}`;
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const OAUTH_SCOPE = "https://www.googleapis.com/auth/adwords";
 const CAMPAIGN_CAP = 500;
 const LOOKBACK_DAYS = 365;
+
+// Google Ads API versions sunset ~monthly. Default to a current major and let it
+// be overridden by env so a future sunset is a config change, not a code change.
+// (As of mid-2026 the current major is v23; v20 sunset 2026-06-10.) Read inside a
+// function so the value isn't baked into the client bundle.
+function apiVersion(): string {
+  return (process.env.GOOGLE_ADS_API_VERSION ?? "").trim() || "v23";
+}
+function adsBase(): string {
+  return `https://googleads.googleapis.com/${apiVersion()}`;
+}
 
 export interface GoogleSyncInput {
   customerId: string;
@@ -132,14 +141,33 @@ function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function metricsError(status: number): string {
+// Pull the human-readable reason out of a Google Ads API error body so the real
+// cause (wrong API version, manager account, unapproved token, etc.) surfaces
+// instead of a generic message.
+function googleErrorDetail(body: string): string {
+  try {
+    const j = JSON.parse(body) as {
+      error?: { message?: string; details?: unknown[] };
+    };
+    if (j.error?.message) return j.error.message;
+  } catch {
+    /* not JSON */
+  }
+  return body.slice(0, 300);
+}
+
+function metricsError(status: number, body = ""): string {
+  const detail = body ? ` ${googleErrorDetail(body)}` : "";
   if (status === 401 || status === 403) {
-    return "Google rejected the request. Check the developer token is approved and the account granted access (the ads_read scope).";
+    return `Google rejected the request — check the developer token is approved (Basic access) and the account granted the ads_read scope.${detail}`;
   }
-  if (status === 400 || status === 404) {
-    return "Google couldn't find that customer id, or the query was rejected. Check the 10-digit customer id.";
+  if (status === 404) {
+    return `Google Ads API returned 404 — the API version may be retired (set GOOGLE_ADS_API_VERSION to a current major), or the customer id wasn't found.${detail}`;
   }
-  return `Could not reach the Google Ads API (returned ${status}). Please try again shortly.`;
+  if (status === 400) {
+    return `Google rejected the query (400). This often means a Manager/MCC account was selected (it has no campaigns) or login-customer-id is required.${detail}`;
+  }
+  return `Could not reach the Google Ads API (returned ${status}).${detail}`;
 }
 
 function isSandboxCreds(customerId: string, refreshToken: string): boolean {
@@ -157,6 +185,12 @@ function readOAuthEnv() {
     clientSecret: (process.env.GOOGLE_ADS_CLIENT_SECRET ?? "").trim(),
     developerToken: (process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "").trim(),
     redirectUri: (process.env.GOOGLE_OAUTH_REDIRECT_URI ?? "").trim(),
+    // Optional: the Manager (MCC) customer id to send as login-customer-id when
+    // the analysed account is accessed through a manager. Digits only.
+    loginCustomerId: (process.env.GOOGLE_LOGIN_CUSTOMER_ID ?? "").replace(
+      /[^\d]/g,
+      "",
+    ),
   };
 }
 
@@ -224,22 +258,26 @@ async function searchStream(
   accessToken: string,
   query: string,
 ): Promise<GaqlRow[]> {
-  const { developerToken } = readOAuthEnv();
+  const { developerToken, loginCustomerId } = readOAuthEnv();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "developer-token": developerToken,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  // When the analysed account is under a Manager, Google requires the MCC id as
+  // login-customer-id. Default it to the configured MCC if one is set.
+  if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
   const res = await fetch(
-    `${ADS_BASE}/customers/${customerId}/googleAds:searchStream`,
+    `${adsBase()}/customers/${customerId}/googleAds:searchStream`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers,
       body: JSON.stringify({ query }),
     },
   );
   if (!res.ok) {
-    throw new Error(metricsError(res.status));
+    throw new Error(metricsError(res.status, await res.text()));
   }
   // searchStream returns a JSON array of batches, each with `results`.
   const batches = (await res.json()) as SearchStreamBatch[];
@@ -508,8 +546,13 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
   .inputValidator((input: GoogleOAuthExchangeInput) => input)
   .handler(async ({ data }): Promise<GoogleOAuthExchangeResult> => {
     const code = data.code?.trim();
-    const { clientId, clientSecret, developerToken, redirectUri } =
-      readOAuthEnv();
+    const {
+      clientId,
+      clientSecret,
+      developerToken,
+      redirectUri,
+      loginCustomerId,
+    } = readOAuthEnv();
     if (!clientId || !clientSecret || !developerToken || !redirectUri) {
       throw new Error(
         "Google OAuth isn't configured on this deployment (missing GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET / GOOGLE_ADS_DEVELOPER_TOKEN / GOOGLE_OAUTH_REDIRECT_URI).",
@@ -548,18 +591,18 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
     const accessToken = tokenJson.access_token;
 
     // 2. List accessible customers.
+    const listHeaders: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      "developer-token": developerToken,
+      Accept: "application/json",
+    };
+    if (loginCustomerId) listHeaders["login-customer-id"] = loginCustomerId;
     const listRes = await fetch(
-      `${ADS_BASE}/customers:listAccessibleCustomers`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "developer-token": developerToken,
-          Accept: "application/json",
-        },
-      },
+      `${adsBase()}/customers:listAccessibleCustomers`,
+      { headers: listHeaders },
     );
     if (!listRes.ok) {
-      throw new Error(metricsError(listRes.status));
+      throw new Error(metricsError(listRes.status, await listRes.text()));
     }
     const listJson = (await listRes.json()) as { resourceNames?: string[] };
     const ids = (listJson.resourceNames ?? [])
