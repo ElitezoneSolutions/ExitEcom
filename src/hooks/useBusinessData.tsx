@@ -25,6 +25,13 @@ import {
   type RawMetaCampaign,
   type MetaSyncResult,
 } from "@/lib/meta";
+import {
+  syncGoogleAdsFn,
+  type RawGoogleAccount,
+  type RawGoogleMonthly,
+  type RawGoogleCampaign,
+  type GoogleSyncResult,
+} from "@/lib/google";
 
 export interface BusinessData {
   id?: string;
@@ -118,6 +125,7 @@ export type {
   RawShopifyCustomer,
 };
 export type { RawMetaAccount, RawMetaMonthly, RawMetaCampaign };
+export type { RawGoogleAccount, RawGoogleMonthly, RawGoogleCampaign };
 
 // Empty state — what we show before any real data exists. NOT dummy/demo data:
 // every field is blank/zero until onboarding or a computed report populates it.
@@ -407,6 +415,86 @@ const mapMetaCampaignRow = (r: MetaCampaignRow): RawMetaCampaign => ({
   roas: Number(r.roas ?? 0),
 });
 
+// --- localStorage cache for the raw Google Ads data (same approach as Meta) --
+const CACHE_GOOGLE = "exitecom_google_raw_v1";
+
+interface GoogleRawCache {
+  businessId: string;
+  account: RawGoogleAccount | null;
+  lastSyncedAt: string | null;
+  monthly: RawGoogleMonthly[];
+  campaigns: RawGoogleCampaign[];
+}
+
+function readGoogleCache(): GoogleRawCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_GOOGLE);
+    return raw ? (JSON.parse(raw) as GoogleRawCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGoogleCache(cache: GoogleRawCache) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CACHE_GOOGLE, JSON.stringify(cache));
+  } catch (err) {
+    console.warn("[Google cache] not stored (likely too large):", err);
+    try {
+      localStorage.removeItem(CACHE_GOOGLE);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function clearGoogleCache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CACHE_GOOGLE);
+}
+
+interface GoogleMonthlyRow {
+  month: string;
+  spend: number | string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+interface GoogleCampaignRow {
+  google_campaign_id: string;
+  name: string | null;
+  channel_type: string | null;
+  status: string | null;
+  spend: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+
+const mapGoogleMonthlyRow = (r: GoogleMonthlyRow): RawGoogleMonthly => ({
+  month: r.month,
+  spend: Number(r.spend ?? 0),
+  impressions: Number(r.impressions ?? 0),
+  clicks: Number(r.clicks ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+const mapGoogleCampaignRow = (r: GoogleCampaignRow): RawGoogleCampaign => ({
+  googleCampaignId: r.google_campaign_id,
+  name: r.name ?? "",
+  channelType: r.channel_type ?? null,
+  status: r.status ?? null,
+  spend: Number(r.spend ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
 // that called this (the Sidebar + each page + useReport) would spin up its own
@@ -478,6 +566,26 @@ function useBusinessDataImpl() {
     connectionKey: string | null;
   } | null>(null);
 
+  // Raw Google Ads data — same cache-first seeding as Meta.
+  const [googleAccount, setGoogleAccount] = useState<RawGoogleAccount | null>(
+    () => readGoogleCache()?.account ?? null,
+  );
+  const [googleMonthly, setGoogleMonthly] = useState<RawGoogleMonthly[]>(
+    () => readGoogleCache()?.monthly ?? [],
+  );
+  const [googleCampaigns, setGoogleCampaigns] = useState<RawGoogleCampaign[]>(
+    () => readGoogleCache()?.campaigns ?? [],
+  );
+  const [googleLastSyncedAt, setGoogleLastSyncedAt] = useState<string | null>(
+    () => readGoogleCache()?.lastSyncedAt ?? null,
+  );
+  // Stored Google credentials (the durable refresh token), used only to refresh.
+  const [googleCreds, setGoogleCreds] = useState<{
+    source: "oauth" | "manual";
+    customerId: string;
+    refreshToken: string | null;
+  } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
@@ -513,11 +621,17 @@ function useBusinessDataImpl() {
         setMetaCampaigns([]);
         setMetaLastSyncedAt(null);
         setMetaCreds(null);
+        setGoogleAccount(null);
+        setGoogleMonthly([]);
+        setGoogleCampaigns([]);
+        setGoogleLastSyncedAt(null);
+        setGoogleCreds(null);
         localStorage.removeItem(CACHE_BUSINESS);
         localStorage.removeItem(CACHE_RISKS);
         localStorage.removeItem(CACHE_ACTIONS);
         clearShopifyCache();
         clearMetaCache();
+        clearGoogleCache();
         setLoading(false);
         return;
       }
@@ -602,6 +716,7 @@ function useBusinessDataImpl() {
       // migrated yet) should NOT see a failure — just no data for that source.
       await loadShopifyData(bizData.id);
       await loadMetaData(bizData.id);
+      await loadGoogleData(bizData.id);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -819,6 +934,101 @@ function useBusinessDataImpl() {
       });
     } catch (err) {
       console.warn("[Meta data] load skipped:", err);
+    }
+  };
+
+  // Read the raw Google tables (monthly insights + campaigns) from Supabase.
+  const fetchGoogleArrays = async (businessId: string) => {
+    const [
+      { data: monthlyRows, error: mErr },
+      { data: campaignRows, error: cErr },
+    ] = await Promise.all([
+      supabase
+        .from("google_monthly_insights")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("month", { ascending: true }),
+      supabase
+        .from("google_campaigns")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("spend", { ascending: false }),
+    ]);
+    const err = mErr || cErr;
+    if (err) throw err;
+    return {
+      monthly: ((monthlyRows ?? []) as GoogleMonthlyRow[]).map(
+        mapGoogleMonthlyRow,
+      ),
+      campaigns: ((campaignRows ?? []) as GoogleCampaignRow[]).map(
+        mapGoogleCampaignRow,
+      ),
+    };
+  };
+
+  // Load the raw Google data. Mirrors loadMetaData exactly.
+  const loadGoogleData = async (businessId: string) => {
+    try {
+      const cache = readGoogleCache();
+      if (cache && cache.businessId === businessId && cache.account) {
+        setGoogleAccount(cache.account);
+        setGoogleLastSyncedAt(cache.lastSyncedAt);
+        setGoogleMonthly(cache.monthly);
+        setGoogleCampaigns(cache.campaigns);
+        return;
+      }
+
+      const { data: acctRow, error: acctError } = await supabase
+        .from("google_accounts")
+        .select("*")
+        .eq("business_id", businessId)
+        .maybeSingle();
+
+      if (acctError) {
+        console.warn("[Google data] not available yet:", acctError.message);
+        return;
+      }
+
+      if (!acctRow) {
+        setGoogleAccount(null);
+        setGoogleLastSyncedAt(null);
+        setGoogleCreds(null);
+        setGoogleMonthly([]);
+        setGoogleCampaigns([]);
+        clearGoogleCache();
+        return;
+      }
+
+      const accountMeta: RawGoogleAccount = {
+        customerId: acctRow.customer_id,
+        name: acctRow.name ?? "",
+        currency: acctRow.currency ?? "",
+        timezone: acctRow.timezone ?? "",
+        accountStatus: acctRow.account_status ?? "",
+      };
+      setGoogleAccount(accountMeta);
+      setGoogleLastSyncedAt(acctRow.last_synced_at ?? null);
+      setGoogleCreds(
+        acctRow.refresh_token
+          ? {
+              source: (acctRow.source as "oauth" | "manual") ?? "oauth",
+              customerId: acctRow.customer_id,
+              refreshToken: acctRow.refresh_token ?? null,
+            }
+          : null,
+      );
+
+      const arrays = await fetchGoogleArrays(businessId);
+      setGoogleMonthly(arrays.monthly);
+      setGoogleCampaigns(arrays.campaigns);
+      writeGoogleCache({
+        businessId,
+        account: accountMeta,
+        lastSyncedAt: acctRow.last_synced_at ?? null,
+        ...arrays,
+      });
+    } catch (err) {
+      console.warn("[Google data] load skipped:", err);
     }
   };
 
@@ -1393,6 +1603,231 @@ function useBusinessDataImpl() {
     }
   };
 
+  // Persist a freshly pulled Google Ads dataset to Supabase + local cache/state.
+  // Mirrors commitMetaSync; stores the durable refresh token for later refresh.
+  const commitGoogleSync = async (
+    result: GoogleSyncResult,
+    creds: {
+      source: "oauth" | "manual";
+      customerId: string;
+      refreshToken: string | null;
+    },
+  ) => {
+    setGoogleAccount(result.account);
+    setGoogleMonthly(result.monthly);
+    setGoogleCampaigns(result.campaigns);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "google"])),
+      missingSources: b.missingSources.filter(
+        (s) => s.toLowerCase() !== "google",
+      ),
+    }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Google Ads synced (local sandbox).");
+      return result;
+    }
+
+    const businessId = business.id;
+    const nowISO = new Date().toISOString();
+
+    try {
+      const { error: acctErr } = await supabase.from("google_accounts").upsert(
+        {
+          business_id: businessId,
+          customer_id: result.account.customerId,
+          refresh_token: creds.refreshToken,
+          source: creds.source,
+          name: result.account.name,
+          currency: result.account.currency,
+          timezone: result.account.timezone,
+          account_status: result.account.accountStatus,
+          last_synced_at: nowISO,
+          synced_at: nowISO,
+        },
+        { onConflict: "business_id" },
+      );
+      if (acctErr) throw acctErr;
+
+      await supabase
+        .from("google_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("google_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+
+      await upsertChunked(
+        "google_monthly_insights",
+        result.monthly.map((m) => ({
+          business_id: businessId,
+          month: m.month,
+          spend: m.spend,
+          impressions: m.impressions,
+          clicks: m.clicks,
+          conversions: m.conversions,
+          conversion_value: m.conversionValue,
+          roas: m.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,month",
+      );
+
+      await upsertChunked(
+        "google_campaigns",
+        result.campaigns.map((c) => ({
+          business_id: businessId,
+          google_campaign_id: c.googleCampaignId,
+          name: c.name,
+          channel_type: c.channelType,
+          status: c.status,
+          spend: c.spend,
+          conversions: c.conversions,
+          conversion_value: c.conversionValue,
+          roas: c.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,google_campaign_id",
+      );
+
+      const sources = Array.from(
+        new Set([...business.connectedSources, "google"]),
+      );
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: sources },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+    } catch (err) {
+      throw describeDbError(err, "Google");
+    }
+
+    setGoogleLastSyncedAt(nowISO);
+    setGoogleCreds(creds);
+    writeGoogleCache({
+      businessId,
+      account: result.account,
+      lastSyncedAt: nowISO,
+      monthly: result.monthly,
+      campaigns: result.campaigns,
+    });
+
+    return result;
+  };
+
+  // Connect / refresh via the manual connector (pasted customer id + refresh token).
+  const syncGoogle = async (customerId: string, refreshToken: string) => {
+    const result = await syncGoogleAdsFn({
+      data: { customerId, refreshToken },
+    });
+    return commitGoogleSync(result, {
+      source: "manual",
+      customerId: result.account.customerId,
+      refreshToken,
+    });
+  };
+
+  // Commit a dataset pulled via the in-app OAuth flow. The OAuth callback has
+  // exchanged the code for a refresh token and picked a customer; we pull and
+  // store it with source 'oauth' so a later refresh reuses the refresh token.
+  const syncGoogleViaOAuth = async (
+    customerId: string,
+    refreshToken: string,
+  ) => {
+    const result = await syncGoogleAdsFn({
+      data: { customerId, refreshToken },
+    });
+    return commitGoogleSync(result, {
+      source: "oauth",
+      customerId: result.account.customerId,
+      refreshToken,
+    });
+  };
+
+  // Refresh using stored Google credentials (the refresh token, fetched from
+  // Supabase on demand — never cached in the browser).
+  const resyncGoogle = async () => {
+    let creds = googleCreds;
+    if (!creds) {
+      if (!isSupabaseConfigured || !user || !business.id) {
+        throw new Error("Connect a Google Ads account first.");
+      }
+      const { data, error } = await supabase
+        .from("google_accounts")
+        .select("customer_id, refresh_token, source")
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (error) throw describeDbError(error, "Google");
+      if (!data?.refresh_token) {
+        throw new Error(
+          "No stored Google credentials — reconnect the account.",
+        );
+      }
+      creds = {
+        source: (data.source as "oauth" | "manual") ?? "oauth",
+        customerId: data.customer_id,
+        refreshToken: data.refresh_token ?? null,
+      };
+      setGoogleCreds(creds);
+    }
+
+    if (!creds.refreshToken) {
+      throw new Error("No stored Google credentials — reconnect the account.");
+    }
+    return syncGoogle(creds.customerId, creds.refreshToken);
+  };
+
+  // Disconnect Google: delete all stored Google data + credentials, drop the
+  // source, and clear local state/cache. Mirrors disconnectMeta.
+  const disconnectGoogle = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("google"),
+    );
+
+    setGoogleAccount(null);
+    setGoogleMonthly([]);
+    setGoogleCampaigns([]);
+    setGoogleLastSyncedAt(null);
+    setGoogleCreds(null);
+    clearGoogleCache();
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Google Ads disconnected.");
+      return;
+    }
+
+    const businessId = business.id;
+    try {
+      await supabase
+        .from("google_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("google_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("google_accounts")
+        .delete()
+        .eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+      toast.success("Google Ads disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "Google");
+    }
+  };
+
   // Persist an on-demand computed report snapshot.
   const saveComputedReport = async (report: ComputedReport) => {
     const updatedBusiness: BusinessData = {
@@ -1503,6 +1938,9 @@ function useBusinessDataImpl() {
   const isMetaConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("meta"),
   );
+  const isGoogleConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("google"),
+  );
 
   return {
     business,
@@ -1513,6 +1951,7 @@ function useBusinessDataImpl() {
     error,
     isShopifyConnected,
     isMetaConnected,
+    isGoogleConnected,
     // Raw Shopify data
     store,
     orders,
@@ -1524,9 +1963,15 @@ function useBusinessDataImpl() {
     metaMonthly,
     metaCampaigns,
     metaLastSyncedAt,
+    // Raw Google Ads data
+    googleAccount,
+    googleMonthly,
+    googleCampaigns,
+    googleLastSyncedAt,
     // Connected stores can always resync — the token is fetched on demand.
     canResync: !!store || isShopifyConnected,
     canResyncMeta: !!metaAccount || isMetaConnected,
+    canResyncGoogle: !!googleAccount || isGoogleConnected,
     // Actions
     refetch: fetchData,
     updateBusiness,
@@ -1538,6 +1983,10 @@ function useBusinessDataImpl() {
     syncMetaViaOAuth,
     resyncMeta,
     disconnectMeta,
+    syncGoogle,
+    syncGoogleViaOAuth,
+    resyncGoogle,
+    disconnectGoogle,
     saveComputedReport,
   };
 }

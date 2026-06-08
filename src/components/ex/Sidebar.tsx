@@ -34,6 +34,7 @@ const groups = [
           { to: "/data-sources", label: "Connections" },
           { to: "/store-data", label: "Store Data" },
           { to: "/meta-data", label: "Meta Ads Data" },
+          { to: "/google-data", label: "Google Ads Data" },
         ],
       },
     ],

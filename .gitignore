@@ -11,3 +11,6 @@ landing-*.png
 console-errors.txt
 .env
 .env.local
+
+# stray duplicate of .env — never commit
+env

@@ -22,6 +22,8 @@ export function useReport() {
     risks,
     metaMonthly,
     metaCampaigns,
+    googleMonthly,
+    googleCampaigns,
     saveComputedReport,
   } = bd;
   const [computing, setComputing] = useState(false);
@@ -41,11 +43,15 @@ export function useReport() {
       products,
       customers,
       industry: business.industry || "E-commerce",
-      // RawMetaMonthly/RawMetaCampaign are structurally compatible with the
-      // AnalyticsMeta shapes. Only supply a feed when an account is connected.
+      // Raw Meta/Google arrays are structurally compatible with AnalyticsAdsFeed.
+      // Only supply a feed when that platform is connected.
       meta:
         metaMonthly.length > 0
           ? { monthly: metaMonthly, campaigns: metaCampaigns }
+          : null,
+      google:
+        googleMonthly.length > 0
+          ? { monthly: googleMonthly, campaigns: googleCampaigns }
           : null,
     }),
     [
@@ -56,6 +62,8 @@ export function useReport() {
       business.industry,
       metaMonthly,
       metaCampaigns,
+      googleMonthly,
+      googleCampaigns,
     ],
   );
 

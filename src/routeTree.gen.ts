@@ -29,6 +29,9 @@ import { Route as AppMetaOauthCallbackRouteImport } from './routes/_app.meta-oau
 import { Route as AppMetaDataRouteImport } from './routes/_app.meta-data'
 import { Route as AppMetaConnectRouteImport } from './routes/_app.meta-connect'
 import { Route as AppInvestmentMemoRouteImport } from './routes/_app.investment-memo'
+import { Route as AppGoogleOauthCallbackRouteImport } from './routes/_app.google-oauth-callback'
+import { Route as AppGoogleDataRouteImport } from './routes/_app.google-data'
+import { Route as AppGoogleConnectRouteImport } from './routes/_app.google-connect'
 import { Route as AppFinancialNormalizerRouteImport } from './routes/_app.financial-normalizer'
 import { Route as AppExitScoreRouteImport } from './routes/_app.exit-score'
 import { Route as AppDataSourcesRouteImport } from './routes/_app.data-sources'
@@ -136,6 +139,21 @@ const AppInvestmentMemoRoute = AppInvestmentMemoRouteImport.update({
   path: '/investment-memo',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGoogleOauthCallbackRoute = AppGoogleOauthCallbackRouteImport.update({
+  id: '/google-oauth-callback',
+  path: '/google-oauth-callback',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGoogleDataRoute = AppGoogleDataRouteImport.update({
+  id: '/google-data',
+  path: '/google-data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGoogleConnectRoute = AppGoogleConnectRouteImport.update({
+  id: '/google-connect',
+  path: '/google-connect',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFinancialNormalizerRoute = AppFinancialNormalizerRouteImport.update({
   id: '/financial-normalizer',
   path: '/financial-normalizer',
@@ -187,6 +205,9 @@ export interface FileRoutesByFullPath {
   '/data-sources': typeof AppDataSourcesRoute
   '/exit-score': typeof AppExitScoreRoute
   '/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/google-connect': typeof AppGoogleConnectRoute
+  '/google-data': typeof AppGoogleDataRoute
+  '/google-oauth-callback': typeof AppGoogleOauthCallbackRoute
   '/investment-memo': typeof AppInvestmentMemoRoute
   '/meta-connect': typeof AppMetaConnectRoute
   '/meta-data': typeof AppMetaDataRoute
@@ -215,6 +236,9 @@ export interface FileRoutesByTo {
   '/data-sources': typeof AppDataSourcesRoute
   '/exit-score': typeof AppExitScoreRoute
   '/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/google-connect': typeof AppGoogleConnectRoute
+  '/google-data': typeof AppGoogleDataRoute
+  '/google-oauth-callback': typeof AppGoogleOauthCallbackRoute
   '/investment-memo': typeof AppInvestmentMemoRoute
   '/meta-connect': typeof AppMetaConnectRoute
   '/meta-data': typeof AppMetaDataRoute
@@ -245,6 +269,9 @@ export interface FileRoutesById {
   '/_app/data-sources': typeof AppDataSourcesRoute
   '/_app/exit-score': typeof AppExitScoreRoute
   '/_app/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/_app/google-connect': typeof AppGoogleConnectRoute
+  '/_app/google-data': typeof AppGoogleDataRoute
+  '/_app/google-oauth-callback': typeof AppGoogleOauthCallbackRoute
   '/_app/investment-memo': typeof AppInvestmentMemoRoute
   '/_app/meta-connect': typeof AppMetaConnectRoute
   '/_app/meta-data': typeof AppMetaDataRoute
@@ -275,6 +302,9 @@ export interface FileRouteTypes {
     | '/data-sources'
     | '/exit-score'
     | '/financial-normalizer'
+    | '/google-connect'
+    | '/google-data'
+    | '/google-oauth-callback'
     | '/investment-memo'
     | '/meta-connect'
     | '/meta-data'
@@ -303,6 +333,9 @@ export interface FileRouteTypes {
     | '/data-sources'
     | '/exit-score'
     | '/financial-normalizer'
+    | '/google-connect'
+    | '/google-data'
+    | '/google-oauth-callback'
     | '/investment-memo'
     | '/meta-connect'
     | '/meta-data'
@@ -332,6 +365,9 @@ export interface FileRouteTypes {
     | '/_app/data-sources'
     | '/_app/exit-score'
     | '/_app/financial-normalizer'
+    | '/_app/google-connect'
+    | '/_app/google-data'
+    | '/_app/google-oauth-callback'
     | '/_app/investment-memo'
     | '/_app/meta-connect'
     | '/_app/meta-data'
@@ -499,6 +535,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInvestmentMemoRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/google-oauth-callback': {
+      id: '/_app/google-oauth-callback'
+      path: '/google-oauth-callback'
+      fullPath: '/google-oauth-callback'
+      preLoaderRoute: typeof AppGoogleOauthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/google-data': {
+      id: '/_app/google-data'
+      path: '/google-data'
+      fullPath: '/google-data'
+      preLoaderRoute: typeof AppGoogleDataRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/google-connect': {
+      id: '/_app/google-connect'
+      path: '/google-connect'
+      fullPath: '/google-connect'
+      preLoaderRoute: typeof AppGoogleConnectRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/financial-normalizer': {
       id: '/_app/financial-normalizer'
       path: '/financial-normalizer'
@@ -559,6 +616,9 @@ interface AppRouteChildren {
   AppDataSourcesRoute: typeof AppDataSourcesRoute
   AppExitScoreRoute: typeof AppExitScoreRoute
   AppFinancialNormalizerRoute: typeof AppFinancialNormalizerRoute
+  AppGoogleConnectRoute: typeof AppGoogleConnectRoute
+  AppGoogleDataRoute: typeof AppGoogleDataRoute
+  AppGoogleOauthCallbackRoute: typeof AppGoogleOauthCallbackRoute
   AppInvestmentMemoRoute: typeof AppInvestmentMemoRoute
   AppMetaConnectRoute: typeof AppMetaConnectRoute
   AppMetaDataRoute: typeof AppMetaDataRoute
@@ -581,6 +641,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppDataSourcesRoute: AppDataSourcesRoute,
   AppExitScoreRoute: AppExitScoreRoute,
   AppFinancialNormalizerRoute: AppFinancialNormalizerRoute,
+  AppGoogleConnectRoute: AppGoogleConnectRoute,
+  AppGoogleDataRoute: AppGoogleDataRoute,
+  AppGoogleOauthCallbackRoute: AppGoogleOauthCallbackRoute,
   AppInvestmentMemoRoute: AppInvestmentMemoRoute,
   AppMetaConnectRoute: AppMetaConnectRoute,
   AppMetaDataRoute: AppMetaDataRoute,
