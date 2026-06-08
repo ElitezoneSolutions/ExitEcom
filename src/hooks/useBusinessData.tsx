@@ -1724,9 +1724,9 @@ function useBusinessDataImpl() {
     return result;
   };
 
-  // Connect / refresh via the manual connector (pasted customer id + refresh token).
-  // loginCustomerId is optional (standalone accounts query through themselves).
-  const syncGoogle = async (
+  // Shared implementation for both connection paths — only the source label differs.
+  const syncGoogleWithSource = async (
+    source: "oauth" | "manual",
     customerId: string,
     refreshToken: string,
     loginCustomerId?: string | null,
@@ -1739,36 +1739,26 @@ function useBusinessDataImpl() {
       },
     });
     return commitGoogleSync(result, {
-      source: "manual",
+      source,
       customerId: result.account.customerId,
       refreshToken,
       loginCustomerId: loginCustomerId ?? null,
     });
   };
 
-  // Commit a dataset pulled via the in-app OAuth flow. The OAuth callback has
-  // exchanged the code for a refresh token and picked a customer (with the manager
-  // id to query it through); we pull and store it with source 'oauth' so a later
-  // refresh reuses both the refresh token and the right login-customer-id.
-  const syncGoogleViaOAuth = async (
+  // Connect / refresh via the manual connector (pasted customer id + refresh token).
+  const syncGoogle = (
     customerId: string,
     refreshToken: string,
     loginCustomerId?: string | null,
-  ) => {
-    const result = await syncGoogleAdsFn({
-      data: {
-        customerId,
-        refreshToken,
-        loginCustomerId: loginCustomerId ?? undefined,
-      },
-    });
-    return commitGoogleSync(result, {
-      source: "oauth",
-      customerId: result.account.customerId,
-      refreshToken,
-      loginCustomerId: loginCustomerId ?? null,
-    });
-  };
+  ) => syncGoogleWithSource("manual", customerId, refreshToken, loginCustomerId);
+
+  // Commit a dataset pulled via the in-app OAuth flow.
+  const syncGoogleViaOAuth = (
+    customerId: string,
+    refreshToken: string,
+    loginCustomerId?: string | null,
+  ) => syncGoogleWithSource("oauth", customerId, refreshToken, loginCustomerId);
 
   // Refresh using stored Google credentials (the refresh token, fetched from
   // Supabase on demand — never cached in the browser).
