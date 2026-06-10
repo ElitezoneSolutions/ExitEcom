@@ -17,7 +17,7 @@ Identifies *your application* to the Google Ads API. Shared by every user; it do
 **not** grant access to any account by itself.
 
 | Access level | What it can read | Use |
-|---|---|---|
+
 | **Test** (default for a new token) | only *test* accounts | building / sandbox only |
 | **Basic** | live accounts, ~15,000 operations/day | launch for a small/medium SaaS |
 | **Standard** | live accounts, high limits | apply later if you outgrow Basic |
@@ -43,7 +43,7 @@ scope is **sensitive**, so Google gates public access behind verification.
 In **Google Cloud Console → APIs & Services → OAuth consent screen**:
 
 | Publishing status | Who can connect |
-|---|---|
+
 | **Testing** (default) | only the **Test users** you add manually (max 100) |
 | **In production** (verification pending) | still limited until verification completes |
 | **In production + verified** | anyone with a Google Ads account |
@@ -73,7 +73,7 @@ Steps:
 ## Combined readiness
 
 | | Test account / `demo` sandbox | Your own real account | Any public user |
-|---|---|---|---|
+
 | Token = Test, screen = Testing | ✅ | ❌ | ❌ |
 | Token = Basic, screen = Testing (you're a test user) | ✅ | ✅ | ❌ |
 | Token = Basic, screen = Published + verified | ✅ | ✅ | ✅ |
