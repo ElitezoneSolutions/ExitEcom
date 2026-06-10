@@ -47,9 +47,17 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading, sessionExpired, acknowledgeExpiry } = useAuth();
   const router = useRouter();
   const location = useLocation();
+  // Prevents re-running the redirect when location.href updates as a side-effect
+  // of the navigation we already initiated (which would re-encode the URL infinitely).
+  const redirectingRef = useRef(false);
 
   useEffect(() => {
-    if (loading || user) return;
+    if (loading || user) {
+      redirectingRef.current = false;
+      return;
+    }
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
 
     const expired = sessionExpired;
     if (expired) acknowledgeExpiry();
