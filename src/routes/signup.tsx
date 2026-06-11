@@ -5,7 +5,7 @@ import {
   useRouter,
   useSearch,
 } from "@tanstack/react-router";
-import { Check } from "lucide-react";
+import { Check, Eye, EyeOff } from "lucide-react";
 import { Logo } from "@/components/ex/Logo";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import {
@@ -463,24 +463,47 @@ function Field({
   disabled?: boolean;
   invalid?: boolean;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword ? (showPassword ? "text" : "password") : type;
+
   return (
     <label className="block">
       <span className="label-caps" style={{ fontSize: 10 }}>
         {label}
       </span>
-      <input
-        type={type}
-        required
-        aria-invalid={invalid || undefined}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className={`mt-2 w-full bg-transparent border rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors disabled:opacity-50 ${
-          invalid
-            ? "border-[var(--danger,#dc2626)] focus:border-[var(--danger,#dc2626)]"
-            : "border-[var(--border-warm)] focus:border-[var(--accent)]"
-        }`}
-      />
+      <div className="relative mt-2">
+        <input
+          type={inputType}
+          required
+          aria-invalid={invalid || undefined}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className={`w-full bg-transparent border rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors disabled:opacity-50 ${
+            isPassword ? "pr-10" : ""
+          } ${
+            invalid
+              ? "border-[var(--danger,#dc2626)] focus:border-[var(--danger,#dc2626)]"
+              : "border-[var(--border-warm)] focus:border-[var(--accent)]"
+          }`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--text-muted)] hover:text-[var(--text-secondary)] focus:outline-none"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? (
+              <EyeOff className="w-4 h-4" />
+            ) : (
+              <Eye className="w-4 h-4" />
+            )}
+          </button>
+        )}
+      </div>
     </label>
   );
 }
