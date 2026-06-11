@@ -181,6 +181,7 @@ function MetaConnect() {
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       placeholder="act_1234567890"
                       value={adAccountId}
                       onChange={(e) => setAdAccountId(e.target.value)}
@@ -199,6 +200,7 @@ function MetaConnect() {
                     <input
                       type="password"
                       required
+                      autoComplete="new-password"
                       placeholder="EAAB..."
                       value={accessToken}
                       onChange={(e) => setAccessToken(e.target.value)}

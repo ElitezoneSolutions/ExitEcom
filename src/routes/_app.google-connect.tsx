@@ -317,6 +317,7 @@ function GoogleConnect() {
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       placeholder="123-456-7890"
                       value={customerId}
                       onChange={(e) => setCustomerId(e.target.value)}
@@ -335,6 +336,7 @@ function GoogleConnect() {
                     <input
                       type="password"
                       required
+                      autoComplete="new-password"
                       placeholder="1//0g..."
                       value={refreshToken}
                       onChange={(e) => setRefreshToken(e.target.value)}

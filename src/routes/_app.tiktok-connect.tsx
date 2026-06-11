@@ -151,6 +151,7 @@ function TikTokConnect() {
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       placeholder="1234567890123"
                       value={advertiserId}
                       onChange={(e) => setAdvertiserId(e.target.value)}
@@ -167,6 +168,7 @@ function TikTokConnect() {
                     <input
                       type="password"
                       required
+                      autoComplete="new-password"
                       placeholder="Paste your long-lived access token"
                       value={accessToken}
                       onChange={(e) => setAccessToken(e.target.value)}

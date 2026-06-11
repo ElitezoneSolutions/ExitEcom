@@ -199,6 +199,7 @@ function ShopifyConnect() {
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       placeholder="your-store.myshopify.com"
                       value={shopDomain}
                       onChange={(e) => setShopDomain(e.target.value)}
@@ -220,6 +221,7 @@ function ShopifyConnect() {
                     <input
                       type="password"
                       required
+                      autoComplete="new-password"
                       placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                       value={accessToken}
                       onChange={(e) => setAccessToken(e.target.value)}
@@ -354,6 +356,7 @@ function ShopifyConnect() {
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     placeholder="your-store.myshopify.com"
                     value={keyShopDomain}
                     onChange={(e) => setKeyShopDomain(e.target.value)}
@@ -392,6 +395,7 @@ function ShopifyConnect() {
                   </label>
                   <input
                     type="password"
+                    autoComplete="new-password"
                     placeholder="eea_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     value={connectionKey}
                     onChange={(e) => setConnectionKey(e.target.value)}
