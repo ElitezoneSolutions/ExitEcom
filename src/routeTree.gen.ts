@@ -19,6 +19,9 @@ import { Route as DataDeletionRouteImport } from './routes/data-deletion'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppValuationRouteImport } from './routes/_app.valuation'
+import { Route as AppTiktokOauthCallbackRouteImport } from './routes/_app.tiktok-oauth-callback'
+import { Route as AppTiktokDataRouteImport } from './routes/_app.tiktok-data'
+import { Route as AppTiktokConnectRouteImport } from './routes/_app.tiktok-connect'
 import { Route as AppStoreDataRouteImport } from './routes/_app.store-data'
 import { Route as AppShopifyConnectRouteImport } from './routes/_app.shopify-connect'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
@@ -88,6 +91,21 @@ const IndexRoute = IndexRouteImport.update({
 const AppValuationRoute = AppValuationRouteImport.update({
   id: '/valuation',
   path: '/valuation',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTiktokOauthCallbackRoute = AppTiktokOauthCallbackRouteImport.update({
+  id: '/tiktok-oauth-callback',
+  path: '/tiktok-oauth-callback',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTiktokDataRoute = AppTiktokDataRouteImport.update({
+  id: '/tiktok-data',
+  path: '/tiktok-data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTiktokConnectRoute = AppTiktokConnectRouteImport.update({
+  id: '/tiktok-connect',
+  path: '/tiktok-connect',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStoreDataRoute = AppStoreDataRouteImport.update({
@@ -226,6 +244,9 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/shopify-connect': typeof AppShopifyConnectRoute
   '/store-data': typeof AppStoreDataRoute
+  '/tiktok-connect': typeof AppTiktokConnectRoute
+  '/tiktok-data': typeof AppTiktokDataRoute
+  '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesByTo {
@@ -258,6 +279,9 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/shopify-connect': typeof AppShopifyConnectRoute
   '/store-data': typeof AppStoreDataRoute
+  '/tiktok-connect': typeof AppTiktokConnectRoute
+  '/tiktok-data': typeof AppTiktokDataRoute
+  '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/valuation': typeof AppValuationRoute
 }
 export interface FileRoutesById {
@@ -292,6 +316,9 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/shopify-connect': typeof AppShopifyConnectRoute
   '/_app/store-data': typeof AppStoreDataRoute
+  '/_app/tiktok-connect': typeof AppTiktokConnectRoute
+  '/_app/tiktok-data': typeof AppTiktokDataRoute
+  '/_app/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/_app/valuation': typeof AppValuationRoute
 }
 export interface FileRouteTypes {
@@ -326,6 +353,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/shopify-connect'
     | '/store-data'
+    | '/tiktok-connect'
+    | '/tiktok-data'
+    | '/tiktok-oauth-callback'
     | '/valuation'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -358,6 +388,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/shopify-connect'
     | '/store-data'
+    | '/tiktok-connect'
+    | '/tiktok-data'
+    | '/tiktok-oauth-callback'
     | '/valuation'
   id:
     | '__root__'
@@ -391,6 +424,9 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/shopify-connect'
     | '/_app/store-data'
+    | '/_app/tiktok-connect'
+    | '/_app/tiktok-data'
+    | '/_app/tiktok-oauth-callback'
     | '/_app/valuation'
   fileRoutesById: FileRoutesById
 }
@@ -476,6 +512,27 @@ declare module '@tanstack/react-router' {
       path: '/valuation'
       fullPath: '/valuation'
       preLoaderRoute: typeof AppValuationRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tiktok-oauth-callback': {
+      id: '/_app/tiktok-oauth-callback'
+      path: '/tiktok-oauth-callback'
+      fullPath: '/tiktok-oauth-callback'
+      preLoaderRoute: typeof AppTiktokOauthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tiktok-data': {
+      id: '/_app/tiktok-data'
+      path: '/tiktok-data'
+      fullPath: '/tiktok-data'
+      preLoaderRoute: typeof AppTiktokDataRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tiktok-connect': {
+      id: '/_app/tiktok-connect'
+      path: '/tiktok-connect'
+      fullPath: '/tiktok-connect'
+      preLoaderRoute: typeof AppTiktokConnectRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/store-data': {
@@ -650,6 +707,9 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppShopifyConnectRoute: typeof AppShopifyConnectRoute
   AppStoreDataRoute: typeof AppStoreDataRoute
+  AppTiktokConnectRoute: typeof AppTiktokConnectRoute
+  AppTiktokDataRoute: typeof AppTiktokDataRoute
+  AppTiktokOauthCallbackRoute: typeof AppTiktokOauthCallbackRoute
   AppValuationRoute: typeof AppValuationRoute
 }
 
@@ -675,6 +735,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppShopifyConnectRoute: AppShopifyConnectRoute,
   AppStoreDataRoute: AppStoreDataRoute,
+  AppTiktokConnectRoute: AppTiktokConnectRoute,
+  AppTiktokDataRoute: AppTiktokDataRoute,
+  AppTiktokOauthCallbackRoute: AppTiktokOauthCallbackRoute,
   AppValuationRoute: AppValuationRoute,
 }
 

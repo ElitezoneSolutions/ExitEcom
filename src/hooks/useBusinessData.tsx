@@ -32,6 +32,13 @@ import {
   type RawGoogleCampaign,
   type GoogleSyncResult,
 } from "@/lib/google";
+import {
+  syncTikTokAdsFn,
+  type RawTikTokAccount,
+  type RawTikTokMonthly,
+  type RawTikTokCampaign,
+  type TikTokSyncResult,
+} from "@/lib/tiktok";
 
 export interface BusinessData {
   id?: string;
@@ -126,6 +133,7 @@ export type {
 };
 export type { RawMetaAccount, RawMetaMonthly, RawMetaCampaign };
 export type { RawGoogleAccount, RawGoogleMonthly, RawGoogleCampaign };
+export type { RawTikTokAccount, RawTikTokMonthly, RawTikTokCampaign };
 
 // Empty state — what we show before any real data exists. NOT dummy/demo data:
 // every field is blank/zero until onboarding or a computed report populates it.
@@ -495,6 +503,87 @@ const mapGoogleCampaignRow = (r: GoogleCampaignRow): RawGoogleCampaign => ({
   roas: Number(r.roas ?? 0),
 });
 
+// --- localStorage cache for the raw TikTok Ads data (same approach as Meta/Google) --
+const CACHE_TIKTOK = "exitecom_tiktok_raw_v1";
+
+interface TikTokRawCache {
+  businessId: string;
+  account: RawTikTokAccount | null;
+  lastSyncedAt: string | null;
+  monthly: RawTikTokMonthly[];
+  campaigns: RawTikTokCampaign[];
+}
+
+function readTikTokCache(): TikTokRawCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_TIKTOK);
+    return raw ? (JSON.parse(raw) as TikTokRawCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTikTokCache(cache: TikTokRawCache) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CACHE_TIKTOK, JSON.stringify(cache));
+  } catch (err) {
+    console.warn("[TikTok cache] not stored (likely too large):", err);
+    try {
+      localStorage.removeItem(CACHE_TIKTOK);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function clearTikTokCache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CACHE_TIKTOK);
+}
+
+interface TikTokMonthlyRow {
+  month: string;
+  spend: number | string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+interface TikTokCampaignRow {
+  tiktok_campaign_id: string;
+  name: string | null;
+  objective_type: string | null;
+  status: string | null;
+  spend: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+
+const mapTikTokMonthlyRow = (r: TikTokMonthlyRow): RawTikTokMonthly => ({
+  month: r.month,
+  spend: Number(r.spend ?? 0),
+  impressions: Number(r.impressions ?? 0),
+  clicks: Number(r.clicks ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+
+const mapTikTokCampaignRow = (r: TikTokCampaignRow): RawTikTokCampaign => ({
+  tikTokCampaignId: r.tiktok_campaign_id,
+  name: r.name ?? "",
+  objectiveType: r.objective_type ?? null,
+  status: r.status ?? null,
+  spend: Number(r.spend ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
 // that called this (the Sidebar + each page + useReport) would spin up its own
@@ -588,6 +677,26 @@ function useBusinessDataImpl() {
     loginCustomerId: string | null;
   } | null>(null);
 
+  // Raw TikTok Ads data — same cache-first seeding as Meta/Google.
+  const [tikTokAccount, setTikTokAccount] = useState<RawTikTokAccount | null>(
+    () => readTikTokCache()?.account ?? null,
+  );
+  const [tikTokMonthly, setTikTokMonthly] = useState<RawTikTokMonthly[]>(
+    () => readTikTokCache()?.monthly ?? [],
+  );
+  const [tikTokCampaigns, setTikTokCampaigns] = useState<RawTikTokCampaign[]>(
+    () => readTikTokCache()?.campaigns ?? [],
+  );
+  const [tikTokLastSyncedAt, setTikTokLastSyncedAt] = useState<string | null>(
+    () => readTikTokCache()?.lastSyncedAt ?? null,
+  );
+  // Stored TikTok credentials (access_token — long-lived, no refresh needed).
+  const [tikTokCreds, setTikTokCreds] = useState<{
+    source: "oauth" | "direct";
+    advertiserId: string;
+    accessToken: string | null;
+  } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
@@ -634,6 +743,7 @@ function useBusinessDataImpl() {
         clearShopifyCache();
         clearMetaCache();
         clearGoogleCache();
+        clearTikTokCache();
         setLoading(false);
         return;
       }
@@ -719,6 +829,7 @@ function useBusinessDataImpl() {
       await loadShopifyData(bizData.id);
       await loadMetaData(bizData.id);
       await loadGoogleData(bizData.id);
+      await loadTikTokData(bizData.id);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -1032,6 +1143,303 @@ function useBusinessDataImpl() {
       });
     } catch (err) {
       console.warn("[Google data] load skipped:", err);
+    }
+  };
+
+  // Read raw TikTok tables from Supabase. Mirrors loadGoogleData exactly.
+  const fetchTikTokArrays = async (businessId: string) => {
+    const [
+      { data: monthlyRows, error: mErr },
+      { data: campaignRows, error: cErr },
+    ] = await Promise.all([
+      supabase
+        .from("tiktok_monthly_insights")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("month", { ascending: true }),
+      supabase
+        .from("tiktok_campaigns")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("spend", { ascending: false }),
+    ]);
+    const err = mErr || cErr;
+    if (err) throw err;
+    return {
+      monthly: ((monthlyRows ?? []) as TikTokMonthlyRow[]).map(mapTikTokMonthlyRow),
+      campaigns: ((campaignRows ?? []) as TikTokCampaignRow[]).map(mapTikTokCampaignRow),
+    };
+  };
+
+  const loadTikTokData = async (businessId: string) => {
+    try {
+      const cache = readTikTokCache();
+      if (cache && cache.businessId === businessId && cache.account) {
+        setTikTokAccount(cache.account);
+        setTikTokLastSyncedAt(cache.lastSyncedAt);
+        setTikTokMonthly(cache.monthly);
+        setTikTokCampaigns(cache.campaigns);
+        return;
+      }
+
+      const { data: acctRow, error: acctError } = await supabase
+        .from("tiktok_accounts")
+        .select("*")
+        .eq("business_id", businessId)
+        .maybeSingle();
+
+      if (acctError) {
+        console.warn("[TikTok data] not available yet:", acctError.message);
+        return;
+      }
+
+      if (!acctRow) {
+        setTikTokAccount(null);
+        setTikTokLastSyncedAt(null);
+        setTikTokCreds(null);
+        setTikTokMonthly([]);
+        setTikTokCampaigns([]);
+        clearTikTokCache();
+        return;
+      }
+
+      const accountMeta: RawTikTokAccount = {
+        advertiserId: acctRow.advertiser_id,
+        name: acctRow.name ?? "",
+        currency: acctRow.currency ?? "",
+        timezone: acctRow.timezone ?? "",
+        accountStatus: acctRow.account_status ?? "",
+      };
+      setTikTokAccount(accountMeta);
+      setTikTokLastSyncedAt(acctRow.last_synced_at ?? null);
+      setTikTokCreds(
+        acctRow.access_token
+          ? {
+              source: (acctRow.source as "oauth" | "direct") ?? "oauth",
+              advertiserId: acctRow.advertiser_id,
+              accessToken: acctRow.access_token ?? null,
+            }
+          : null,
+      );
+
+      const arrays = await fetchTikTokArrays(businessId);
+      setTikTokMonthly(arrays.monthly);
+      setTikTokCampaigns(arrays.campaigns);
+      writeTikTokCache({
+        businessId,
+        account: accountMeta,
+        lastSyncedAt: acctRow.last_synced_at ?? null,
+        ...arrays,
+      });
+    } catch (err) {
+      console.warn("[TikTok data] load skipped:", err);
+    }
+  };
+
+  // Commit a TikTok sync result to local state + Supabase. Mirrors commitGoogleSync.
+  const commitTikTokSync = async (
+    result: TikTokSyncResult,
+    creds: {
+      source: "oauth" | "direct";
+      advertiserId: string;
+      accessToken: string | null;
+    },
+  ) => {
+    setTikTokAccount(result.account);
+    setTikTokMonthly(result.monthly);
+    setTikTokCampaigns(result.campaigns);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "tiktok"])),
+      missingSources: b.missingSources.filter(
+        (s) => s.toLowerCase() !== "tiktok",
+      ),
+    }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("TikTok Ads synced (local sandbox).");
+      return result;
+    }
+
+    const businessId = business.id;
+    const nowISO = new Date().toISOString();
+
+    try {
+      const { error: acctErr } = await supabase.from("tiktok_accounts").upsert(
+        {
+          business_id: businessId,
+          advertiser_id: result.account.advertiserId,
+          access_token: creds.accessToken,
+          source: creds.source,
+          name: result.account.name,
+          currency: result.account.currency,
+          timezone: result.account.timezone,
+          account_status: result.account.accountStatus,
+          last_synced_at: nowISO,
+          synced_at: nowISO,
+        },
+        { onConflict: "business_id" },
+      );
+      if (acctErr) throw acctErr;
+
+      await supabase
+        .from("tiktok_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("tiktok_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+
+      await upsertChunked(
+        "tiktok_monthly_insights",
+        result.monthly.map((m) => ({
+          business_id: businessId,
+          month: m.month,
+          spend: m.spend,
+          impressions: m.impressions,
+          clicks: m.clicks,
+          conversions: m.conversions,
+          conversion_value: m.conversionValue,
+          roas: m.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,month",
+      );
+
+      await upsertChunked(
+        "tiktok_campaigns",
+        result.campaigns.map((c) => ({
+          business_id: businessId,
+          tiktok_campaign_id: c.tikTokCampaignId,
+          name: c.name,
+          objective_type: c.objectiveType,
+          status: c.status,
+          spend: c.spend,
+          conversions: c.conversions,
+          conversion_value: c.conversionValue,
+          roas: c.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,tiktok_campaign_id",
+      );
+
+      const sources = Array.from(
+        new Set([...business.connectedSources, "tiktok"]),
+      );
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: sources },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+    } catch (err) {
+      throw describeDbError(err, "TikTok");
+    }
+
+    setTikTokLastSyncedAt(nowISO);
+    setTikTokCreds(creds);
+    writeTikTokCache({
+      businessId,
+      account: result.account,
+      lastSyncedAt: nowISO,
+      monthly: result.monthly,
+      campaigns: result.campaigns,
+    });
+
+    return result;
+  };
+
+  const syncTikTokWithSource = async (
+    source: "oauth" | "direct",
+    advertiserId: string,
+    accessToken: string,
+  ) => {
+    const result = await syncTikTokAdsFn({ data: { advertiserId, accessToken } });
+    return commitTikTokSync(result, {
+      source,
+      advertiserId: result.account.advertiserId,
+      accessToken,
+    });
+  };
+
+  const syncTikTok = (advertiserId: string, accessToken: string) =>
+    syncTikTokWithSource("direct", advertiserId, accessToken);
+
+  const syncTikTokViaOAuth = (advertiserId: string, accessToken: string) =>
+    syncTikTokWithSource("oauth", advertiserId, accessToken);
+
+  const resyncTikTok = async () => {
+    let creds = tikTokCreds;
+    if (!creds) {
+      if (!isSupabaseConfigured || !user || !business.id) {
+        throw new Error("Connect a TikTok Ads account first.");
+      }
+      const { data, error } = await supabase
+        .from("tiktok_accounts")
+        .select("advertiser_id, access_token, source")
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (error) throw describeDbError(error, "TikTok");
+      if (!data?.access_token) {
+        throw new Error("No stored TikTok credentials — reconnect the account.");
+      }
+      creds = {
+        source: (data.source as "oauth" | "direct") ?? "oauth",
+        advertiserId: data.advertiser_id,
+        accessToken: data.access_token ?? null,
+      };
+      setTikTokCreds(creds);
+    }
+    if (!creds.accessToken) {
+      throw new Error("No stored TikTok credentials — reconnect the account.");
+    }
+    return syncTikTok(creds.advertiserId, creds.accessToken);
+  };
+
+  const disconnectTikTok = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("tiktok"),
+    );
+
+    setTikTokAccount(null);
+    setTikTokMonthly([]);
+    setTikTokCampaigns([]);
+    setTikTokLastSyncedAt(null);
+    setTikTokCreds(null);
+    clearTikTokCache();
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("TikTok Ads disconnected.");
+      return;
+    }
+
+    const businessId = business.id;
+    try {
+      await supabase
+        .from("tiktok_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("tiktok_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("tiktok_accounts")
+        .delete()
+        .eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+      toast.success("TikTok Ads disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "TikTok");
     }
   };
 
@@ -1958,6 +2366,9 @@ function useBusinessDataImpl() {
   const isGoogleConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("google"),
   );
+  const isTikTokConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("tiktok"),
+  );
 
   return {
     business,
@@ -1969,6 +2380,7 @@ function useBusinessDataImpl() {
     isShopifyConnected,
     isMetaConnected,
     isGoogleConnected,
+    isTikTokConnected,
     // Raw Shopify data
     store,
     orders,
@@ -1985,10 +2397,16 @@ function useBusinessDataImpl() {
     googleMonthly,
     googleCampaigns,
     googleLastSyncedAt,
+    // Raw TikTok Ads data
+    tikTokAccount,
+    tikTokMonthly,
+    tikTokCampaigns,
+    tikTokLastSyncedAt,
     // Connected stores can always resync — the token is fetched on demand.
     canResync: !!store || isShopifyConnected,
     canResyncMeta: !!metaAccount || isMetaConnected,
     canResyncGoogle: !!googleAccount || isGoogleConnected,
+    canResyncTikTok: !!tikTokAccount || isTikTokConnected,
     // Actions
     refetch: fetchData,
     updateBusiness,
@@ -2004,6 +2422,10 @@ function useBusinessDataImpl() {
     syncGoogleViaOAuth,
     resyncGoogle,
     disconnectGoogle,
+    syncTikTok,
+    syncTikTokViaOAuth,
+    resyncTikTok,
+    disconnectTikTok,
     saveComputedReport,
   };
 }

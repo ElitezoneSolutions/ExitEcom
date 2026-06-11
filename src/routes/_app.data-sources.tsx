@@ -11,15 +11,22 @@ export const Route = createFileRoute("/_app/data-sources")({
 });
 
 function DataSources() {
-  const { business, disconnectShopify, disconnectMeta, disconnectGoogle } =
-    useBusinessData();
+  const {
+    business,
+    disconnectShopify,
+    disconnectMeta,
+    disconnectGoogle,
+    disconnectTikTok,
+  } = useBusinessData();
 
   const disconnectFor = (name: string) =>
     name === "Meta Ads"
       ? disconnectMeta
       : name === "Google Ads"
         ? disconnectGoogle
-        : disconnectShopify;
+        : name === "TikTok Ads"
+          ? disconnectTikTok
+          : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
@@ -29,6 +36,9 @@ function DataSources() {
   );
   const isGoogleConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("google"),
+  );
+  const isTikTokConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("tiktok"),
   );
 
   const platforms = [
@@ -58,6 +68,14 @@ function DataSources() {
       explanation: "Verify ROAS on high-intent channels.",
     },
     {
+      name: "TikTok Ads",
+      section: "Marketing",
+      status: isTikTokConnected ? "connected" : "missing",
+      sync: isTikTokConnected ? "Synced live" : "—",
+      impact: "TikTok spend & ROAS verified",
+      explanation: "Verify spend and ROAS from TikTok campaigns.",
+    },
+    {
       name: "P&L Upload",
       section: "Coming Soon",
       status: "missing",
@@ -77,13 +95,6 @@ function DataSources() {
       status: "missing",
       sync: "—",
       explanation: "Give buyers confidence in your traffic quality.",
-    },
-    {
-      name: "TikTok Ads",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
-      explanation: "Optional platform connection.",
     },
     {
       name: "Snapchat Ads",
@@ -196,6 +207,17 @@ function DataSources() {
                               p.status === "connected"
                                 ? "/google-data"
                                 : "/google-connect"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ) : p.name === "TikTok Ads" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/tiktok-data"
+                                : "/tiktok-connect"
                             }
                             className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                           >
