@@ -17,6 +17,7 @@ function DataSources() {
     disconnectMeta,
     disconnectGoogle,
     disconnectTikTok,
+    disconnectSnapchat,
   } = useBusinessData();
 
   const disconnectFor = (name: string) =>
@@ -26,7 +27,9 @@ function DataSources() {
         ? disconnectGoogle
         : name === "TikTok Ads"
           ? disconnectTikTok
-          : disconnectShopify;
+          : name === "Snapchat Ads"
+            ? disconnectSnapchat
+            : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
@@ -39,6 +42,9 @@ function DataSources() {
   );
   const isTikTokConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("tiktok"),
+  );
+  const isSnapchatConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("snapchat"),
   );
 
   const platforms = [
@@ -76,6 +82,14 @@ function DataSources() {
       explanation: "Verify spend and ROAS from TikTok campaigns.",
     },
     {
+      name: "Snapchat Ads",
+      section: "Marketing",
+      status: isSnapchatConnected ? "connected" : "missing",
+      sync: isSnapchatConnected ? "Synced live" : "—",
+      impact: "Snapchat spend & ROAS verified",
+      explanation: "Verify spend and ROAS from Snapchat campaigns.",
+    },
+    {
       name: "P&L Upload",
       section: "Coming Soon",
       status: "missing",
@@ -95,13 +109,6 @@ function DataSources() {
       status: "missing",
       sync: "—",
       explanation: "Give buyers confidence in your traffic quality.",
-    },
-    {
-      name: "Snapchat Ads",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
-      explanation: "Optional platform connection.",
     },
     {
       name: "Bank Statements",
@@ -218,6 +225,17 @@ function DataSources() {
                               p.status === "connected"
                                 ? "/tiktok-data"
                                 : "/tiktok-connect"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ) : p.name === "Snapchat Ads" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/snapchat-data"
+                                : "/snapchat-connect"
                             }
                             className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                           >

@@ -93,6 +93,7 @@ export interface AnalyticsInput {
   meta?: AnalyticsAdsFeed | null;
   google?: AnalyticsAdsFeed | null;
   tiktok?: AnalyticsAdsFeed | null;
+  snapchat?: AnalyticsAdsFeed | null;
 }
 
 export interface ProductRevenue {
@@ -327,7 +328,7 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   // spend-stability score, and Marketing Efficiency is their average (so a weak
   // channel isn't masked by a strong one). Total spend is summed for the
   // buyer-credible blended CAC = total ad spend ÷ new customers (computed below).
-  const adFeeds = [input.meta, input.google, input.tiktok].filter(
+  const adFeeds = [input.meta, input.google, input.tiktok, input.snapchat].filter(
     (f): f is AnalyticsAdsFeed => !!f && f.monthly.length > 0,
   );
   const adSpendVerified = adFeeds.length > 0;

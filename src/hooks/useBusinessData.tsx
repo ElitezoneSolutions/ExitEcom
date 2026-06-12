@@ -39,6 +39,13 @@ import {
   type RawTikTokCampaign,
   type TikTokSyncResult,
 } from "@/lib/tiktok";
+import {
+  syncSnapchatAdsFn,
+  type RawSnapchatAccount,
+  type RawSnapchatMonthly,
+  type RawSnapchatCampaign,
+  type SnapchatSyncResult,
+} from "@/lib/snapchat";
 
 export interface BusinessData {
   id?: string;
@@ -543,6 +550,46 @@ function clearTikTokCache() {
   localStorage.removeItem(CACHE_TIKTOK);
 }
 
+// --- localStorage cache for the raw Snapchat Ads data (same approach as TikTok) --
+const CACHE_SNAPCHAT = "exitecom_snapchat_raw_v1";
+
+interface SnapchatRawCache {
+  businessId: string;
+  account: RawSnapchatAccount | null;
+  lastSyncedAt: string | null;
+  monthly: RawSnapchatMonthly[];
+  campaigns: RawSnapchatCampaign[];
+}
+
+function readSnapchatCache(): SnapchatRawCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_SNAPCHAT);
+    return raw ? (JSON.parse(raw) as SnapchatRawCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapchatCache(cache: SnapchatRawCache) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CACHE_SNAPCHAT, JSON.stringify(cache));
+  } catch (err) {
+    console.warn("[Snapchat cache] not stored (likely too large):", err);
+    try {
+      localStorage.removeItem(CACHE_SNAPCHAT);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function clearSnapchatCache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CACHE_SNAPCHAT);
+}
+
 interface TikTokMonthlyRow {
   month: string;
   spend: number | string | null;
@@ -577,6 +624,47 @@ const mapTikTokCampaignRow = (r: TikTokCampaignRow): RawTikTokCampaign => ({
   tikTokCampaignId: r.tiktok_campaign_id,
   name: r.name ?? "",
   objectiveType: r.objective_type ?? null,
+  status: r.status ?? null,
+  spend: Number(r.spend ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+
+interface SnapchatMonthlyRow {
+  month: string;
+  spend: number | string | null;
+  impressions: number | string | null;
+  clicks: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+interface SnapchatCampaignRow {
+  snapchat_campaign_id: string;
+  name: string | null;
+  objective: string | null;
+  status: string | null;
+  spend: number | string | null;
+  conversions: number | string | null;
+  conversion_value: number | string | null;
+  roas: number | string | null;
+}
+
+const mapSnapchatMonthlyRow = (r: SnapchatMonthlyRow): RawSnapchatMonthly => ({
+  month: r.month,
+  spend: Number(r.spend ?? 0),
+  impressions: Number(r.impressions ?? 0),
+  clicks: Number(r.clicks ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionValue: Number(r.conversion_value ?? 0),
+  roas: Number(r.roas ?? 0),
+});
+
+const mapSnapchatCampaignRow = (r: SnapchatCampaignRow): RawSnapchatCampaign => ({
+  snapchatCampaignId: r.snapchat_campaign_id,
+  name: r.name ?? "",
+  objective: r.objective ?? null,
   status: r.status ?? null,
   spend: Number(r.spend ?? 0),
   conversions: Number(r.conversions ?? 0),
@@ -697,6 +785,27 @@ function useBusinessDataImpl() {
     accessToken: string | null;
   } | null>(null);
 
+  // Raw Snapchat Ads data — same cache-first seeding as TikTok/Meta/Google.
+  const [snapchatAccount, setSnapchatAccount] = useState<RawSnapchatAccount | null>(
+    () => readSnapchatCache()?.account ?? null,
+  );
+  const [snapchatMonthly, setSnapchatMonthly] = useState<RawSnapchatMonthly[]>(
+    () => readSnapchatCache()?.monthly ?? [],
+  );
+  const [snapchatCampaigns, setSnapchatCampaigns] = useState<RawSnapchatCampaign[]>(
+    () => readSnapchatCache()?.campaigns ?? [],
+  );
+  const [snapchatLastSyncedAt, setSnapchatLastSyncedAt] = useState<string | null>(
+    () => readSnapchatCache()?.lastSyncedAt ?? null,
+  );
+  // Stored Snapchat credentials. access_token expires in 1 h; refresh_token is durable.
+  const [snapchatCreds, setSnapchatCreds] = useState<{
+    source: "oauth" | "direct";
+    adAccountId: string;
+    accessToken: string | null;
+    refreshToken: string | null;
+  } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
@@ -744,6 +853,7 @@ function useBusinessDataImpl() {
         clearMetaCache();
         clearGoogleCache();
         clearTikTokCache();
+        clearSnapchatCache();
         setLoading(false);
         return;
       }
@@ -830,6 +940,7 @@ function useBusinessDataImpl() {
       await loadMetaData(bizData.id);
       await loadGoogleData(bizData.id);
       await loadTikTokData(bizData.id);
+      await loadSnapchatData(bizData.id);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -1440,6 +1551,329 @@ function useBusinessDataImpl() {
       toast.success("TikTok Ads disconnected.");
     } catch (err) {
       throw describeDbError(err, "TikTok");
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Snapchat Ads — mirrors the TikTok implementation above.
+  // Key difference: access tokens expire in 3600 s. commitSnapchatSync stores
+  // refresh_token, and resyncSnapchat passes both to the server fn so it can
+  // auto-refresh and return updatedTokens when a refresh happens.
+  // -------------------------------------------------------------------------
+
+  const fetchSnapchatArrays = async (businessId: string) => {
+    const [
+      { data: monthlyRows, error: mErr },
+      { data: campaignRows, error: cErr },
+    ] = await Promise.all([
+      supabase
+        .from("snapchat_monthly_insights")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("month", { ascending: true }),
+      supabase
+        .from("snapchat_campaigns")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("spend", { ascending: false }),
+    ]);
+    const err = mErr || cErr;
+    if (err) throw err;
+    return {
+      monthly: ((monthlyRows ?? []) as SnapchatMonthlyRow[]).map(mapSnapchatMonthlyRow),
+      campaigns: ((campaignRows ?? []) as SnapchatCampaignRow[]).map(mapSnapchatCampaignRow),
+    };
+  };
+
+  const loadSnapchatData = async (businessId: string) => {
+    try {
+      const cache = readSnapchatCache();
+      if (cache && cache.businessId === businessId && cache.account) {
+        setSnapchatAccount(cache.account);
+        setSnapchatLastSyncedAt(cache.lastSyncedAt);
+        setSnapchatMonthly(cache.monthly);
+        setSnapchatCampaigns(cache.campaigns);
+        return;
+      }
+
+      const { data: acctRow, error: acctError } = await supabase
+        .from("snapchat_accounts")
+        .select("*")
+        .eq("business_id", businessId)
+        .maybeSingle();
+
+      if (acctError) {
+        console.warn("[Snapchat data] not available yet:", acctError.message);
+        return;
+      }
+
+      if (!acctRow) {
+        setSnapchatAccount(null);
+        setSnapchatLastSyncedAt(null);
+        setSnapchatCreds(null);
+        setSnapchatMonthly([]);
+        setSnapchatCampaigns([]);
+        clearSnapchatCache();
+        return;
+      }
+
+      const accountMeta: RawSnapchatAccount = {
+        adAccountId: acctRow.ad_account_id,
+        name: acctRow.name ?? "",
+        currency: acctRow.currency ?? "",
+        timezone: acctRow.timezone ?? "",
+        accountStatus: acctRow.account_status ?? "",
+      };
+      setSnapchatAccount(accountMeta);
+      setSnapchatLastSyncedAt(acctRow.last_synced_at ?? null);
+      setSnapchatCreds(
+        acctRow.access_token
+          ? {
+              source: (acctRow.source as "oauth" | "direct") ?? "oauth",
+              adAccountId: acctRow.ad_account_id,
+              accessToken: acctRow.access_token ?? null,
+              refreshToken: acctRow.refresh_token ?? null,
+            }
+          : null,
+      );
+
+      const arrays = await fetchSnapchatArrays(businessId);
+      setSnapchatMonthly(arrays.monthly);
+      setSnapchatCampaigns(arrays.campaigns);
+      writeSnapchatCache({
+        businessId,
+        account: accountMeta,
+        lastSyncedAt: acctRow.last_synced_at ?? null,
+        ...arrays,
+      });
+    } catch (err) {
+      console.warn("[Snapchat data] load skipped:", err);
+    }
+  };
+
+  const commitSnapchatSync = async (
+    result: SnapchatSyncResult,
+    creds: {
+      source: "oauth" | "direct";
+      adAccountId: string;
+      accessToken: string | null;
+      refreshToken: string | null;
+    },
+  ) => {
+    setSnapchatAccount(result.account);
+    setSnapchatMonthly(result.monthly);
+    setSnapchatCampaigns(result.campaigns);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "snapchat"])),
+      missingSources: b.missingSources.filter(
+        (s) => s.toLowerCase() !== "snapchat",
+      ),
+    }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Snapchat Ads synced (local sandbox).");
+      return result;
+    }
+
+    const businessId = business.id;
+    const nowISO = new Date().toISOString();
+
+    try {
+      const { error: acctErr } = await supabase.from("snapchat_accounts").upsert(
+        {
+          business_id: businessId,
+          ad_account_id: result.account.adAccountId,
+          access_token: creds.accessToken,
+          refresh_token: creds.refreshToken,
+          source: creds.source,
+          name: result.account.name,
+          currency: result.account.currency,
+          timezone: result.account.timezone,
+          account_status: result.account.accountStatus,
+          last_synced_at: nowISO,
+          synced_at: nowISO,
+        },
+        { onConflict: "business_id" },
+      );
+      if (acctErr) throw acctErr;
+
+      await supabase
+        .from("snapchat_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("snapchat_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+
+      await upsertChunked(
+        "snapchat_monthly_insights",
+        result.monthly.map((m) => ({
+          business_id: businessId,
+          month: m.month,
+          spend: m.spend,
+          impressions: m.impressions,
+          clicks: m.clicks,
+          conversions: m.conversions,
+          conversion_value: m.conversionValue,
+          roas: m.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,month",
+      );
+
+      await upsertChunked(
+        "snapchat_campaigns",
+        result.campaigns.map((c) => ({
+          business_id: businessId,
+          snapchat_campaign_id: c.snapchatCampaignId,
+          name: c.name,
+          objective: c.objective,
+          status: c.status,
+          spend: c.spend,
+          conversions: c.conversions,
+          conversion_value: c.conversionValue,
+          roas: c.roas,
+          synced_at: nowISO,
+        })),
+        "business_id,snapchat_campaign_id",
+      );
+
+      const sources = Array.from(
+        new Set([...business.connectedSources, "snapchat"]),
+      );
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: sources },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+    } catch (err) {
+      throw describeDbError(err, "Snapchat");
+    }
+
+    setSnapchatLastSyncedAt(nowISO);
+    setSnapchatCreds(creds);
+    writeSnapchatCache({
+      businessId,
+      account: result.account,
+      lastSyncedAt: nowISO,
+      monthly: result.monthly,
+      campaigns: result.campaigns,
+    });
+
+    return result;
+  };
+
+  const syncSnapchat = async (
+    adAccountId: string,
+    accessToken: string,
+    refreshToken?: string | null,
+  ) => {
+    const result = await syncSnapchatAdsFn({
+      data: { adAccountId, accessToken, refreshToken: refreshToken ?? null },
+    });
+    const creds = {
+      source: "direct" as const,
+      adAccountId,
+      accessToken: result.updatedTokens?.accessToken ?? accessToken,
+      refreshToken: result.updatedTokens?.refreshToken ?? refreshToken ?? null,
+    };
+    return commitSnapchatSync(result, creds);
+  };
+
+  const syncSnapchatViaOAuth = async (
+    adAccountId: string,
+    accessToken: string,
+    refreshToken: string,
+  ) => {
+    const result = await syncSnapchatAdsFn({
+      data: { adAccountId, accessToken, refreshToken },
+    });
+    const creds = {
+      source: "oauth" as const,
+      adAccountId,
+      accessToken: result.updatedTokens?.accessToken ?? accessToken,
+      refreshToken: result.updatedTokens?.refreshToken ?? refreshToken,
+    };
+    return commitSnapchatSync(result, creds);
+  };
+
+  const resyncSnapchat = async () => {
+    let creds = snapchatCreds;
+    if (!creds) {
+      if (!isSupabaseConfigured || !user || !business.id) {
+        throw new Error("Connect a Snapchat Ads account first.");
+      }
+      const { data, error } = await supabase
+        .from("snapchat_accounts")
+        .select("ad_account_id, access_token, refresh_token, source")
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (error) throw describeDbError(error, "Snapchat");
+      if (!data?.access_token) {
+        throw new Error(
+          "No stored Snapchat credentials — reconnect the account.",
+        );
+      }
+      creds = {
+        source: (data.source as "oauth" | "direct") ?? "oauth",
+        adAccountId: data.ad_account_id,
+        accessToken: data.access_token ?? null,
+        refreshToken: data.refresh_token ?? null,
+      };
+      setSnapchatCreds(creds);
+    }
+    if (!creds.accessToken) {
+      throw new Error("No stored Snapchat credentials — reconnect the account.");
+    }
+    return syncSnapchat(creds.adAccountId, creds.accessToken, creds.refreshToken);
+  };
+
+  const disconnectSnapchat = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("snapchat"),
+    );
+
+    setSnapchatAccount(null);
+    setSnapchatMonthly([]);
+    setSnapchatCampaigns([]);
+    setSnapchatLastSyncedAt(null);
+    setSnapchatCreds(null);
+    clearSnapchatCache();
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Snapchat Ads disconnected.");
+      return;
+    }
+
+    const businessId = business.id;
+    try {
+      await supabase
+        .from("snapchat_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("snapchat_campaigns")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("snapchat_accounts")
+        .delete()
+        .eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+      toast.success("Snapchat Ads disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "Snapchat");
     }
   };
 
@@ -2369,6 +2803,9 @@ function useBusinessDataImpl() {
   const isTikTokConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("tiktok"),
   );
+  const isSnapchatConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("snapchat"),
+  );
 
   return {
     business,
@@ -2381,6 +2818,7 @@ function useBusinessDataImpl() {
     isMetaConnected,
     isGoogleConnected,
     isTikTokConnected,
+    isSnapchatConnected,
     // Raw Shopify data
     store,
     orders,
@@ -2402,11 +2840,17 @@ function useBusinessDataImpl() {
     tikTokMonthly,
     tikTokCampaigns,
     tikTokLastSyncedAt,
+    // Raw Snapchat Ads data
+    snapchatAccount,
+    snapchatMonthly,
+    snapchatCampaigns,
+    snapchatLastSyncedAt,
     // Connected stores can always resync — the token is fetched on demand.
     canResync: !!store || isShopifyConnected,
     canResyncMeta: !!metaAccount || isMetaConnected,
     canResyncGoogle: !!googleAccount || isGoogleConnected,
     canResyncTikTok: !!tikTokAccount || isTikTokConnected,
+    canResyncSnapchat: !!snapchatAccount || isSnapchatConnected,
     // Actions
     refetch: fetchData,
     updateBusiness,
@@ -2426,6 +2870,10 @@ function useBusinessDataImpl() {
     syncTikTokViaOAuth,
     resyncTikTok,
     disconnectTikTok,
+    syncSnapchat,
+    syncSnapchatViaOAuth,
+    resyncSnapchat,
+    disconnectSnapchat,
     saveComputedReport,
   };
 }

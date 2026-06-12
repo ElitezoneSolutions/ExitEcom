@@ -28,13 +28,15 @@ const groups = [
       { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
       { to: "/profile", label: "Business Profile", icon: Building2 },
       {
+        to: "/data-sources",
         label: "Data Sources",
         icon: LinkIcon,
         children: [
-          { to: "/data-sources", label: "Connections" },
-          { to: "/store-data", label: "Store Data" },
+          { to: "/store-data", label: "Shopify Data" },
           { to: "/meta-data", label: "Meta Ads Data" },
           { to: "/google-data", label: "Google Ads Data" },
+          { to: "/tiktok-data", label: "TikTok Ads Data" },
+          { to: "/snapchat-data", label: "Snapchat Ads Data" },
         ],
       },
     ],
@@ -104,14 +106,33 @@ export function Sidebar() {
               {g.items.map((it) => {
                 const Icon = it.icon;
 
-                // Always-expanded parent with child links (e.g. Data Sources).
+                // Expandable parent with child links (e.g. Data Sources).
                 if ("children" in it) {
+                  const parentActive = pathname === it.to;
+                  const anyChildActive = it.children.some(
+                    (c) => pathname === c.to,
+                  );
+                  const highlighted = parentActive || anyChildActive;
                   return (
                     <li key={it.label}>
-                      <div className="flex items-center gap-3 px-3 py-2 text-sm text-[var(--text-secondary)]">
+                      <Link
+                        to={it.to}
+                        className="flex items-center gap-3 px-3 py-2 text-sm rounded-sm transition-colors relative"
+                        style={{
+                          color: highlighted
+                            ? "var(--accent)"
+                            : "var(--text-secondary)",
+                          backgroundColor: parentActive
+                            ? "var(--sidebar-active)"
+                            : "transparent",
+                        }}
+                      >
+                        {parentActive && (
+                          <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[var(--accent)]" />
+                        )}
                         <Icon className="w-4 h-4 shrink-0" strokeWidth={1.5} />
                         <span className="truncate">{it.label}</span>
-                      </div>
+                      </Link>
                       <ul className="mt-0.5 ml-[1.45rem] pl-3 border-l border-[var(--border-warm)] space-y-0.5">
                         {it.children.map((c) => {
                           const childActive = pathname === c.to;

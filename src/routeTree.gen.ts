@@ -23,6 +23,9 @@ import { Route as AppTiktokOauthCallbackRouteImport } from './routes/_app.tiktok
 import { Route as AppTiktokDataRouteImport } from './routes/_app.tiktok-data'
 import { Route as AppTiktokConnectRouteImport } from './routes/_app.tiktok-connect'
 import { Route as AppStoreDataRouteImport } from './routes/_app.store-data'
+import { Route as AppSnapchatOauthCallbackRouteImport } from './routes/_app.snapchat-oauth-callback'
+import { Route as AppSnapchatDataRouteImport } from './routes/_app.snapchat-data'
+import { Route as AppSnapchatConnectRouteImport } from './routes/_app.snapchat-connect'
 import { Route as AppShopifyConnectRouteImport } from './routes/_app.shopify-connect'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRiskScannerRouteImport } from './routes/_app.risk-scanner'
@@ -111,6 +114,22 @@ const AppTiktokConnectRoute = AppTiktokConnectRouteImport.update({
 const AppStoreDataRoute = AppStoreDataRouteImport.update({
   id: '/store-data',
   path: '/store-data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSnapchatOauthCallbackRoute =
+  AppSnapchatOauthCallbackRouteImport.update({
+    id: '/snapchat-oauth-callback',
+    path: '/snapchat-oauth-callback',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppSnapchatDataRoute = AppSnapchatDataRouteImport.update({
+  id: '/snapchat-data',
+  path: '/snapchat-data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSnapchatConnectRoute = AppSnapchatConnectRouteImport.update({
+  id: '/snapchat-connect',
+  path: '/snapchat-connect',
   getParentRoute: () => AppRoute,
 } as any)
 const AppShopifyConnectRoute = AppShopifyConnectRouteImport.update({
@@ -243,6 +262,9 @@ export interface FileRoutesByFullPath {
   '/risk-scanner': typeof AppRiskScannerRoute
   '/settings': typeof AppSettingsRoute
   '/shopify-connect': typeof AppShopifyConnectRoute
+  '/snapchat-connect': typeof AppSnapchatConnectRoute
+  '/snapchat-data': typeof AppSnapchatDataRoute
+  '/snapchat-oauth-callback': typeof AppSnapchatOauthCallbackRoute
   '/store-data': typeof AppStoreDataRoute
   '/tiktok-connect': typeof AppTiktokConnectRoute
   '/tiktok-data': typeof AppTiktokDataRoute
@@ -278,6 +300,9 @@ export interface FileRoutesByTo {
   '/risk-scanner': typeof AppRiskScannerRoute
   '/settings': typeof AppSettingsRoute
   '/shopify-connect': typeof AppShopifyConnectRoute
+  '/snapchat-connect': typeof AppSnapchatConnectRoute
+  '/snapchat-data': typeof AppSnapchatDataRoute
+  '/snapchat-oauth-callback': typeof AppSnapchatOauthCallbackRoute
   '/store-data': typeof AppStoreDataRoute
   '/tiktok-connect': typeof AppTiktokConnectRoute
   '/tiktok-data': typeof AppTiktokDataRoute
@@ -315,6 +340,9 @@ export interface FileRoutesById {
   '/_app/risk-scanner': typeof AppRiskScannerRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/shopify-connect': typeof AppShopifyConnectRoute
+  '/_app/snapchat-connect': typeof AppSnapchatConnectRoute
+  '/_app/snapchat-data': typeof AppSnapchatDataRoute
+  '/_app/snapchat-oauth-callback': typeof AppSnapchatOauthCallbackRoute
   '/_app/store-data': typeof AppStoreDataRoute
   '/_app/tiktok-connect': typeof AppTiktokConnectRoute
   '/_app/tiktok-data': typeof AppTiktokDataRoute
@@ -352,6 +380,9 @@ export interface FileRouteTypes {
     | '/risk-scanner'
     | '/settings'
     | '/shopify-connect'
+    | '/snapchat-connect'
+    | '/snapchat-data'
+    | '/snapchat-oauth-callback'
     | '/store-data'
     | '/tiktok-connect'
     | '/tiktok-data'
@@ -387,6 +418,9 @@ export interface FileRouteTypes {
     | '/risk-scanner'
     | '/settings'
     | '/shopify-connect'
+    | '/snapchat-connect'
+    | '/snapchat-data'
+    | '/snapchat-oauth-callback'
     | '/store-data'
     | '/tiktok-connect'
     | '/tiktok-data'
@@ -423,6 +457,9 @@ export interface FileRouteTypes {
     | '/_app/risk-scanner'
     | '/_app/settings'
     | '/_app/shopify-connect'
+    | '/_app/snapchat-connect'
+    | '/_app/snapchat-data'
+    | '/_app/snapchat-oauth-callback'
     | '/_app/store-data'
     | '/_app/tiktok-connect'
     | '/_app/tiktok-data'
@@ -540,6 +577,27 @@ declare module '@tanstack/react-router' {
       path: '/store-data'
       fullPath: '/store-data'
       preLoaderRoute: typeof AppStoreDataRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/snapchat-oauth-callback': {
+      id: '/_app/snapchat-oauth-callback'
+      path: '/snapchat-oauth-callback'
+      fullPath: '/snapchat-oauth-callback'
+      preLoaderRoute: typeof AppSnapchatOauthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/snapchat-data': {
+      id: '/_app/snapchat-data'
+      path: '/snapchat-data'
+      fullPath: '/snapchat-data'
+      preLoaderRoute: typeof AppSnapchatDataRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/snapchat-connect': {
+      id: '/_app/snapchat-connect'
+      path: '/snapchat-connect'
+      fullPath: '/snapchat-connect'
+      preLoaderRoute: typeof AppSnapchatConnectRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/shopify-connect': {
@@ -706,6 +764,9 @@ interface AppRouteChildren {
   AppRiskScannerRoute: typeof AppRiskScannerRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppShopifyConnectRoute: typeof AppShopifyConnectRoute
+  AppSnapchatConnectRoute: typeof AppSnapchatConnectRoute
+  AppSnapchatDataRoute: typeof AppSnapchatDataRoute
+  AppSnapchatOauthCallbackRoute: typeof AppSnapchatOauthCallbackRoute
   AppStoreDataRoute: typeof AppStoreDataRoute
   AppTiktokConnectRoute: typeof AppTiktokConnectRoute
   AppTiktokDataRoute: typeof AppTiktokDataRoute
@@ -734,6 +795,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppRiskScannerRoute: AppRiskScannerRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppShopifyConnectRoute: AppShopifyConnectRoute,
+  AppSnapchatConnectRoute: AppSnapchatConnectRoute,
+  AppSnapchatDataRoute: AppSnapchatDataRoute,
+  AppSnapchatOauthCallbackRoute: AppSnapchatOauthCallbackRoute,
   AppStoreDataRoute: AppStoreDataRoute,
   AppTiktokConnectRoute: AppTiktokConnectRoute,
   AppTiktokDataRoute: AppTiktokDataRoute,
