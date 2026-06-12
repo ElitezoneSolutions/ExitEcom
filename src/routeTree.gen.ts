@@ -46,6 +46,8 @@ import { Route as AppDataRoomRouteImport } from './routes/_app.data-room'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppBuyerMatchingRouteImport } from './routes/_app.buyer-matching'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
+import { Route as AppBankStatementsUploadRouteImport } from './routes/_app.bank-statements-upload'
+import { Route as AppBankStatementsDataRouteImport } from './routes/_app.bank-statements-data'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -232,6 +234,16 @@ const AppBillingRoute = AppBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBankStatementsUploadRoute = AppBankStatementsUploadRouteImport.update({
+  id: '/bank-statements-upload',
+  path: '/bank-statements-upload',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBankStatementsDataRoute = AppBankStatementsDataRouteImport.update({
+  id: '/bank-statements-data',
+  path: '/bank-statements-data',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -242,6 +254,8 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/bank-statements-data': typeof AppBankStatementsDataRoute
+  '/bank-statements-upload': typeof AppBankStatementsUploadRoute
   '/billing': typeof AppBillingRoute
   '/buyer-matching': typeof AppBuyerMatchingRoute
   '/dashboard': typeof AppDashboardRoute
@@ -280,6 +294,8 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/bank-statements-data': typeof AppBankStatementsDataRoute
+  '/bank-statements-upload': typeof AppBankStatementsUploadRoute
   '/billing': typeof AppBillingRoute
   '/buyer-matching': typeof AppBuyerMatchingRoute
   '/dashboard': typeof AppDashboardRoute
@@ -320,6 +336,8 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/_app/bank-statements-data': typeof AppBankStatementsDataRoute
+  '/_app/bank-statements-upload': typeof AppBankStatementsUploadRoute
   '/_app/billing': typeof AppBillingRoute
   '/_app/buyer-matching': typeof AppBuyerMatchingRoute
   '/_app/dashboard': typeof AppDashboardRoute
@@ -360,6 +378,8 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/bank-statements-data'
+    | '/bank-statements-upload'
     | '/billing'
     | '/buyer-matching'
     | '/dashboard'
@@ -398,6 +418,8 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/bank-statements-data'
+    | '/bank-statements-upload'
     | '/billing'
     | '/buyer-matching'
     | '/dashboard'
@@ -437,6 +459,8 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/_app/bank-statements-data'
+    | '/_app/bank-statements-upload'
     | '/_app/billing'
     | '/_app/buyer-matching'
     | '/_app/dashboard'
@@ -740,10 +764,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bank-statements-upload': {
+      id: '/_app/bank-statements-upload'
+      path: '/bank-statements-upload'
+      fullPath: '/bank-statements-upload'
+      preLoaderRoute: typeof AppBankStatementsUploadRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/bank-statements-data': {
+      id: '/_app/bank-statements-data'
+      path: '/bank-statements-data'
+      fullPath: '/bank-statements-data'
+      preLoaderRoute: typeof AppBankStatementsDataRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppBankStatementsDataRoute: typeof AppBankStatementsDataRoute
+  AppBankStatementsUploadRoute: typeof AppBankStatementsUploadRoute
   AppBillingRoute: typeof AppBillingRoute
   AppBuyerMatchingRoute: typeof AppBuyerMatchingRoute
   AppDashboardRoute: typeof AppDashboardRoute
@@ -775,6 +815,8 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppBankStatementsDataRoute: AppBankStatementsDataRoute,
+  AppBankStatementsUploadRoute: AppBankStatementsUploadRoute,
   AppBillingRoute: AppBillingRoute,
   AppBuyerMatchingRoute: AppBuyerMatchingRoute,
   AppDashboardRoute: AppDashboardRoute,
