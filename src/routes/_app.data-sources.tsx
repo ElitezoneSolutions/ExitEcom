@@ -18,6 +18,7 @@ function DataSources() {
     disconnectGoogle,
     disconnectTikTok,
     disconnectSnapchat,
+    disconnectBankStatements,
   } = useBusinessData();
 
   const disconnectFor = (name: string) =>
@@ -29,7 +30,9 @@ function DataSources() {
           ? disconnectTikTok
           : name === "Snapchat Ads"
             ? disconnectSnapchat
-            : disconnectShopify;
+            : name === "Bank Statements"
+              ? disconnectBankStatements
+              : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
@@ -46,6 +49,9 @@ function DataSources() {
   const isSnapchatConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("snapchat"),
   );
+  const isBankConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("bank_statements"),
+  );
 
   const platforms = [
     {
@@ -56,6 +62,14 @@ function DataSources() {
       impact: "Valuation range narrowed by £15k",
       explanation:
         "Your core revenue engine — orders, products and customers. This is all we need to build your Exit Score.",
+    },
+    {
+      name: "Bank Statements",
+      section: "Store",
+      status: isBankConnected ? "connected" : "missing",
+      sync: isBankConnected ? "Uploaded" : "—",
+      impact: "Cash flow verified — Data Confidence +10",
+      explanation: "Upload CSV exports from your bank to verify revenue for buyers.",
     },
     {
       name: "Meta Ads",
@@ -109,13 +123,6 @@ function DataSources() {
       status: "missing",
       sync: "—",
       explanation: "Give buyers confidence in your traffic quality.",
-    },
-    {
-      name: "Bank Statements",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
-      explanation: "Automated verification for buyers.",
     },
     {
       name: "Amazon Seller Central",
@@ -240,6 +247,17 @@ function DataSources() {
                             className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                           >
                             {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ) : p.name === "Bank Statements" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/bank-statements-data"
+                                : "/bank-statements-upload"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Upload"}
                           </Link>
                         ) : (
                           <Link

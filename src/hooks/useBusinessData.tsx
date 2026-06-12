@@ -46,6 +46,10 @@ import {
   type RawSnapchatCampaign,
   type SnapchatSyncResult,
 } from "@/lib/snapchat";
+import {
+  parseBankStatementFn,
+  type ParsedBankMonth,
+} from "@/lib/bank-statements";
 
 export interface BusinessData {
   id?: string;
@@ -672,6 +676,62 @@ const mapSnapchatCampaignRow = (r: SnapchatCampaignRow): RawSnapchatCampaign => 
   roas: Number(r.roas ?? 0),
 });
 
+// Bank statement row types
+interface BankMonthlyRow {
+  id: string;
+  month: string;
+  total_credits: number | string | null;
+  total_debits: number | string | null;
+  net_flow: number | string | null;
+  transaction_count: number | string | null;
+}
+interface BankFileRow {
+  id: string;
+  file_name: string;
+  file_size: number | null;
+  row_count: number | null;
+  synced_at: string;
+}
+
+export interface BankStatementMonth {
+  month: string;
+  totalCredits: number;
+  totalDebits: number;
+  netFlow: number;
+  transactionCount: number;
+}
+export interface BankStatementFile {
+  id: string;
+  fileName: string;
+  fileSize: number | null;
+  rowCount: number | null;
+  syncedAt: string;
+}
+
+const mapBankMonthlyRow = (r: BankMonthlyRow): BankStatementMonth => ({
+  month: r.month,
+  totalCredits: Number(r.total_credits ?? 0),
+  totalDebits: Number(r.total_debits ?? 0),
+  netFlow: Number(r.net_flow ?? 0),
+  transactionCount: Number(r.transaction_count ?? 0),
+});
+const mapBankFileRow = (r: BankFileRow): BankStatementFile => ({
+  id: r.id,
+  fileName: r.file_name,
+  fileSize: r.file_size,
+  rowCount: r.row_count,
+  syncedAt: r.synced_at,
+});
+
+function mergeParsedMonths(
+  existing: ParsedBankMonth[],
+  incoming: ParsedBankMonth[],
+): ParsedBankMonth[] {
+  const map = new Map(existing.map((m) => [m.month, m]));
+  for (const m of incoming) map.set(m.month, m);
+  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+}
+
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
 // that called this (the Sidebar + each page + useReport) would spin up its own
@@ -805,6 +865,11 @@ function useBusinessDataImpl() {
     accessToken: string | null;
     refreshToken: string | null;
   } | null>(null);
+
+  // Bank statement aggregates — loaded from DB on mount, no localStorage cache.
+  const [bankStatementMonthly, setBankStatementMonthly] = useState<BankStatementMonth[]>([]);
+  const [bankStatementFiles, setBankStatementFiles] = useState<BankStatementFile[]>([]);
+  const [bankLastSyncedAt, setBankLastSyncedAt] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
@@ -941,6 +1006,7 @@ function useBusinessDataImpl() {
       await loadGoogleData(bizData.id);
       await loadTikTokData(bizData.id);
       await loadSnapchatData(bizData.id);
+      await loadBankStatements(bizData.id);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -1877,6 +1943,185 @@ function useBusinessDataImpl() {
     }
   };
 
+  // --- Bank Statements ------------------------------------------------------- //
+
+  const loadBankStatements = async (businessId: string) => {
+    try {
+      const [{ data: monthlyRows }, { data: fileRows }] = await Promise.all([
+        supabase
+          .from("bank_statement_monthly")
+          .select("*")
+          .eq("business_id", businessId)
+          .order("month", { ascending: true }),
+        supabase
+          .from("bank_statement_files")
+          .select("*")
+          .eq("business_id", businessId)
+          .order("synced_at", { ascending: false }),
+      ]);
+      if (monthlyRows && monthlyRows.length > 0) {
+        const monthly = (monthlyRows as BankMonthlyRow[]).map(mapBankMonthlyRow);
+        setBankStatementMonthly(monthly);
+        const fileList = (fileRows ?? []) as BankFileRow[];
+        setBankStatementFiles(fileList.map(mapBankFileRow));
+        const latest = fileList[0];
+        if (latest) setBankLastSyncedAt(latest.synced_at);
+      }
+    } catch {
+      // Silently degrade — tables may not exist yet on older deploys
+    }
+  };
+
+  const commitBankSync = async (
+    monthly: ParsedBankMonth[],
+    fileInfo: { name: string; size: number; rowCount: number },
+    businessId: string,
+  ) => {
+    const nowISO = new Date().toISOString();
+
+    // Optimistic state update
+    const mapped: BankStatementMonth[] = monthly.map((m) => ({
+      month: m.month,
+      totalCredits: m.totalCredits,
+      totalDebits: m.totalDebits,
+      netFlow: m.netFlow,
+      transactionCount: m.transactionCount,
+    }));
+    setBankStatementMonthly((prev) => {
+      const existing = new Map(prev.map((r) => [r.month, r]));
+      for (const m of mapped) existing.set(m.month, m);
+      return Array.from(existing.values()).sort((a, b) => a.month.localeCompare(b.month));
+    });
+    setBankLastSyncedAt(nowISO);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "bank_statements"])),
+    }));
+
+    if (!isSupabaseConfigured || !user) return;
+
+    // Insert file record
+    const { data: fileRow, error: fileErr } = await supabase
+      .from("bank_statement_files")
+      .insert({
+        business_id: businessId,
+        file_name: fileInfo.name,
+        file_size: fileInfo.size,
+        row_count: fileInfo.rowCount,
+        synced_at: nowISO,
+      })
+      .select()
+      .single();
+    if (fileErr) throw describeDbError(fileErr, "Bank Statements");
+    setBankStatementFiles((prev) => [mapBankFileRow(fileRow as BankFileRow), ...prev]);
+
+    // Upsert monthly rows
+    const monthlyPayload = monthly.map((m) => ({
+      business_id: businessId,
+      month: m.month,
+      total_credits: m.totalCredits,
+      total_debits: m.totalDebits,
+      net_flow: m.netFlow,
+      transaction_count: m.transactionCount,
+      synced_at: nowISO,
+    }));
+    for (let i = 0; i < monthlyPayload.length; i += 500) {
+      const { error: mErr } = await supabase
+        .from("bank_statement_monthly")
+        .upsert(monthlyPayload.slice(i, i + 500), {
+          onConflict: "business_id,month",
+        });
+      if (mErr) throw describeDbError(mErr, "Bank Statements");
+    }
+
+    // Mark connected_sources
+    const sources = Array.from(new Set([...business.connectedSources, "bank_statements"]));
+    const { error: valErr } = await supabase
+      .from("valuation_data")
+      .upsert({ business_id: businessId, connected_sources: sources }, { onConflict: "business_id" });
+    if (valErr) throw describeDbError(valErr, "Bank Statements");
+
+    // Mark Data Room document as uploaded
+    await supabase
+      .from("documents")
+      .update({ uploaded: true })
+      .eq("business_id", businessId)
+      .eq("name", "Bank Statements (3 months)");
+  };
+
+  const uploadBankStatements = async (
+    files: File[],
+    onPhase?: (phase: "reading" | "parsing" | "saving") => void,
+  ) => {
+    if (!business.id) throw new Error("No business found. Complete your profile first.");
+
+    let allMonthly: ParsedBankMonth[] = [];
+    const summaryCredits = { total: 0, debits: 0 };
+
+    for (const file of files) {
+      onPhase?.("reading");
+      const text = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+        reader.readAsText(file);
+      });
+
+      onPhase?.("parsing");
+      const result = await parseBankStatementFn({
+        data: { fileContent: text, fileName: file.name, fileSize: file.size },
+      });
+
+      allMonthly = mergeParsedMonths(allMonthly, result.monthly);
+
+      onPhase?.("saving");
+      await commitBankSync(result.monthly, result.fileInfo, business.id);
+
+      summaryCredits.total += result.monthly.reduce((s: number, m: ParsedBankMonth) => s + m.totalCredits, 0);
+      summaryCredits.debits += result.monthly.reduce((s: number, m: ParsedBankMonth) => s + m.totalDebits, 0);
+    }
+
+    toast.success(`${allMonthly.length} month${allMonthly.length !== 1 ? "s" : ""} of statements imported.`);
+    return {
+      monthCount: allMonthly.length,
+      totalCredits: summaryCredits.total,
+      totalDebits: summaryCredits.debits,
+      netFlow: summaryCredits.total - summaryCredits.debits,
+    };
+  };
+
+  const disconnectBankStatements = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("bank_statements"),
+    );
+    setBankStatementMonthly([]);
+    setBankStatementFiles([]);
+    setBankLastSyncedAt(null);
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("Bank Statements disconnected.");
+      return;
+    }
+    const businessId = business.id;
+    try {
+      await supabase.from("bank_statement_monthly").delete().eq("business_id", businessId);
+      await supabase.from("bank_statement_files").delete().eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert({ business_id: businessId, connected_sources: remaining }, { onConflict: "business_id" });
+      if (valErr) throw valErr;
+      await supabase
+        .from("documents")
+        .update({ uploaded: false })
+        .eq("business_id", businessId)
+        .eq("name", "Bank Statements (3 months)");
+      toast.success("Bank Statements disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "Bank Statements");
+    }
+  };
+
   // `opts.silent` suppresses the success toast (used by background re-saves, e.g.
   // the profile auto-tidy, which surface their own message). Errors always toast.
   const updateBusiness = async (
@@ -2806,6 +3051,9 @@ function useBusinessDataImpl() {
   const isSnapchatConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("snapchat"),
   );
+  const isBankConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("bank_statements"),
+  );
 
   return {
     business,
@@ -2819,6 +3067,7 @@ function useBusinessDataImpl() {
     isGoogleConnected,
     isTikTokConnected,
     isSnapchatConnected,
+    isBankConnected,
     // Raw Shopify data
     store,
     orders,
@@ -2845,6 +3094,10 @@ function useBusinessDataImpl() {
     snapchatMonthly,
     snapchatCampaigns,
     snapchatLastSyncedAt,
+    // Bank Statements
+    bankStatementMonthly,
+    bankStatementFiles,
+    bankLastSyncedAt,
     // Connected stores can always resync — the token is fetched on demand.
     canResync: !!store || isShopifyConnected,
     canResyncMeta: !!metaAccount || isMetaConnected,
@@ -2874,6 +3127,8 @@ function useBusinessDataImpl() {
     syncSnapchatViaOAuth,
     resyncSnapchat,
     disconnectSnapchat,
+    uploadBankStatements,
+    disconnectBankStatements,
     saveComputedReport,
   };
 }

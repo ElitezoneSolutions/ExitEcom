@@ -94,6 +94,7 @@ export interface AnalyticsInput {
   google?: AnalyticsAdsFeed | null;
   tiktok?: AnalyticsAdsFeed | null;
   snapchat?: AnalyticsAdsFeed | null;
+  bankStatements?: { monthlyCount: number } | null;
 }
 
 export interface ProductRevenue {
@@ -142,6 +143,7 @@ export interface StoreMetrics {
   businessAge: string;
   growthRate: number;
   hasData: boolean;
+  bankStatementsMonthCount: number;
 }
 
 export interface ScoreDimension {
@@ -427,6 +429,7 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     businessAge,
     growthRate,
     hasData: orderCount > 0,
+    bankStatementsMonthCount: input.bankStatements?.monthlyCount ?? 0,
   };
 }
 
@@ -505,6 +508,8 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
   // A verified ad feed materially raises confidence — marketing efficiency is no
   // longer a proxy guess.
   if (m.adSpendVerified) dataConfidence += 10;
+  // Bank statements on file verify cash deposits match Shopify revenue.
+  if (m.bankStatementsMonthCount >= 3) dataConfidence += 10;
   dataConfidence = Math.min(95, round(dataConfidence));
 
   return { exitScore, scoreTier, scoreBreakdown: breakdown, dataConfidence };
