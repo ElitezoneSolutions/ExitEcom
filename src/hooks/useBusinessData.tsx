@@ -722,6 +722,30 @@ const mapBankFileRow = (r: BankFileRow): BankStatementFile => ({
   syncedAt: r.synced_at,
 });
 
+interface PLFileRow {
+  id: string;
+  file_name: string;
+  file_size: number | null;
+  file_path: string | null;
+  synced_at: string;
+}
+
+export interface PLFile {
+  id: string;
+  fileName: string;
+  fileSize: number | null;
+  filePath: string | null;
+  syncedAt: string;
+}
+
+const mapPLFileRow = (r: PLFileRow): PLFile => ({
+  id: r.id,
+  fileName: r.file_name,
+  fileSize: r.file_size,
+  filePath: r.file_path,
+  syncedAt: r.synced_at,
+});
+
 
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
@@ -862,6 +886,10 @@ function useBusinessDataImpl() {
   const [bankStatementFiles, setBankStatementFiles] = useState<BankStatementFile[]>([]);
   const [bankLastSyncedAt, setBankLastSyncedAt] = useState<string | null>(null);
 
+  // P&L file uploads — loaded from DB on mount, no localStorage cache.
+  const [plFiles, setPLFiles] = useState<PLFile[]>([]);
+  const [plLastSyncedAt, setPLLastSyncedAt] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
@@ -998,6 +1026,7 @@ function useBusinessDataImpl() {
       await loadTikTokData(bizData.id);
       await loadSnapchatData(bizData.id);
       await loadBankStatements(bizData.id);
+      await loadPLFiles(bizData.id);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -2056,6 +2085,113 @@ function useBusinessDataImpl() {
     }
   };
 
+  // --- P&L Upload ------------------------------------------------------------- //
+
+  const loadPLFiles = async (businessId: string) => {
+    try {
+      const { data: rows } = await supabase
+        .from("pl_files")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("synced_at", { ascending: false });
+      if (rows && rows.length > 0) {
+        setPLFiles((rows as PLFileRow[]).map(mapPLFileRow));
+        setPLLastSyncedAt((rows as PLFileRow[])[0].synced_at);
+      }
+    } catch {
+      // Silently degrade — table may not exist on older deploys
+    }
+  };
+
+  const commitPLFile = async (
+    fileInfo: { name: string; size: number; blob?: File },
+    businessId: string,
+  ) => {
+    const nowISO = new Date().toISOString();
+    setPLLastSyncedAt(nowISO);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "pl_upload"])),
+    }));
+
+    if (!isSupabaseConfigured || !user) return;
+
+    let filePath: string | null = null;
+    if (fileInfo.blob) {
+      const fileId = crypto.randomUUID();
+      const storagePath = `${user.id}/${fileId}.pdf`;
+      const { error: uploadErr } = await supabase.storage
+        .from("pl-uploads")
+        .upload(storagePath, fileInfo.blob, { contentType: "application/pdf", upsert: false });
+      if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+      filePath = storagePath;
+    }
+
+    const { data: fileRow, error: fileErr } = await supabase
+      .from("pl_files")
+      .insert({
+        business_id: businessId,
+        file_name: fileInfo.name,
+        file_size: fileInfo.size,
+        file_path: filePath,
+        synced_at: nowISO,
+      })
+      .select()
+      .single();
+    if (fileErr) throw describeDbError(fileErr, "P&L Upload");
+    setPLFiles((prev) => [mapPLFileRow(fileRow as PLFileRow), ...prev]);
+
+    const sources = Array.from(new Set([...business.connectedSources, "pl_upload"]));
+    const { error: valErr } = await supabase
+      .from("valuation_data")
+      .upsert({ business_id: businessId, connected_sources: sources }, { onConflict: "business_id" });
+    if (valErr) throw describeDbError(valErr, "P&L Upload");
+
+    await supabase
+      .from("documents")
+      .update({ uploaded: true })
+      .eq("business_id", businessId)
+      .eq("name", "Profit & Loss Statement (12 months)");
+  };
+
+  const uploadPL = async (files: File[]) => {
+    if (!business.id) throw new Error("No business found. Complete your profile first.");
+    for (const file of files) {
+      await commitPLFile({ name: file.name, size: file.size, blob: file }, business.id);
+    }
+    toast.success(`${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`);
+  };
+
+  const disconnectPL = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => !s.toLowerCase().includes("pl_upload"),
+    );
+    setPLFiles([]);
+    setPLLastSyncedAt(null);
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("P&L disconnected.");
+      return;
+    }
+    const businessId = business.id;
+    try {
+      await supabase.from("pl_files").delete().eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert({ business_id: businessId, connected_sources: remaining }, { onConflict: "business_id" });
+      if (valErr) throw valErr;
+      await supabase
+        .from("documents")
+        .update({ uploaded: false })
+        .eq("business_id", businessId)
+        .eq("name", "Profit & Loss Statement (12 months)");
+      toast.success("P&L disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "P&L Upload");
+    }
+  };
+
   // `opts.silent` suppresses the success toast (used by background re-saves, e.g.
   // the profile auto-tidy, which surface their own message). Errors always toast.
   const updateBusiness = async (
@@ -2988,6 +3124,9 @@ function useBusinessDataImpl() {
   const isBankConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("bank_statements"),
   );
+  const isPLConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("pl_upload"),
+  );
 
   return {
     business,
@@ -3002,6 +3141,7 @@ function useBusinessDataImpl() {
     isTikTokConnected,
     isSnapchatConnected,
     isBankConnected,
+    isPLConnected,
     // Raw Shopify data
     store,
     orders,
@@ -3032,6 +3172,9 @@ function useBusinessDataImpl() {
     bankStatementMonthly,
     bankStatementFiles,
     bankLastSyncedAt,
+    // P&L Upload
+    plFiles,
+    plLastSyncedAt,
     // Connected stores can always resync — the token is fetched on demand.
     canResync: !!store || isShopifyConnected,
     canResyncMeta: !!metaAccount || isMetaConnected,
@@ -3063,6 +3206,8 @@ function useBusinessDataImpl() {
     disconnectSnapchat,
     uploadBankStatements,
     disconnectBankStatements,
+    uploadPL,
+    disconnectPL,
     saveComputedReport,
   };
 }

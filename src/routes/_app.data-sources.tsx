@@ -19,6 +19,7 @@ function DataSources() {
     disconnectTikTok,
     disconnectSnapchat,
     disconnectBankStatements,
+    disconnectPL,
   } = useBusinessData();
 
   const disconnectFor = (name: string) =>
@@ -32,7 +33,9 @@ function DataSources() {
             ? disconnectSnapchat
             : name === "Bank Statements"
               ? disconnectBankStatements
-              : disconnectShopify;
+              : name === "P&L Upload"
+                ? disconnectPL
+                : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
@@ -52,6 +55,9 @@ function DataSources() {
   const isBankConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("bank_statements"),
   );
+  const isPLConnected = business.connectedSources.some((s) =>
+    s.toLowerCase().includes("pl_upload"),
+  );
 
   const platforms = [
     {
@@ -69,7 +75,15 @@ function DataSources() {
       status: isBankConnected ? "connected" : "missing",
       sync: isBankConnected ? "Uploaded" : "—",
       impact: "Bank statements on file — Data Confidence +10",
-      explanation: "Upload CSV exports from your bank to verify revenue for buyers.",
+      explanation: "Upload PDF exports from your bank to verify revenue for buyers.",
+    },
+    {
+      name: "P&L Upload",
+      section: "Store",
+      status: isPLConnected ? "connected" : "missing",
+      sync: isPLConnected ? "Uploaded" : "—",
+      impact: "P&L statement on file — Data Confidence +10",
+      explanation: "Upload your Profit & Loss statement to tighten your valuation range.",
     },
     {
       name: "Meta Ads",
@@ -102,13 +116,6 @@ function DataSources() {
       sync: isSnapchatConnected ? "Synced live" : "—",
       impact: "Snapchat spend & ROAS verified",
       explanation: "Verify spend and ROAS from Snapchat campaigns.",
-    },
-    {
-      name: "P&L Upload",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
-      explanation: "Tighten your valuation range with verified financials.",
     },
     {
       name: "Triple Whale",
@@ -254,6 +261,17 @@ function DataSources() {
                               p.status === "connected"
                                 ? "/bank-statements-data"
                                 : "/bank-statements-upload"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Upload"}
+                          </Link>
+                        ) : p.name === "P&L Upload" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/pl-data"
+                                : "/pl-upload"
                             }
                             className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                           >

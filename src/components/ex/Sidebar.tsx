@@ -34,6 +34,7 @@ const groups = [
         children: [
           { to: "/store-data", label: "Shopify Data" },
           { to: "/bank-statements-data", label: "Bank Statements" },
+          { to: "/pl-data", label: "P&L Upload" },
           { to: "/meta-data", label: "Meta Ads Data" },
           { to: "/google-data", label: "Google Ads Data" },
           { to: "/tiktok-data", label: "TikTok Ads Data" },

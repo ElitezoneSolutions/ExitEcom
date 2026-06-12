@@ -31,6 +31,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRiskScannerRouteImport } from './routes/_app.risk-scanner'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppProfileRouteImport } from './routes/_app.profile'
+import { Route as AppPlUploadRouteImport } from './routes/_app.pl-upload'
+import { Route as AppPlDataRouteImport } from './routes/_app.pl-data'
 import { Route as AppOptimizationRouteImport } from './routes/_app.optimization'
 import { Route as AppMetaOauthCallbackRouteImport } from './routes/_app.meta-oauth-callback'
 import { Route as AppMetaDataRouteImport } from './routes/_app.meta-data'
@@ -159,6 +161,16 @@ const AppProfileRoute = AppProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPlUploadRoute = AppPlUploadRouteImport.update({
+  id: '/pl-upload',
+  path: '/pl-upload',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlDataRoute = AppPlDataRouteImport.update({
+  id: '/pl-data',
+  path: '/pl-data',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppOptimizationRoute = AppOptimizationRouteImport.update({
   id: '/optimization',
   path: '/optimization',
@@ -271,6 +283,8 @@ export interface FileRoutesByFullPath {
   '/meta-data': typeof AppMetaDataRoute
   '/meta-oauth-callback': typeof AppMetaOauthCallbackRoute
   '/optimization': typeof AppOptimizationRoute
+  '/pl-data': typeof AppPlDataRoute
+  '/pl-upload': typeof AppPlUploadRoute
   '/profile': typeof AppProfileRoute
   '/reports': typeof AppReportsRoute
   '/risk-scanner': typeof AppRiskScannerRoute
@@ -311,6 +325,8 @@ export interface FileRoutesByTo {
   '/meta-data': typeof AppMetaDataRoute
   '/meta-oauth-callback': typeof AppMetaOauthCallbackRoute
   '/optimization': typeof AppOptimizationRoute
+  '/pl-data': typeof AppPlDataRoute
+  '/pl-upload': typeof AppPlUploadRoute
   '/profile': typeof AppProfileRoute
   '/reports': typeof AppReportsRoute
   '/risk-scanner': typeof AppRiskScannerRoute
@@ -353,6 +369,8 @@ export interface FileRoutesById {
   '/_app/meta-data': typeof AppMetaDataRoute
   '/_app/meta-oauth-callback': typeof AppMetaOauthCallbackRoute
   '/_app/optimization': typeof AppOptimizationRoute
+  '/_app/pl-data': typeof AppPlDataRoute
+  '/_app/pl-upload': typeof AppPlUploadRoute
   '/_app/profile': typeof AppProfileRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/risk-scanner': typeof AppRiskScannerRoute
@@ -395,6 +413,8 @@ export interface FileRouteTypes {
     | '/meta-data'
     | '/meta-oauth-callback'
     | '/optimization'
+    | '/pl-data'
+    | '/pl-upload'
     | '/profile'
     | '/reports'
     | '/risk-scanner'
@@ -435,6 +455,8 @@ export interface FileRouteTypes {
     | '/meta-data'
     | '/meta-oauth-callback'
     | '/optimization'
+    | '/pl-data'
+    | '/pl-upload'
     | '/profile'
     | '/reports'
     | '/risk-scanner'
@@ -476,6 +498,8 @@ export interface FileRouteTypes {
     | '/_app/meta-data'
     | '/_app/meta-oauth-callback'
     | '/_app/optimization'
+    | '/_app/pl-data'
+    | '/_app/pl-upload'
     | '/_app/profile'
     | '/_app/reports'
     | '/_app/risk-scanner'
@@ -659,6 +683,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/pl-upload': {
+      id: '/_app/pl-upload'
+      path: '/pl-upload'
+      fullPath: '/pl-upload'
+      preLoaderRoute: typeof AppPlUploadRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/pl-data': {
+      id: '/_app/pl-data'
+      path: '/pl-data'
+      fullPath: '/pl-data'
+      preLoaderRoute: typeof AppPlDataRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/optimization': {
       id: '/_app/optimization'
       path: '/optimization'
@@ -799,6 +837,8 @@ interface AppRouteChildren {
   AppMetaDataRoute: typeof AppMetaDataRoute
   AppMetaOauthCallbackRoute: typeof AppMetaOauthCallbackRoute
   AppOptimizationRoute: typeof AppOptimizationRoute
+  AppPlDataRoute: typeof AppPlDataRoute
+  AppPlUploadRoute: typeof AppPlUploadRoute
   AppProfileRoute: typeof AppProfileRoute
   AppReportsRoute: typeof AppReportsRoute
   AppRiskScannerRoute: typeof AppRiskScannerRoute
@@ -832,6 +872,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppMetaDataRoute: AppMetaDataRoute,
   AppMetaOauthCallbackRoute: AppMetaOauthCallbackRoute,
   AppOptimizationRoute: AppOptimizationRoute,
+  AppPlDataRoute: AppPlDataRoute,
+  AppPlUploadRoute: AppPlUploadRoute,
   AppProfileRoute: AppProfileRoute,
   AppReportsRoute: AppReportsRoute,
   AppRiskScannerRoute: AppRiskScannerRoute,
