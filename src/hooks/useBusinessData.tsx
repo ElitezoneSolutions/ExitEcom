@@ -46,10 +46,6 @@ import {
   type RawSnapchatCampaign,
   type SnapchatSyncResult,
 } from "@/lib/snapchat";
-import {
-  parseBankStatementFn,
-  type ParsedBankMonth,
-} from "@/lib/bank-statements";
 
 export interface BusinessData {
   id?: string;
@@ -723,14 +719,6 @@ const mapBankFileRow = (r: BankFileRow): BankStatementFile => ({
   syncedAt: r.synced_at,
 });
 
-function mergeParsedMonths(
-  existing: ParsedBankMonth[],
-  incoming: ParsedBankMonth[],
-): ParsedBankMonth[] {
-  const map = new Map(existing.map((m) => [m.month, m]));
-  for (const m of incoming) map.set(m.month, m);
-  return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
-}
 
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
@@ -1972,26 +1960,11 @@ function useBusinessDataImpl() {
     }
   };
 
-  const commitBankSync = async (
-    monthly: ParsedBankMonth[],
-    fileInfo: { name: string; size: number; rowCount: number },
+  const commitBankFile = async (
+    fileInfo: { name: string; size: number },
     businessId: string,
   ) => {
     const nowISO = new Date().toISOString();
-
-    // Optimistic state update
-    const mapped: BankStatementMonth[] = monthly.map((m) => ({
-      month: m.month,
-      totalCredits: m.totalCredits,
-      totalDebits: m.totalDebits,
-      netFlow: m.netFlow,
-      transactionCount: m.transactionCount,
-    }));
-    setBankStatementMonthly((prev) => {
-      const existing = new Map(prev.map((r) => [r.month, r]));
-      for (const m of mapped) existing.set(m.month, m);
-      return Array.from(existing.values()).sort((a, b) => a.month.localeCompare(b.month));
-    });
     setBankLastSyncedAt(nowISO);
     setBusiness((b) => ({
       ...b,
@@ -2000,14 +1973,13 @@ function useBusinessDataImpl() {
 
     if (!isSupabaseConfigured || !user) return;
 
-    // Insert file record
     const { data: fileRow, error: fileErr } = await supabase
       .from("bank_statement_files")
       .insert({
         business_id: businessId,
         file_name: fileInfo.name,
         file_size: fileInfo.size,
-        row_count: fileInfo.rowCount,
+        row_count: null,
         synced_at: nowISO,
       })
       .select()
@@ -2015,33 +1987,12 @@ function useBusinessDataImpl() {
     if (fileErr) throw describeDbError(fileErr, "Bank Statements");
     setBankStatementFiles((prev) => [mapBankFileRow(fileRow as BankFileRow), ...prev]);
 
-    // Upsert monthly rows
-    const monthlyPayload = monthly.map((m) => ({
-      business_id: businessId,
-      month: m.month,
-      total_credits: m.totalCredits,
-      total_debits: m.totalDebits,
-      net_flow: m.netFlow,
-      transaction_count: m.transactionCount,
-      synced_at: nowISO,
-    }));
-    for (let i = 0; i < monthlyPayload.length; i += 500) {
-      const { error: mErr } = await supabase
-        .from("bank_statement_monthly")
-        .upsert(monthlyPayload.slice(i, i + 500), {
-          onConflict: "business_id,month",
-        });
-      if (mErr) throw describeDbError(mErr, "Bank Statements");
-    }
-
-    // Mark connected_sources
     const sources = Array.from(new Set([...business.connectedSources, "bank_statements"]));
     const { error: valErr } = await supabase
       .from("valuation_data")
       .upsert({ business_id: businessId, connected_sources: sources }, { onConflict: "business_id" });
     if (valErr) throw describeDbError(valErr, "Bank Statements");
 
-    // Mark Data Room document as uploaded
     await supabase
       .from("documents")
       .update({ uploaded: true })
@@ -2049,45 +2000,12 @@ function useBusinessDataImpl() {
       .eq("name", "Bank Statements (3 months)");
   };
 
-  const uploadBankStatements = async (
-    files: File[],
-    onPhase?: (phase: "reading" | "parsing" | "saving") => void,
-  ) => {
+  const uploadBankStatements = async (files: File[]) => {
     if (!business.id) throw new Error("No business found. Complete your profile first.");
-
-    let allMonthly: ParsedBankMonth[] = [];
-    const summaryCredits = { total: 0, debits: 0 };
-
     for (const file of files) {
-      onPhase?.("reading");
-      const text = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-        reader.readAsText(file);
-      });
-
-      onPhase?.("parsing");
-      const result = await parseBankStatementFn({
-        data: { fileContent: text, fileName: file.name, fileSize: file.size },
-      });
-
-      allMonthly = mergeParsedMonths(allMonthly, result.monthly);
-
-      onPhase?.("saving");
-      await commitBankSync(result.monthly, result.fileInfo, business.id);
-
-      summaryCredits.total += result.monthly.reduce((s: number, m: ParsedBankMonth) => s + m.totalCredits, 0);
-      summaryCredits.debits += result.monthly.reduce((s: number, m: ParsedBankMonth) => s + m.totalDebits, 0);
+      await commitBankFile({ name: file.name, size: file.size }, business.id);
     }
-
-    toast.success(`${allMonthly.length} month${allMonthly.length !== 1 ? "s" : ""} of statements imported.`);
-    return {
-      monthCount: allMonthly.length,
-      totalCredits: summaryCredits.total,
-      totalDebits: summaryCredits.debits,
-      netFlow: summaryCredits.total - summaryCredits.debits,
-    };
+    toast.success(`${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`);
   };
 
   const disconnectBankStatements = async () => {
