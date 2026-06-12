@@ -94,7 +94,7 @@ export interface AnalyticsInput {
   google?: AnalyticsAdsFeed | null;
   tiktok?: AnalyticsAdsFeed | null;
   snapchat?: AnalyticsAdsFeed | null;
-  bankStatements?: { monthlyCount: number } | null;
+  bankStatements?: { fileCount: number } | null;
 }
 
 export interface ProductRevenue {
@@ -429,7 +429,7 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     businessAge,
     growthRate,
     hasData: orderCount > 0,
-    bankStatementsMonthCount: input.bankStatements?.monthlyCount ?? 0,
+    bankStatementsMonthCount: input.bankStatements?.fileCount ?? 0,
   };
 }
 
@@ -509,7 +509,7 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
   // longer a proxy guess.
   if (m.adSpendVerified) dataConfidence += 10;
   // Bank statements on file verify cash deposits match Shopify revenue.
-  if (m.bankStatementsMonthCount >= 3) dataConfidence += 10;
+  if (m.bankStatementsMonthCount >= 1) dataConfidence += 10;
   dataConfidence = Math.min(95, round(dataConfidence));
 
   return { exitScore, scoreTier, scoreBreakdown: breakdown, dataConfidence };

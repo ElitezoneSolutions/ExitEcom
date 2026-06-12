@@ -68,7 +68,7 @@ function DataSources() {
       section: "Store",
       status: isBankConnected ? "connected" : "missing",
       sync: isBankConnected ? "Uploaded" : "—",
-      impact: "Cash flow verified — Data Confidence +10",
+      impact: "Bank statements on file — Data Confidence +10",
       explanation: "Upload CSV exports from your bank to verify revenue for buyers.",
     },
     {
