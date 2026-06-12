@@ -56,7 +56,7 @@ function MetaConnect() {
   // callback to verify. `configured:false` means the env vars aren't set.
   useEffect(() => {
     const state = crypto.randomUUID();
-    sessionStorage.setItem(OAUTH_STATE_KEY, state);
+    localStorage.setItem(OAUTH_STATE_KEY, state);
     getMetaOAuthUrlFn({ data: { state } })
       .then((res) =>
         setOauth({ loading: false, configured: res.configured, url: res.url }),
@@ -65,7 +65,36 @@ function MetaConnect() {
   }, []);
 
   const handleOAuthStart = () => {
-    if (oauth.url) window.location.href = oauth.url;
+    if (!oauth.url) return;
+    const popup = window.open(oauth.url, "_blank");
+    if (!popup) {
+      // Popup blocked — fall back to same-tab redirect
+      window.location.href = oauth.url;
+      return;
+    }
+    setSyncStatus("connecting");
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type !== "oauth_done") return;
+      window.removeEventListener("message", onMessage);
+      clearInterval(closedTimer);
+      if (e.data.status === "success") {
+        navigate({ to: "/meta-data" });
+      } else {
+        setSyncStatus("error");
+        setErrorMessage(e.data.message || "Authorization failed. Please try again.");
+      }
+    };
+    window.addEventListener("message", onMessage);
+
+    const closedTimer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(closedTimer);
+        window.removeEventListener("message", onMessage);
+        setSyncStatus("idle");
+      }
+    }, 500);
   };
 
   // Drive the shared connecting → fetching → saving → success/error flow around
