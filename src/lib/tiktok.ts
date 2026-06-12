@@ -158,6 +158,24 @@ function tikTokHeaders(accessToken: string): Record<string, string> {
   };
 }
 
+// Guard against HTML error pages (redirects, 5xx, CDN pages) that break JSON.parse.
+async function safeJson<T>(res: Response, label: string): Promise<T> {
+  const text = await res.text();
+  if (text.trimStart().startsWith("<")) {
+    throw new Error(
+      `TikTok returned an HTML page for ${label} (HTTP ${res.status}). ` +
+      `This usually means the access token is missing a required permission or ` +
+      `the TikTok app has not been granted reporting access. ` +
+      `Check your TikTok app scopes in the developer console.`,
+    );
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`TikTok ${label} response could not be parsed: ${text.slice(0, 120)}`);
+  }
+}
+
 // TikTok always returns HTTP 200 — the real status is in `code`. Check both.
 function unwrap<T>(json: TikTokEnvelope<T>, label: string): T {
   if (json.code !== 0) {
@@ -246,10 +264,10 @@ async function fetchReportPages<T>(
       headers: tikTokHeaders(accessToken),
       body: JSON.stringify({ ...body, page, page_size: Math.min(1000, cap) }),
     });
-    const json = (await res.json()) as TikTokEnvelope<{
+    const json = await safeJson<TikTokEnvelope<{
       list?: T[];
       page_info?: ApiPageInfo;
-    }>;
+    }>>(res, "reporting");
     const data = unwrap(json, "reporting");
     const list = data.list ?? [];
     rows.push(...(list as T[]));
@@ -287,6 +305,7 @@ async function pull(
   const dailyBody = {
     advertiser_id: advertiserId,
     report_type: "BASIC",
+    data_level: "AUCTION_ADVERTISER",
     dimensions: ["stat_time_day"],
     metrics: ["spend", "impressions", "clicks", "conversion", "value"],
     start_date: startDate,
@@ -296,6 +315,7 @@ async function pull(
   const campaignReportBody = {
     advertiser_id: advertiserId,
     report_type: "BASIC",
+    data_level: "AUCTION_CAMPAIGN",
     dimensions: ["campaign_id"],
     metrics: ["spend", "conversion", "value"],
     start_date: startDate,
@@ -307,9 +327,9 @@ async function pull(
     await Promise.all([
       // 1. Account metadata
       fetch(
-        `${API_BASE}/advertiser/info/?advertiser_ids=["${advertiserId}"]&fields=["name","currency","status","timezone"]`,
+        `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(`["${advertiserId}"]`)}&fields=${encodeURIComponent('["name","currency","status","timezone"]')}`,
         { headers: tikTokHeaders(accessToken) },
-      ).then((r) => r.json() as Promise<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>),
+      ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(r, "advertiser/info")),
 
       // 2. Daily rows → bucket into months
       fetchReportPages<ApiDailyRow>(dailyBody, accessToken, 3650),
@@ -323,9 +343,9 @@ async function pull(
 
       // 4. Campaign metadata (name, objective, status)
       fetch(
-        `${API_BASE}/campaign/get/?advertiser_id=${advertiserId}&page_size=200&fields=["campaign_id","campaign_name","objective_type","operation_status"]`,
+        `${API_BASE}/campaign/get/?advertiser_id=${advertiserId}&page_size=200&fields=${encodeURIComponent('["campaign_id","campaign_name","objective_type","operation_status"]')}`,
         { headers: tikTokHeaders(accessToken) },
-      ).then((r) => r.json() as Promise<TikTokEnvelope<{ list?: ApiCampaignMeta[] }>>),
+      ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiCampaignMeta[] }>>(r, "campaign/get")),
     ]);
 
   // Account
@@ -578,7 +598,7 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ app_id: appId, secret: appSecret, auth_code: authCode }),
     });
-    const tokenJson = (await tokenRes.json()) as TikTokEnvelope<ApiTokenResponse>;
+    const tokenJson = await safeJson<TikTokEnvelope<ApiTokenResponse>>(tokenRes, "token exchange");
     if (tokenJson.code !== 0 || !tokenJson.data?.access_token) {
       throw new Error(
         tikTokErrorMessage(tokenJson.code, tokenJson.message, "token exchange"),
@@ -598,12 +618,10 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
     // fields and without it the accounts would have no ID to pass downstream.
     const idsJson = JSON.stringify(advertiserIds.slice(0, 20));
     const acctRes = await fetch(
-      `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=["advertiser_id","name","currency","status","timezone"]`,
+      `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=${encodeURIComponent('["advertiser_id","name","currency","status","timezone"]')}`,
       { headers: tikTokHeaders(accessToken) },
     );
-    const acctJson = (await acctRes.json()) as TikTokEnvelope<{
-      list?: ApiAdvertiserInfo[];
-    }>;
+    const acctJson = await safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(acctRes, "advertiser/info");
     if (acctJson.code !== 0) {
       throw new Error(
         tikTokErrorMessage(acctJson.code, acctJson.message, "advertiser/info"),
