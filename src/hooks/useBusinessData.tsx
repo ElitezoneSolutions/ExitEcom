@@ -686,6 +686,7 @@ interface BankFileRow {
   file_name: string;
   file_size: number | null;
   row_count: number | null;
+  file_path: string | null;
   synced_at: string;
 }
 
@@ -701,6 +702,7 @@ export interface BankStatementFile {
   fileName: string;
   fileSize: number | null;
   rowCount: number | null;
+  filePath: string | null;
   syncedAt: string;
 }
 
@@ -716,6 +718,7 @@ const mapBankFileRow = (r: BankFileRow): BankStatementFile => ({
   fileName: r.file_name,
   fileSize: r.file_size,
   rowCount: r.row_count,
+  filePath: r.file_path,
   syncedAt: r.synced_at,
 });
 
@@ -1961,7 +1964,7 @@ function useBusinessDataImpl() {
   };
 
   const commitBankFile = async (
-    fileInfo: { name: string; size: number },
+    fileInfo: { name: string; size: number; blob?: File },
     businessId: string,
   ) => {
     const nowISO = new Date().toISOString();
@@ -1973,6 +1976,18 @@ function useBusinessDataImpl() {
 
     if (!isSupabaseConfigured || !user) return;
 
+    // Upload PDF to storage: {uid}/{uuid}.pdf
+    let filePath: string | null = null;
+    if (fileInfo.blob) {
+      const fileId = crypto.randomUUID();
+      const storagePath = `${user.id}/${fileId}.pdf`;
+      const { error: uploadErr } = await supabase.storage
+        .from("bank-statements")
+        .upload(storagePath, fileInfo.blob, { contentType: "application/pdf", upsert: false });
+      if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+      filePath = storagePath;
+    }
+
     const { data: fileRow, error: fileErr } = await supabase
       .from("bank_statement_files")
       .insert({
@@ -1980,6 +1995,7 @@ function useBusinessDataImpl() {
         file_name: fileInfo.name,
         file_size: fileInfo.size,
         row_count: null,
+        file_path: filePath,
         synced_at: nowISO,
       })
       .select()
@@ -2003,7 +2019,7 @@ function useBusinessDataImpl() {
   const uploadBankStatements = async (files: File[]) => {
     if (!business.id) throw new Error("No business found. Complete your profile first.");
     for (const file of files) {
-      await commitBankFile({ name: file.name, size: file.size }, business.id);
+      await commitBankFile({ name: file.name, size: file.size, blob: file }, business.id);
     }
     toast.success(`${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`);
   };
