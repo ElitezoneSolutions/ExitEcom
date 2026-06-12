@@ -593,10 +593,12 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
       );
     }
 
-    // 2. Fetch advertiser info for each authorised id
+    // 2. Fetch advertiser info for each authorised id.
+    // advertiser_id must be in the fields list — TikTok only returns requested
+    // fields and without it the accounts would have no ID to pass downstream.
     const idsJson = JSON.stringify(advertiserIds.slice(0, 20));
     const acctRes = await fetch(
-      `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=["name","currency","status","timezone"]`,
+      `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=["advertiser_id","name","currency","status","timezone"]`,
       { headers: tikTokHeaders(accessToken) },
     );
     const acctJson = (await acctRes.json()) as TikTokEnvelope<{
@@ -608,15 +610,19 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
       );
     }
 
+    // Build a fallback map from the token-exchange advertiser_ids so that if
+    // the info endpoint omits an entry we can still use the raw ID.
+    const idFallback = new Map(advertiserIds.map((id, i) => [i, String(id)]));
+
     const accounts: TikTokOAuthAccount[] = (acctJson.data?.list ?? []).map(
-      (a) => ({
-        advertiserId: a.advertiser_id,
-        name: a.name ?? a.advertiser_id,
+      (a, i) => ({
+        advertiserId: String(a.advertiser_id ?? idFallback.get(i) ?? ""),
+        name: a.name ?? String(a.advertiser_id ?? idFallback.get(i) ?? ""),
         currency: a.currency ?? "USD",
         timezone: a.timezone ?? "",
         accountStatus: mapAccountStatus(a.status),
       }),
-    );
+    ).filter((a) => a.advertiserId !== "");
 
     return { accessToken, accounts };
   });
