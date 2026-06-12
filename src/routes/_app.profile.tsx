@@ -102,7 +102,8 @@ function Profile() {
     );
   }
 
-  const isYoungBusiness = parseFloat(business.age) < 3;
+  const ageParsed = parseFloat(business.age);
+  const isYoungBusiness = !isNaN(ageParsed) && ageParsed < 3;
 
   return (
     <>

@@ -31,7 +31,8 @@ export function RiskCard({
       : severity === "medium"
         ? "var(--risk-medium)"
         : "var(--text-muted)";
-  const expandable = !!buyerSees;
+  const expandable =
+    !!buyerSees && !!buyerFears && !!buyerDoes && !!recommendation;
 
   return (
     <div

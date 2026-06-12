@@ -72,7 +72,14 @@ export function useReport() {
 
   const report: FullReport | null = useMemo(() => {
     if (justRan) return justRan;
-    if (hasRun && hasData) return computeFullReport(input);
+    if (hasRun && hasData) {
+      try {
+        return computeFullReport(input);
+      } catch (err) {
+        console.error("Failed to compute report:", err);
+        return null;
+      }
+    }
     return null;
   }, [justRan, hasRun, hasData, input]);
 

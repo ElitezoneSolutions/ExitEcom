@@ -26,11 +26,13 @@ export function DisconnectButton({
   variant?: "link" | "button";
 }) {
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const handle = async () => {
     setBusy(true);
     try {
       await onConfirm();
+      setOpen(false);
     } catch (err) {
       toast.error(
         (err instanceof Error && err.message) ||
@@ -59,7 +61,7 @@ export function DisconnectButton({
     );
 
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>

@@ -93,7 +93,9 @@ function TikTokData() {
     if (autoTried.current || loading || !isTikTokConnected) return;
     if (!tikTokAccount && canResyncTikTok) {
       autoTried.current = true;
-      resyncTikTok().catch(() => {});
+      resyncTikTok().catch((err) =>
+        console.error("TikTok auto-resync failed:", err),
+      );
     }
   }, [loading, isTikTokConnected, tikTokAccount, canResyncTikTok, resyncTikTok]);
 

@@ -77,12 +77,16 @@ export function Sidebar() {
   const ownerName = business.ownerName || "Owner";
 
   const handleLogout = async () => {
-    const { error } = await signOut();
-    if (error) {
-      toast.error(error.message || "Could not log out");
-      return;
+    try {
+      const { error } = await signOut();
+      if (error) {
+        toast.error(error.message || "Could not log out");
+        return;
+      }
+      navigate({ to: "/login" });
+    } catch {
+      toast.error("Could not log out. Please try again.");
     }
-    navigate({ to: "/login" });
   };
 
   return (

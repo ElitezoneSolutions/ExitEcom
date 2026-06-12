@@ -109,7 +109,9 @@ function SnapchatData() {
     if (autoTried.current || loading || !isSnapchatConnected) return;
     if (!snapchatAccount && canResyncSnapchat) {
       autoTried.current = true;
-      resyncSnapchat().catch(() => {});
+      resyncSnapchat().catch((err) =>
+        console.error("Snapchat auto-resync failed:", err),
+      );
     }
   }, [
     loading,
