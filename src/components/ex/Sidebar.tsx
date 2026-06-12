@@ -196,7 +196,7 @@ export function Sidebar() {
       <div className="px-4 py-4">
         <Link
           to="/buyer-matching"
-          className="flex items-center justify-between w-full px-4 py-3 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-md text-sm font-medium transition-colors"
+          className="flex items-center justify-between w-full px-4 py-3 bg-[var(--accent)] hover:bg-[var(--accent-muted)] text-white rounded-md text-sm font-medium transition-colors"
         >
           <span>Find a Buyer</span>
           <span>→</span>
