@@ -43,10 +43,24 @@ function GoogleOAuthCallback() {
   const tokenRef = useRef<string>("");
   const ran = useRef(false);
 
-  const fail = (msg: string) => {
-    setErrorMessage(msg);
-    setPhase("error");
+  const done = (status: "success" | "error", message?: string) => {
+    if (window.opener) {
+      window.opener.postMessage(
+        { type: "oauth_done", status, message },
+        window.location.origin,
+      );
+      window.close();
+      return;
+    }
+    if (status === "success") {
+      navigate({ to: "/google-data" });
+    } else {
+      setErrorMessage(message ?? "");
+      setPhase("error");
+    }
   };
+
+  const fail = (msg: string) => done("error", msg);
 
   const pickAccount = async (account: GoogleOAuthAccount) => {
     setPhase("saving");
@@ -56,7 +70,7 @@ function GoogleOAuthCallback() {
         tokenRef.current,
         account.loginCustomerId,
       );
-      navigate({ to: "/google-data" });
+      done("success");
     } catch (err) {
       fail(
         (err instanceof Error && err.message) ||
@@ -74,8 +88,8 @@ function GoogleOAuthCallback() {
       return;
     }
 
-    const expected = sessionStorage.getItem(OAUTH_STATE_KEY);
-    sessionStorage.removeItem(OAUTH_STATE_KEY);
+    const expected = localStorage.getItem(OAUTH_STATE_KEY);
+    localStorage.removeItem(OAUTH_STATE_KEY);
     if (!search.code || !search.state || search.state !== expected) {
       fail(
         "This authorisation link is invalid or expired. Please start the connection again.",

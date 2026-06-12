@@ -46,17 +46,31 @@ function MetaOAuthCallback() {
   const tokenRef = useRef<string>("");
   const ran = useRef(false);
 
-  const fail = (msg: string) => {
-    setErrorMessage(msg);
-    setPhase("error");
+  const done = (status: "success" | "error", message?: string) => {
+    if (window.opener) {
+      window.opener.postMessage(
+        { type: "oauth_done", status, message },
+        window.location.origin,
+      );
+      window.close();
+      return;
+    }
+    if (status === "success") {
+      navigate({ to: "/meta-data" });
+    } else {
+      setErrorMessage(message ?? "");
+      setPhase("error");
+    }
   };
+
+  const fail = (msg: string) => done("error", msg);
 
   // Pull + commit for a chosen account, then go to the data view.
   const pickAccount = async (account: MetaOAuthAccount) => {
     setPhase("saving");
     try {
       await syncMetaViaOAuth(account.adAccountId, tokenRef.current);
-      navigate({ to: "/meta-data" });
+      done("success");
     } catch (err) {
       fail(
         (err instanceof Error && err.message) ||
@@ -79,8 +93,8 @@ function MetaOAuthCallback() {
     }
 
     // CSRF: the returned state must match what we stored before redirecting.
-    const expected = sessionStorage.getItem(OAUTH_STATE_KEY);
-    sessionStorage.removeItem(OAUTH_STATE_KEY);
+    const expected = localStorage.getItem(OAUTH_STATE_KEY);
+    localStorage.removeItem(OAUTH_STATE_KEY);
     if (!search.code || !search.state || search.state !== expected) {
       fail(
         "This authorisation link is invalid or expired. Please start the connection again.",
