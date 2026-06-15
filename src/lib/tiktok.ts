@@ -106,7 +106,7 @@ interface ApiAdvertiserInfo {
 }
 
 interface ApiDailyRow {
-  dimensions: { stat_time_day?: string };
+  dimensions: { stat_time_day?: string; campaign_id?: string };
   metrics: {
     spend?: string | number;
     impressions?: string | number;
@@ -356,6 +356,31 @@ async function fetchReportWithValueFallback<T>(
   }
 }
 
+// Sandbox doesn't support AUCTION_ADVERTISER — falls back to AUCTION_CAMPAIGN
+// with an extra campaign_id dimension. The downstream aggregation groups by
+// stat_time_day only, so the extra dimension is transparently ignored.
+async function fetchDailyWithDataLevelFallback(
+  body: Record<string, unknown>,
+  accessToken: string,
+  cap: number,
+  base: string,
+): Promise<{ rows: ApiDailyRow[]; capped: boolean; hasValue: boolean }> {
+  try {
+    return await fetchReportWithValueFallback<ApiDailyRow>(body, accessToken, cap, base);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("40009") || msg.toLowerCase().includes("unsupported data_level")) {
+      const fallbackBody = {
+        ...body,
+        data_level: "AUCTION_CAMPAIGN",
+        dimensions: ["stat_time_day", "campaign_id"],
+      };
+      return fetchReportWithValueFallback<ApiDailyRow>(fallbackBody, accessToken, cap, base);
+    }
+    throw err;
+  }
+}
+
 function readOAuthEnv() {
   return {
     appId: (process.env.TIKTOK_APP_ID ?? "").trim(),
@@ -410,9 +435,11 @@ async function pull(
     ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(r, "advertiser/info")),
   );
 
-  // 2. Daily rows → bucket into months (falls back silently if total_value unavailable)
+  // 2. Daily rows → bucket into months
+  // Falls back to AUCTION_CAMPAIGN if AUCTION_ADVERTISER unsupported (sandbox),
+  // and falls back again without total_value if that metric is unavailable.
   const dailyPaged = await withQpsRetry(() =>
-    fetchReportWithValueFallback<ApiDailyRow>(dailyBody, accessToken, 3650, base),
+    fetchDailyWithDataLevelFallback(dailyBody, accessToken, 3650, base),
   );
 
   // 3. Campaign spend breakdown (same fallback)
@@ -697,9 +724,11 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
     // advertiser_id must be in the fields list — TikTok only returns requested
     // fields and without it the accounts would have no ID to pass downstream.
     const idsJson = JSON.stringify(advertiserIds.slice(0, 20));
-    const acctRes = await fetch(
-      `${API_BASE_PROD}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=${encodeURIComponent('["advertiser_id","name","currency","status","timezone"]')}`,
-      { headers: tikTokHeaders(accessToken) },
+    const acctRes = await withQpsRetry(() =>
+      fetch(
+        `${API_BASE_PROD}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=${encodeURIComponent('["advertiser_id","name","currency","status","timezone"]')}`,
+        { headers: tikTokHeaders(accessToken) },
+      ),
     );
     const acctJson = await safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(acctRes, "advertiser/info");
     if (acctJson.code !== 0) {

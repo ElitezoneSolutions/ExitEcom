@@ -1453,12 +1453,31 @@ function useBusinessDataImpl() {
       ),
     }));
 
-    if (!isSupabaseConfigured || !user || !business.id) {
+    if (!isSupabaseConfigured || !user) {
       toast.success("TikTok Ads synced (local sandbox).");
       return result;
     }
 
-    const businessId = business.id;
+    // In the OAuth popup, business.id loads asynchronously and may not be in
+    // state yet when this runs (especially for single-account connections where
+    // the exchange resolves before the business data fetch completes). Fetch it
+    // directly from Supabase rather than silently skipping the write.
+    let businessId = business.id;
+    if (!businessId) {
+      const { data: biz } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      businessId = biz?.id ?? "";
+    }
+
+    if (!businessId) {
+      toast.success("TikTok Ads synced (local sandbox).");
+      return result;
+    }
     const nowISO = new Date().toISOString();
 
     try {
