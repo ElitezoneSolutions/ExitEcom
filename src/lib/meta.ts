@@ -445,36 +445,6 @@ export const syncMetaAdAccountFn = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------------------
-// TEMPORARY — Meta App Review helper. Fires ONE real ads_read Graph call against
-// the connected ad account so Meta's "API call(s) required" counter registers.
-// Remove this (and its button/hook) once the permission is approved.
-// ---------------------------------------------------------------------------
-export const runMetaApiCallFn = createServerFn({ method: "POST" })
-  .inputValidator((input: MetaSyncInput) => input)
-  .handler(async ({ data }): Promise<{ ok: true; account: string }> => {
-    const accessToken = data.accessToken?.trim();
-    const adAccountId = normalizeAdAccountId(data.adAccountId ?? "");
-    if (!adAccountId || !accessToken) {
-      throw new Error("No stored Meta credentials — reconnect the account.");
-    }
-    if (isSandboxCreds(adAccountId, accessToken)) {
-      throw new Error(
-        "Sandbox/demo credentials don't make a real API call. Connect a real ad account.",
-      );
-    }
-    // A read of the account node is a genuine ads_read Marketing API call.
-    const res = await fetch(
-      `${GRAPH_BASE}/${adAccountId}?fields=name&access_token=${encodeURIComponent(accessToken)}`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!res.ok) {
-      throw new Error(metaErrorMessage(res.status));
-    }
-    const json = (await res.json()) as ApiAccount;
-    return { ok: true, account: json.name ?? adAccountId };
-  });
-
-// ---------------------------------------------------------------------------
 // OAuth path — a real in-app Facebook OAuth flow. Two server functions:
 //   1. getMetaOAuthUrlFn   — builds the Facebook consent URL (public App ID).
 //   2. exchangeMetaOAuthCodeFn — swaps the returned code for a long-lived token

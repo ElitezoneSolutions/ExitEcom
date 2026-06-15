@@ -32,7 +32,6 @@ function MetaData() {
     metaLastSyncedAt,
     canResyncMeta,
     resyncMeta,
-    runMetaApiCall,
     disconnectMeta,
     store,
     orders,
@@ -44,24 +43,7 @@ function MetaData() {
 
   const [tab, setTab] = useState<Tab>("monthly");
   const [syncing, setSyncing] = useState(false);
-  const [apiTesting, setApiTesting] = useState(false);
   const autoTried = useRef(false);
-
-  // TEMPORARY — Meta App Review: fire one real ads_read call. Remove later.
-  const runApiCall = async () => {
-    if (apiTesting) return;
-    setApiTesting(true);
-    try {
-      await runMetaApiCall();
-      toast.success("ads_read API call succeeded.");
-    } catch (err) {
-      toast.error(
-        (err instanceof Error && err.message) || "API call failed.",
-      );
-    } finally {
-      setApiTesting(false);
-    }
-  };
 
   const money = useMemo(() => {
     const code = metaAccount?.currency || "USD";
@@ -198,14 +180,6 @@ function MetaData() {
         right={
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
-              {/* TEMPORARY — Meta App Review ads_read call. Remove later. */}
-              <button
-                onClick={runApiCall}
-                disabled={apiTesting}
-                className="btn-ghost-dark text-sm disabled:opacity-50"
-              >
-                {apiTesting ? "Calling…" : "Test ads_read call"}
-              </button>
               <DisconnectButton
                 name="Meta Ads"
                 onConfirm={disconnectMeta}
