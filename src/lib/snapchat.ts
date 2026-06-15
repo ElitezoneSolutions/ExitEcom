@@ -26,8 +26,14 @@ import { createServerFn } from "@tanstack/react-start";
 
 const API_BASE = "https://adsapi.snapchat.com/v1";
 const ACCOUNTS_BASE = "https://accounts.snapchat.com/login/oauth2";
-const CAMPAIGN_CAP = 100;
 const LOOKBACK_DAYS = 365;
+// Snapchat exposes only `spend` at the ad-account level, so the monthly series is
+// built from account-level DAY spend (authoritative total spend, ~13 windows) and
+// conversion metrics come from per-campaign TOTAL stats (one request per campaign).
+// Cap the campaign fan-out and the in-flight concurrency to stay well under the
+// serverless function time limit.
+const CAMPAIGN_CAP = 100;
+const STATS_CONCURRENCY = 8;
 
 // --- Exported types ---------------------------------------------------------
 
@@ -277,8 +283,12 @@ async function snapGet<T>(url: string, accessToken: string): Promise<T> {
     );
   }
   if (!res.ok) {
+    // Include Snapchat's response body — its 400s carry the actual reason
+    // (invalid field, bad time boundary, …) which a bare status code hides.
+    const body = await res.text().catch(() => "");
+    const detail = body ? `: ${body.slice(0, 300)}` : "";
     throw new Error(
-      `Snapchat API error ${res.status} for ${url.replace(API_BASE, "")}`,
+      `Snapchat API error ${res.status} for ${url.replace(API_BASE, "")}${detail}`,
     );
   }
   // Snapchat can return HTTP 200 with request_status "ERROR" (e.g. a permission
@@ -291,6 +301,50 @@ async function snapGet<T>(url: string, accessToken: string): Promise<T> {
     );
   }
   return json;
+}
+
+// Retry on transient rate-limit / server errors. The campaign-level daily pull
+// fans out to many requests, so back off and retry rather than failing the sync.
+async function snapGetRetry<T>(
+  url: string,
+  accessToken: string,
+  attempts = 4,
+): Promise<T> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await snapGet<T>(url, accessToken);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      const transient =
+        /\b(429|500|503)\b/.test(msg) || msg.toLowerCase().includes("rate");
+      if (transient && attempt < attempts) {
+        await new Promise((r) => setTimeout(r, 800 * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Snapchat rate limit — max retries exceeded.");
+}
+
+// Run async tasks with bounded concurrency (Snapchat has no batch stats API, so
+// the daily pull is one request per campaign-window; this caps in-flight load).
+async function runLimited<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const idx = cursor++;
+        await fn(items[idx]);
+      }
+    },
+  );
+  await Promise.all(workers);
 }
 
 async function refreshAccessToken(
@@ -382,6 +436,33 @@ function extractTimeseries(
 // ---------------------------------------------------------------------------
 // Core pull — shared by both connection paths
 // ---------------------------------------------------------------------------
+// A running stats accumulator shared by the monthly and per-campaign tallies.
+interface StatAcc {
+  spend: number;
+  impressions: number;
+  clicks: number; // Snapchat "swipes"
+  conversions: number;
+  conversionValue: number;
+}
+
+function emptyAcc(): StatAcc {
+  return {
+    spend: 0,
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    conversionValue: 0,
+  };
+}
+
+function addStats(acc: StatAcc, s: SnapchatStatFields): void {
+  acc.spend += fromMicro(s.spend);
+  acc.impressions += s.impressions ?? 0;
+  acc.clicks += s.swipes ?? 0;
+  acc.conversions += s.conversion_purchases ?? 0;
+  acc.conversionValue += s.conversion_purchases_value ?? 0;
+}
+
 async function pull(
   adAccountId: string,
   accessToken: string,
@@ -400,115 +481,117 @@ async function pull(
   const acct = acctJson.adaccounts?.[0]?.adaccount;
   const timeZone = safeTimeZone(acct?.timezone);
 
-  // DAY granularity is capped at 31 days/request, so split the lookback into
-  // contiguous ≤28-day windows. TOTAL granularity (per-campaign) has no cap.
+  // DAY granularity is capped at 31 days/request and must be midnight-aligned in
+  // the account timezone, so split the lookback into contiguous ≤28-day windows.
   const windows = dayWindows(since, until, timeZone);
   const rangeStart = windows[0]?.start ?? zonedMidnight(since, timeZone);
   const rangeEnd =
     windows[windows.length - 1]?.end ?? zonedMidnight(until, timeZone);
 
-  // 2. Daily stats (one request per window) + 3. Campaign list — in parallel.
-  const [dailyJsons, campaignsJson] = await Promise.all([
-    Promise.all(
-      windows.map((w) =>
-        snapGet<{
-          request_status: string;
-          timeseries_stats?: TimeseriesStatEntry[];
-        }>(
-          `${API_BASE}/adaccounts/${adAccountId}/stats` +
-            `?granularity=DAY&fields=${statsFields}` +
-            `&start_time=${encodeURIComponent(w.start)}&end_time=${encodeURIComponent(w.end)}`,
-          accessToken,
-        ),
+  // 2. Account-level DAY stats. Only `spend` is exposed at the account level, but
+  //    it is the authoritative account spend (covers every campaign). One request
+  //    per window, all in parallel → the monthly spend series.
+  const dailyJsons = await Promise.all(
+    windows.map((w) =>
+      snapGetRetry<{
+        request_status: string;
+        timeseries_stats?: TimeseriesStatEntry[];
+      }>(
+        `${API_BASE}/adaccounts/${adAccountId}/stats?granularity=DAY&fields=spend` +
+          `&start_time=${encodeURIComponent(w.start)}&end_time=${encodeURIComponent(w.end)}`,
+        accessToken,
       ),
     ),
-    snapGet<{ request_status: string; campaigns?: CampaignEntry[] }>(
-      `${API_BASE}/adaccounts/${adAccountId}/campaigns?limit=250`,
-      accessToken,
-    ),
-  ]);
-
-  // Monthly series — aggregate every window's daily timeseries to YYYY-MM buckets
-  const dailyRows = dailyJsons.flatMap((j) =>
-    extractTimeseries(j.timeseries_stats?.[0]),
   );
-  const byMonth = new Map<string, RawSnapchatMonthly>();
-  for (const row of dailyRows) {
-    const day = row.start_time?.slice(0, 10) ?? ""; // YYYY-MM-DD
-    const month = day.slice(0, 7); // YYYY-MM
-    if (!month) continue;
-    const s = row.stats ?? {};
-    const m =
-      byMonth.get(month) ??
-      ({
-        month,
-        spend: 0,
-        impressions: 0,
-        clicks: 0,
-        conversions: 0,
-        conversionValue: 0,
-        roas: 0,
-      } as RawSnapchatMonthly);
-    m.spend += fromMicro(s.spend);
-    m.impressions += s.impressions ?? 0;
-    m.clicks += s.swipes ?? 0;
-    m.conversions += s.conversion_purchases ?? 0;
-    m.conversionValue += s.conversion_purchases_value ?? 0;
-    byMonth.set(month, m);
+  const byMonth = new Map<string, StatAcc>();
+  for (const j of dailyJsons) {
+    for (const row of extractTimeseries(j.timeseries_stats?.[0])) {
+      const month = (row.start_time ?? "").slice(0, 7); // YYYY-MM
+      if (!month) continue;
+      const acc = byMonth.get(month) ?? emptyAcc();
+      addStats(acc, row.stats ?? {});
+      byMonth.set(month, acc);
+    }
   }
-  const monthly = Array.from(byMonth.values())
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .map((m) => ({
-      ...m,
-      spend: round(m.spend),
-      conversionValue: round(m.conversionValue),
-      roas: m.spend > 0 ? round(m.conversionValue / m.spend) : 0,
+  // Only spend is real per month; conversion metrics aren't available at this
+  // level (they come from the campaign totals below), so they stay 0 here.
+  const monthly: RawSnapchatMonthly[] = Array.from(byMonth.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, a]) => ({
+      month,
+      spend: round(a.spend),
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      conversionValue: 0,
+      roas: 0,
     }));
 
-  // Campaign list (capped at CAMPAIGN_CAP)
-  const campaignList = (campaignsJson.campaigns ?? []).slice(0, CAMPAIGN_CAP);
+  // 3. Campaign list, then per-campaign TOTAL stats — all metrics are available
+  //    at the campaign level. These supply the real conversion value the account
+  //    level can't break out, plus the per-campaign breakdown.
+  const campaignsJson = await snapGet<{
+    request_status: string;
+    campaigns?: CampaignEntry[];
+  }>(`${API_BASE}/adaccounts/${adAccountId}/campaigns?limit=250`, accessToken);
+  const campaignMetas = (campaignsJson.campaigns ?? [])
+    .map((e) => e.campaign)
+    .filter((c): c is NonNullable<CampaignEntry["campaign"]> => !!c?.id)
+    .slice(0, CAMPAIGN_CAP);
   const capped = (campaignsJson.campaigns?.length ?? 0) > CAMPAIGN_CAP;
 
-  // Per-campaign TOTAL stats — all in parallel
-  const campaignStats = await Promise.all(
-    campaignList.map(async ({ campaign: c }) => {
-      if (!c?.id) return null;
-      try {
-        const json = await snapGet<{
-          request_status: string;
-          total_stats?: TotalStatEntry[];
-        }>(
-          `${API_BASE}/campaigns/${c.id}/stats` +
-            `?granularity=TOTAL&fields=${statsFields}&start_time=${encodeURIComponent(rangeStart)}&end_time=${encodeURIComponent(rangeEnd)}`,
-          accessToken,
-        );
-        const s = extractTotalStats(json.total_stats?.[0]);
-        const spend = round(fromMicro(s.spend));
-        const conversionValue = round(s.conversion_purchases_value ?? 0);
-        const conversions = s.conversion_purchases ?? 0;
-        const objectiveRaw =
-          c.objective_v2_properties?.objective ?? c.objective ?? null;
-        return {
-          snapchatCampaignId: c.id,
-          name: c.name ?? c.id,
-          objective: objectiveRaw
-            ? objectiveRaw.toLowerCase().replace(/_/g, " ")
-            : null,
-          status: c.status?.toLowerCase() ?? null,
-          spend,
-          conversions,
-          conversionValue,
-          roas: spend > 0 ? round(conversionValue / spend) : 0,
-        } satisfies RawSnapchatCampaign;
-      } catch {
-        return null;
-      }
-    }),
-  );
+  const campaigns: RawSnapchatCampaign[] = [];
+  await runLimited(campaignMetas, STATS_CONCURRENCY, async (c) => {
+    const id = c.id as string;
+    try {
+      const json = await snapGetRetry<{
+        request_status: string;
+        total_stats?: TotalStatEntry[];
+      }>(
+        `${API_BASE}/campaigns/${id}/stats?granularity=TOTAL&fields=${statsFields}` +
+          `&start_time=${encodeURIComponent(rangeStart)}&end_time=${encodeURIComponent(rangeEnd)}`,
+        accessToken,
+      );
+      const s = extractTotalStats(json.total_stats?.[0]);
+      const spend = round(fromMicro(s.spend));
+      const conversionValue = round(s.conversion_purchases_value ?? 0);
+      const conversions = s.conversion_purchases ?? 0;
+      const objectiveRaw =
+        c.objective_v2_properties?.objective ?? c.objective ?? null;
+      campaigns.push({
+        snapchatCampaignId: id,
+        name: c.name ?? id,
+        objective: objectiveRaw
+          ? objectiveRaw.toLowerCase().replace(/_/g, " ")
+          : null,
+        status: c.status?.toLowerCase() ?? null,
+        spend,
+        conversions,
+        conversionValue,
+        roas: spend > 0 ? round(conversionValue / spend) : 0,
+      });
+    } catch {
+      // Skip a campaign whose stats fail after retries rather than aborting.
+    }
+  });
+  campaigns.sort((a, b) => b.spend - a.spend);
 
-  const campaigns = campaignStats
-    .filter((c): c is RawSnapchatCampaign => c !== null)
-    .sort((a, b) => b.spend - a.spend);
+  // Totals: spend is the authoritative account-level figure; conversion metrics
+  // are summed from the campaign breakdown (the only level that exposes them).
+  const totalSpend = monthly.reduce((s, m) => s + m.spend, 0);
+  const totalConversions = campaigns.reduce((s, c) => s + c.conversions, 0);
+  const totalValue = campaigns.reduce((s, c) => s + c.conversionValue, 0);
+  const totals: SnapchatTotals = {
+    spend: round(totalSpend),
+    impressions: 0,
+    clicks: 0,
+    conversions: totalConversions,
+    conversionValue: round(totalValue),
+    roas: totalSpend > 0 ? round(totalValue / totalSpend) : 0,
+    cpa: totalConversions > 0 ? round(totalSpend / totalConversions) : 0,
+    ctr: 0,
+    cpc: 0,
+  };
 
   return {
     account: {
@@ -520,7 +603,7 @@ async function pull(
     },
     monthly,
     campaigns,
-    totals: computeTotals(monthly),
+    totals,
     range: { since: toISODate(since), until: toISODate(until) },
     capped: { campaigns: capped },
     sandbox: false,

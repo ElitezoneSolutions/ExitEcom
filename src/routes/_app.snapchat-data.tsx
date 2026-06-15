@@ -58,11 +58,17 @@ function SnapchatData() {
     }
   }, [snapchatAccount?.currency]);
 
+  // Spend is the authoritative account-level monthly figure; conversions and
+  // value come from the campaign breakdown (Snapchat exposes conversion metrics
+  // only at campaign level, never per-month — see src/lib/snapchat.ts).
   const totals = useMemo(() => {
     const spend = snapchatMonthly.reduce((s, m) => s + m.spend, 0);
-    const conversions = snapchatMonthly.reduce((s, m) => s + m.conversions, 0);
-    const conversionValue = snapchatMonthly.reduce(
-      (s, m) => s + m.conversionValue,
+    const conversions = snapchatCampaigns.reduce(
+      (s, c) => s + c.conversions,
+      0,
+    );
+    const conversionValue = snapchatCampaigns.reduce(
+      (s, c) => s + c.conversionValue,
       0,
     );
     return {
@@ -71,7 +77,7 @@ function SnapchatData() {
       conversionValue,
       roas: spend > 0 ? conversionValue / spend : 0,
     };
-  }, [snapchatMonthly]);
+  }, [snapchatMonthly, snapchatCampaigns]);
 
   const metrics = useMemo(
     () =>
@@ -88,7 +94,16 @@ function SnapchatData() {
         products,
         customers,
         industry: business.industry || "E-commerce",
-        snapchat: { monthly: snapchatMonthly, campaigns: snapchatCampaigns },
+        snapchat: {
+          monthly: snapchatMonthly,
+          campaigns: snapchatCampaigns,
+          // Real period conversion value (account level can't break it out by
+          // month) so the Exit Score's ROAS reflects real data, not zeros.
+          conversionValueTotal: snapchatCampaigns.reduce(
+            (s, c) => s + c.conversionValue,
+            0,
+          ),
+        },
       }),
     [
       store,
@@ -251,6 +266,11 @@ function SnapchatData() {
 
       {tab === "monthly" && (
         <div className="card-light overflow-hidden">
+          <p className="px-4 pt-3 text-[11px] text-[var(--text-muted)] leading-relaxed">
+            Snapchat reports only spend per month at the account level.
+            Conversions and value are reported per campaign — see the Campaigns
+            tab.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -281,11 +301,13 @@ function SnapchatData() {
                   >
                     <td className="px-4 py-3 font-mono font-medium">{m.month}</td>
                     <td className="px-4 py-3">{money.format(m.spend)}</td>
-                    <td className="px-4 py-3">{m.impressions.toLocaleString()}</td>
-                    <td className="px-4 py-3">{m.clicks.toLocaleString()}</td>
-                    <td className="px-4 py-3">{m.conversions.toLocaleString()}</td>
-                    <td className="px-4 py-3">{money.format(m.conversionValue)}</td>
-                    <td className="px-4 py-3 font-medium">{m.roas.toFixed(2)}x</td>
+                    {/* Conversion metrics aren't available per month at the
+                        account level — shown per campaign instead. */}
+                    <td className="px-4 py-3 text-[var(--text-muted)]">—</td>
+                    <td className="px-4 py-3 text-[var(--text-muted)]">—</td>
+                    <td className="px-4 py-3 text-[var(--text-muted)]">—</td>
+                    <td className="px-4 py-3 text-[var(--text-muted)]">—</td>
+                    <td className="px-4 py-3 text-[var(--text-muted)]">—</td>
                   </tr>
                 ))}
                 {snapchatMonthly.length === 0 && (

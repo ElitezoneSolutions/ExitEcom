@@ -79,6 +79,10 @@ export interface AnalyticsMetaCampaign {
 export interface AnalyticsMeta {
   monthly: AnalyticsMetaMonthly[];
   campaigns: AnalyticsMetaCampaign[];
+  // Real period conversion value when the platform can't break it down by month
+  // (e.g. Snapchat exposes conversions only at campaign level, never per-month).
+  // When set it overrides the monthly sum so ROAS reflects real data, not zeros.
+  conversionValueTotal?: number;
 }
 
 // Both ad platforms share the same feed shape, so they're scored uniformly.
@@ -383,7 +387,9 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   if (adSpendVerified) {
     const summaries = adFeeds.map((f) => {
       const spend = f.monthly.reduce((s, m) => s + m.spend, 0);
-      const value = f.monthly.reduce((s, m) => s + m.conversionValue, 0);
+      const value =
+        f.conversionValueTotal ??
+        f.monthly.reduce((s, m) => s + m.conversionValue, 0);
       const mean = spend / f.monthly.length;
       let stability = 0;
       if (mean > 0) {
