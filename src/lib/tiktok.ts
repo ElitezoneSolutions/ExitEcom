@@ -22,13 +22,19 @@ import { createServerFn } from "@tanstack/react-start";
 //   TIKTOK_APP_ID, TIKTOK_APP_SECRET, TIKTOK_OAUTH_REDIRECT_URI
 // ---------------------------------------------------------------------------
 
-const API_BASE = "https://business-api.tiktok.com/open_api/v1.3";
+const API_BASE_PROD    = "https://business-api.tiktok.com/open_api/v1.3";
+const API_BASE_SANDBOX = "https://sandbox-ads.tiktok.com/open_api/v1.3";
 const CAMPAIGN_CAP = 500;
 const LOOKBACK_DAYS = 365;
+
+function apiBase(sandboxEnv: boolean): string {
+  return sandboxEnv ? API_BASE_SANDBOX : API_BASE_PROD;
+}
 
 export interface TikTokSyncInput {
   advertiserId: string;
   accessToken: string;
+  sandboxEnv?: boolean;
 }
 
 export interface RawTikTokAccount {
@@ -191,6 +197,10 @@ function unwrap<T>(json: TikTokEnvelope<T>, label: string): T {
 
 function tikTokErrorMessage(code: number, msg: string, label: string): string {
   const base = `TikTok ${label} failed (code ${code})`;
+  // QPS limit errors reuse code 40100 — detect by message content first.
+  if (msg.toLowerCase().includes("qps")) {
+    return `TikTok rate limit reached — too many requests per second. Please wait a moment and try again. (${base}: ${msg})`;
+  }
   const hint = hintForCode(code);
   return hint ? `${hint} (${base}: ${msg})` : `${base}: ${msg}`;
 }
@@ -202,7 +212,9 @@ function hintForCode(code: number): string {
     case 40002:
       return "One or more metric or dimension names are invalid for this account or data level.";
     case 40100:
-      return "The advertiser id is invalid or not accessible with this token.";
+      return "The advertiser ID is invalid or not accessible with this token.";
+    case 40105:
+      return "The access token is incorrect or has been revoked. Generate a new token in the TikTok Marketing API portal and reconnect.";
     case 40300:
       return "Your TikTok app doesn't have permission to read this account. Check the app's scopes and ensure it has the Reporting / Ad Account Read permission.";
     case 50002:
@@ -248,6 +260,23 @@ function computeTotals(monthly: RawTikTokMonthly[]): TikTokTotals {
   };
 }
 
+// Retry a call up to maxAttempts times when TikTok returns a QPS rate-limit error.
+async function withQpsRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("qps") && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 1200 * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("TikTok rate limit — max retries exceeded.");
+}
+
 // Paginate the reporting endpoint (GET). Returns all rows across pages up to `cap`.
 // TikTok's /report/integrated/get/ is a GET endpoint — params go in the query string.
 // Arrays (dimensions, metrics) are JSON-encoded as strings in the QS.
@@ -255,6 +284,7 @@ async function fetchReportPages<T>(
   body: Record<string, unknown>,
   accessToken: string,
   cap: number,
+  base = API_BASE_PROD,
 ): Promise<{ rows: T[]; capped: boolean }> {
   const rows: T[] = [];
   let page = 1;
@@ -266,15 +296,19 @@ async function fetchReportPages<T>(
     for (const [key, value] of Object.entries({ ...body, page, page_size: Math.min(1000, cap) })) {
       qs.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
     }
-    const res = await fetch(`${API_BASE}/report/integrated/get/?${qs.toString()}`, {
-      method: "GET",
-      headers: { "Access-Token": accessToken, Accept: "application/json" },
+    // Per-page QPS retry — if rate-limited mid-pagination, back off and retry
+    // just this page rather than restarting the whole report from page 1.
+    const data = await withQpsRetry(async () => {
+      const res = await fetch(`${base}/report/integrated/get/?${qs.toString()}`, {
+        method: "GET",
+        headers: { "Access-Token": accessToken, Accept: "application/json" },
+      });
+      const json = await safeJson<TikTokEnvelope<{
+        list?: T[];
+        page_info?: ApiPageInfo;
+      }>>(res, "reporting");
+      return unwrap(json, "reporting");
     });
-    const json = await safeJson<TikTokEnvelope<{
-      list?: T[];
-      page_info?: ApiPageInfo;
-    }>>(res, "reporting");
-    const data = unwrap(json, "reporting");
     const list = data.list ?? [];
     rows.push(...(list as T[]));
     totalPages = data.page_info?.total_page ?? 1;
@@ -286,6 +320,40 @@ async function fetchReportPages<T>(
   }
 
   return { rows: rows.slice(0, cap), capped };
+}
+
+// Try fetching a report with total_value; if TikTok rejects it as an invalid
+// metric for this account/data-level (code 40002), silently retry without it.
+// Detects by checking both the metric name AND the 40002 code phrase to be
+// resilient to TikTok varying the exact error message wording.
+function isInvalidValueMetricError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : "";
+  return (
+    (msg.includes("total_value") || msg.includes("invalid metric")) &&
+    msg.includes("40002")
+  );
+}
+
+async function fetchReportWithValueFallback<T>(
+  body: Record<string, unknown>,
+  accessToken: string,
+  cap: number,
+  base: string,
+): Promise<{ rows: T[]; capped: boolean; hasValue: boolean }> {
+  try {
+    const result = await fetchReportPages<T>(body, accessToken, cap, base);
+    return { ...result, hasValue: true };
+  } catch (err) {
+    if (isInvalidValueMetricError(err)) {
+      const fallbackBody = {
+        ...body,
+        metrics: (body.metrics as string[]).filter((m) => m !== "total_value"),
+      };
+      const result = await fetchReportPages<T>(fallbackBody, accessToken, cap, base);
+      return { ...result, hasValue: false };
+    }
+    throw err;
+  }
 }
 
 function readOAuthEnv() {
@@ -302,7 +370,9 @@ function readOAuthEnv() {
 async function pull(
   advertiserId: string,
   accessToken: string,
+  sandboxEnv = false,
 ): Promise<TikTokSyncResult> {
+  const base = apiBase(sandboxEnv);
   const until = new Date();
   const since = new Date(until.getTime() - LOOKBACK_DAYS * 86400000);
   const startDate = toISODate(since);
@@ -328,31 +398,35 @@ async function pull(
     end_date: endDate,
   };
 
-  // All three data calls in parallel — independent of each other.
-  const [acctRes, dailyPaged, campaignReportPaged, campaignListRes] =
-    await Promise.all([
-      // 1. Account metadata
-      fetch(
-        `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(`["${advertiserId}"]`)}&fields=${encodeURIComponent('["name","currency","status","timezone"]')}`,
-        { headers: tikTokHeaders(accessToken) },
-      ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(r, "advertiser/info")),
+  // Sequential calls to respect TikTok's QPS limit (sandbox = 1 req/s).
+  // Each call is wrapped in withQpsRetry so a rate-limit hit backs off and retries
+  // rather than surfacing a confusing error to the user.
 
-      // 2. Daily rows → bucket into months
-      fetchReportPages<ApiDailyRow>(dailyBody, accessToken, 3650),
+  // 1. Account metadata
+  const acctRes = await withQpsRetry(() =>
+    fetch(
+      `${base}/advertiser/info/?advertiser_ids=${encodeURIComponent(`["${advertiserId}"]`)}&fields=${encodeURIComponent('["advertiser_id","name","currency","status","timezone"]')}`,
+      { headers: tikTokHeaders(accessToken) },
+    ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(r, "advertiser/info")),
+  );
 
-      // 3. Campaign spend breakdown
-      fetchReportPages<ApiCampaignRow>(
-        campaignReportBody,
-        accessToken,
-        CAMPAIGN_CAP,
-      ),
+  // 2. Daily rows → bucket into months (falls back silently if total_value unavailable)
+  const dailyPaged = await withQpsRetry(() =>
+    fetchReportWithValueFallback<ApiDailyRow>(dailyBody, accessToken, 3650, base),
+  );
 
-      // 4. Campaign metadata (name, objective, status)
-      fetch(
-        `${API_BASE}/campaign/get/?advertiser_id=${advertiserId}&page_size=200&fields=${encodeURIComponent('["campaign_id","campaign_name","objective_type","operation_status"]')}`,
-        { headers: tikTokHeaders(accessToken) },
-      ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiCampaignMeta[] }>>(r, "campaign/get")),
-    ]);
+  // 3. Campaign spend breakdown (same fallback)
+  const campaignReportPaged = await withQpsRetry(() =>
+    fetchReportWithValueFallback<ApiCampaignRow>(campaignReportBody, accessToken, CAMPAIGN_CAP, base),
+  );
+
+  // 4. Campaign metadata (name, objective, status) — non-fatal if unavailable
+  const campaignListRes = await withQpsRetry(() =>
+    fetch(
+      `${base}/campaign/get/?advertiser_id=${advertiserId}&page_size=200&fields=${encodeURIComponent('["campaign_id","campaign_name","objective_type","operation_status"]')}`,
+      { headers: tikTokHeaders(accessToken) },
+    ).then((r) => safeJson<TikTokEnvelope<{ list?: ApiCampaignMeta[] }>>(r, "campaign/get")),
+  );
 
   // Account
   const acctData = unwrap(acctRes, "advertiser/info");
@@ -438,7 +512,7 @@ async function pull(
     totals: computeTotals(monthly),
     range: { since: startDate, until: endDate },
     capped: { campaigns: allCampaigns.length > CAMPAIGN_CAP },
-    sandbox: false,
+    sandbox: sandboxEnv,
   };
 }
 
@@ -530,7 +604,7 @@ export const syncTikTokAdsFn = createServerFn({ method: "POST" })
       return buildSandbox(advertiserId);
     }
 
-    return pull(advertiserId, accessToken);
+    return pull(advertiserId, accessToken, data.sandboxEnv ?? false);
   });
 
 // ---------------------------------------------------------------------------
@@ -599,7 +673,7 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
     if (!authCode) throw new Error("Missing auth_code from TikTok.");
 
     // 1. Exchange auth_code for access_token
-    const tokenRes = await fetch(`${API_BASE}/oauth2/access_token/`, {
+    const tokenRes = await fetch(`${API_BASE_PROD}/oauth2/access_token/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ app_id: appId, secret: appSecret, auth_code: authCode }),
@@ -624,7 +698,7 @@ export const exchangeTikTokOAuthCodeFn = createServerFn({ method: "POST" })
     // fields and without it the accounts would have no ID to pass downstream.
     const idsJson = JSON.stringify(advertiserIds.slice(0, 20));
     const acctRes = await fetch(
-      `${API_BASE}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=${encodeURIComponent('["advertiser_id","name","currency","status","timezone"]')}`,
+      `${API_BASE_PROD}/advertiser/info/?advertiser_ids=${encodeURIComponent(idsJson)}&fields=${encodeURIComponent('["advertiser_id","name","currency","status","timezone"]')}`,
       { headers: tikTokHeaders(accessToken) },
     );
     const acctJson = await safeJson<TikTokEnvelope<{ list?: ApiAdvertiserInfo[] }>>(acctRes, "advertiser/info");

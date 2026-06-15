@@ -1552,8 +1552,9 @@ function useBusinessDataImpl() {
     source: "oauth" | "direct",
     advertiserId: string,
     accessToken: string,
+    sandboxEnv = false,
   ) => {
-    const result = await syncTikTokAdsFn({ data: { advertiserId, accessToken } });
+    const result = await syncTikTokAdsFn({ data: { advertiserId, accessToken, sandboxEnv } });
     return commitTikTokSync(result, {
       source,
       advertiserId: result.account.advertiserId,
@@ -1561,8 +1562,8 @@ function useBusinessDataImpl() {
     });
   };
 
-  const syncTikTok = (advertiserId: string, accessToken: string) =>
-    syncTikTokWithSource("direct", advertiserId, accessToken);
+  const syncTikTok = (advertiserId: string, accessToken: string, sandboxEnv = false) =>
+    syncTikTokWithSource("direct", advertiserId, accessToken, sandboxEnv);
 
   const syncTikTokViaOAuth = (advertiserId: string, accessToken: string) =>
     syncTikTokWithSource("oauth", advertiserId, accessToken);

@@ -33,6 +33,7 @@ function TikTokConnect() {
   const [method, setMethod] = useState<ConnectMethod>("oauth");
   const [advertiserId, setAdvertiserId] = useState("");
   const [accessToken, setAccessToken] = useState("");
+  const [sandboxEnv, setSandboxEnv] = useState(false);
   const [oauth, setOauth] = useState<{
     loading: boolean;
     configured: boolean;
@@ -116,7 +117,7 @@ function TikTokConnect() {
       return;
     }
     await runSync(
-      () => syncTikTok(advertiserId.trim(), accessToken.trim()),
+      () => syncTikTok(advertiserId.trim(), accessToken.trim(), sandboxEnv),
       "Could not connect to TikTok Ads. Please check your credentials.",
     );
   };
@@ -206,6 +207,19 @@ function TikTokConnect() {
                       Generated in the TikTok Marketing API portal under your app &rarr; Authentication.
                     </p>
                   </div>
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={sandboxEnv}
+                      onChange={(e) => setSandboxEnv(e.target.checked)}
+                      className="w-4 h-4 rounded border-[var(--border-warm)] accent-[var(--accent)]"
+                    />
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      TikTok Sandbox environment{" "}
+                      <span className="text-[var(--text-muted)]">(sandbox-ads.tiktok.com)</span>
+                    </span>
+                  </label>
+
                   <button
                     type="submit"
                     className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
