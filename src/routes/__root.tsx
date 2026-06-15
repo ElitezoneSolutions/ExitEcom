@@ -147,6 +147,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 import { AuthProvider } from "@/hooks/useAuth";
 import { Toaster } from "@/components/ui/sonner";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Analytics } from "@vercel/analytics/react";
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
@@ -157,6 +158,7 @@ function RootComponent() {
         <Outlet />
         <Toaster richColors closeButton position="top-center" />
         <SpeedInsights />
+        <Analytics />
       </AuthProvider>
     </QueryClientProvider>
   );
