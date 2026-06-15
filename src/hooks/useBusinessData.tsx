@@ -46,6 +46,13 @@ import {
   type RawSnapchatCampaign,
   type SnapchatSyncResult,
 } from "@/lib/snapchat";
+import {
+  syncGA4Fn,
+  type RawGA4Account,
+  type RawGA4Monthly,
+  type RawGA4Channel,
+  type GA4SyncResult,
+} from "@/lib/ga4";
 
 export interface BusinessData {
   id?: string;
@@ -141,6 +148,7 @@ export type {
 export type { RawMetaAccount, RawMetaMonthly, RawMetaCampaign };
 export type { RawGoogleAccount, RawGoogleMonthly, RawGoogleCampaign };
 export type { RawTikTokAccount, RawTikTokMonthly, RawTikTokCampaign };
+export type { RawGA4Account, RawGA4Monthly, RawGA4Channel };
 
 // Empty state — what we show before any real data exists. NOT dummy/demo data:
 // every field is blank/zero until onboarding or a computed report populates it.
@@ -672,6 +680,86 @@ const mapSnapchatCampaignRow = (r: SnapchatCampaignRow): RawSnapchatCampaign => 
   roas: Number(r.roas ?? 0),
 });
 
+// --- localStorage cache for the raw GA4 data (same approach as the ad feeds) -
+// GA4 is web analytics, not ads: the arrays are a monthly traffic series and a
+// per-channel breakdown rather than campaigns. The refresh token is never
+// cached — it stays in the RLS-protected ga4_accounts row.
+const CACHE_GA4 = "exitecom_ga4_raw_v1";
+
+interface GA4RawCache {
+  businessId: string;
+  account: RawGA4Account | null;
+  lastSyncedAt: string | null;
+  monthly: RawGA4Monthly[];
+  channels: RawGA4Channel[];
+}
+
+function readGA4Cache(): GA4RawCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_GA4);
+    return raw ? (JSON.parse(raw) as GA4RawCache) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGA4Cache(cache: GA4RawCache) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CACHE_GA4, JSON.stringify(cache));
+  } catch (err) {
+    console.warn("[GA4 cache] not stored (likely too large):", err);
+    try {
+      localStorage.removeItem(CACHE_GA4);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function clearGA4Cache() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CACHE_GA4);
+}
+
+interface GA4MonthlyRow {
+  month: string;
+  sessions: number | string | null;
+  total_users: number | string | null;
+  new_users: number | string | null;
+  conversions: number | string | null;
+  conversion_rate: number | string | null;
+  purchase_revenue: number | string | null;
+  transactions: number | string | null;
+}
+interface GA4ChannelRow {
+  channel: string;
+  sessions: number | string | null;
+  conversions: number | string | null;
+  purchase_revenue: number | string | null;
+  session_share: number | string | null;
+}
+
+const mapGA4MonthlyRow = (r: GA4MonthlyRow): RawGA4Monthly => ({
+  month: r.month,
+  sessions: Number(r.sessions ?? 0),
+  totalUsers: Number(r.total_users ?? 0),
+  newUsers: Number(r.new_users ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  conversionRate: Number(r.conversion_rate ?? 0),
+  purchaseRevenue: Number(r.purchase_revenue ?? 0),
+  transactions: Number(r.transactions ?? 0),
+});
+
+const mapGA4ChannelRow = (r: GA4ChannelRow): RawGA4Channel => ({
+  channel: r.channel,
+  sessions: Number(r.sessions ?? 0),
+  conversions: Number(r.conversions ?? 0),
+  purchaseRevenue: Number(r.purchase_revenue ?? 0),
+  sessionShare: Number(r.session_share ?? 0),
+});
+
 // Bank statement row types
 interface BankMonthlyRow {
   id: string;
@@ -881,6 +969,27 @@ function useBusinessDataImpl() {
     refreshToken: string | null;
   } | null>(null);
 
+  // Raw GA4 (web analytics) data — same cache-first seeding as the ad feeds,
+  // but the arrays are a monthly traffic series + a per-channel breakdown.
+  const [ga4Account, setGA4Account] = useState<RawGA4Account | null>(
+    () => readGA4Cache()?.account ?? null,
+  );
+  const [ga4Monthly, setGA4Monthly] = useState<RawGA4Monthly[]>(
+    () => readGA4Cache()?.monthly ?? [],
+  );
+  const [ga4Channels, setGA4Channels] = useState<RawGA4Channel[]>(
+    () => readGA4Cache()?.channels ?? [],
+  );
+  const [ga4LastSyncedAt, setGA4LastSyncedAt] = useState<string | null>(
+    () => readGA4Cache()?.lastSyncedAt ?? null,
+  );
+  // Stored GA4 credentials (the durable refresh token), used only to refresh.
+  const [ga4Creds, setGA4Creds] = useState<{
+    source: "oauth" | "manual";
+    propertyId: string;
+    refreshToken: string | null;
+  } | null>(null);
+
   // Bank statement aggregates — loaded from DB on mount, no localStorage cache.
   const [bankStatementMonthly, setBankStatementMonthly] = useState<BankStatementMonth[]>([]);
   const [bankStatementFiles, setBankStatementFiles] = useState<BankStatementFile[]>([]);
@@ -933,11 +1042,17 @@ function useBusinessDataImpl() {
         localStorage.removeItem(CACHE_BUSINESS);
         localStorage.removeItem(CACHE_RISKS);
         localStorage.removeItem(CACHE_ACTIONS);
+        setGA4Account(null);
+        setGA4Monthly([]);
+        setGA4Channels([]);
+        setGA4LastSyncedAt(null);
+        setGA4Creds(null);
         clearShopifyCache();
         clearMetaCache();
         clearGoogleCache();
         clearTikTokCache();
         clearSnapchatCache();
+        clearGA4Cache();
         setLoading(false);
         return;
       }
@@ -1025,6 +1140,7 @@ function useBusinessDataImpl() {
       await loadGoogleData(bizData.id);
       await loadTikTokData(bizData.id);
       await loadSnapchatData(bizData.id);
+      await loadGA4Data(bizData.id);
       await loadBankStatements(bizData.id);
       await loadPLFiles(bizData.id);
     } catch (err: unknown) {
@@ -2783,6 +2899,327 @@ function useBusinessDataImpl() {
     }
   };
 
+  // --- GA4 (web analytics) ---------------------------------------------------
+  // Read the raw GA4 tables (monthly insights + channel breakdown) from Supabase.
+  const fetchGA4Arrays = async (businessId: string) => {
+    const [
+      { data: monthlyRows, error: mErr },
+      { data: channelRows, error: cErr },
+    ] = await Promise.all([
+      supabase
+        .from("ga4_monthly_insights")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("month", { ascending: true }),
+      supabase
+        .from("ga4_channels")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("sessions", { ascending: false }),
+    ]);
+    const err = mErr || cErr;
+    if (err) throw err;
+    return {
+      monthly: ((monthlyRows ?? []) as GA4MonthlyRow[]).map(mapGA4MonthlyRow),
+      channels: ((channelRows ?? []) as GA4ChannelRow[]).map(mapGA4ChannelRow),
+    };
+  };
+
+  // Load the raw GA4 data. Mirrors loadGoogleData: warm cache serves locally, a
+  // cold load reads the account row (+ credentials) and arrays from Supabase
+  // once, then caches them. Degrades silently if the tables are absent/empty.
+  const loadGA4Data = async (businessId: string) => {
+    try {
+      const cache = readGA4Cache();
+      if (cache && cache.businessId === businessId && cache.account) {
+        setGA4Account(cache.account);
+        setGA4LastSyncedAt(cache.lastSyncedAt);
+        setGA4Monthly(cache.monthly);
+        setGA4Channels(cache.channels);
+        return;
+      }
+
+      const { data: acctRow, error: acctError } = await supabase
+        .from("ga4_accounts")
+        .select("*")
+        .eq("business_id", businessId)
+        .maybeSingle();
+
+      if (acctError) {
+        console.warn("[GA4 data] not available yet:", acctError.message);
+        return;
+      }
+
+      if (!acctRow) {
+        setGA4Account(null);
+        setGA4LastSyncedAt(null);
+        setGA4Creds(null);
+        setGA4Monthly([]);
+        setGA4Channels([]);
+        clearGA4Cache();
+        return;
+      }
+
+      const accountMeta: RawGA4Account = {
+        propertyId: acctRow.property_id,
+        name: acctRow.name ?? "",
+        currency: acctRow.currency ?? "",
+        timezone: acctRow.timezone ?? "",
+        propertyType: acctRow.property_type ?? "",
+      };
+      setGA4Account(accountMeta);
+      setGA4LastSyncedAt(acctRow.last_synced_at ?? null);
+      setGA4Creds(
+        acctRow.refresh_token
+          ? {
+              source: (acctRow.source as "oauth" | "manual") ?? "oauth",
+              propertyId: acctRow.property_id,
+              refreshToken: acctRow.refresh_token ?? null,
+            }
+          : null,
+      );
+
+      const arrays = await fetchGA4Arrays(businessId);
+      setGA4Monthly(arrays.monthly);
+      setGA4Channels(arrays.channels);
+      writeGA4Cache({
+        businessId,
+        account: accountMeta,
+        lastSyncedAt: acctRow.last_synced_at ?? null,
+        ...arrays,
+      });
+    } catch (err) {
+      console.warn("[GA4 data] load skipped:", err);
+    }
+  };
+
+  // Persist a freshly pulled GA4 dataset to Supabase + local cache/state.
+  // Stores the durable refresh token for later refresh. Source slug is "ga4"
+  // (never anything containing "google" — the Google Ads connector keys off
+  // .includes("google") and would otherwise clobber this on disconnect).
+  const commitGA4Sync = async (
+    result: GA4SyncResult,
+    creds: {
+      source: "oauth" | "manual";
+      propertyId: string;
+      refreshToken: string | null;
+    },
+  ) => {
+    setGA4Account(result.account);
+    setGA4Monthly(result.monthly);
+    setGA4Channels(result.channels);
+    setBusiness((b) => ({
+      ...b,
+      connectedSources: Array.from(new Set([...b.connectedSources, "ga4"])),
+      missingSources: b.missingSources.filter((s) => s.toLowerCase() !== "ga4"),
+    }));
+
+    if (!isSupabaseConfigured || !user) {
+      toast.success("GA4 synced (local sandbox).");
+      return result;
+    }
+
+    // The OAuth popup may resolve before the business row is in state — fetch
+    // the id directly rather than silently skipping the write.
+    let businessId = business.id;
+    if (!businessId) {
+      const { data: biz } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      businessId = biz?.id ?? "";
+    }
+    if (!businessId) {
+      toast.success("GA4 synced (local sandbox).");
+      return result;
+    }
+    const nowISO = new Date().toISOString();
+
+    try {
+      const { error: acctErr } = await supabase.from("ga4_accounts").upsert(
+        {
+          business_id: businessId,
+          property_id: result.account.propertyId,
+          refresh_token: creds.refreshToken,
+          source: creds.source,
+          name: result.account.name,
+          currency: result.account.currency,
+          timezone: result.account.timezone,
+          property_type: result.account.propertyType,
+          last_synced_at: nowISO,
+          synced_at: nowISO,
+        },
+        { onConflict: "business_id" },
+      );
+      if (acctErr) throw acctErr;
+
+      await supabase
+        .from("ga4_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("ga4_channels")
+        .delete()
+        .eq("business_id", businessId);
+
+      await upsertChunked(
+        "ga4_monthly_insights",
+        result.monthly.map((m) => ({
+          business_id: businessId,
+          month: m.month,
+          sessions: m.sessions,
+          total_users: m.totalUsers,
+          new_users: m.newUsers,
+          conversions: m.conversions,
+          conversion_rate: m.conversionRate,
+          purchase_revenue: m.purchaseRevenue,
+          transactions: m.transactions,
+          synced_at: nowISO,
+        })),
+        "business_id,month",
+      );
+
+      await upsertChunked(
+        "ga4_channels",
+        result.channels.map((c) => ({
+          business_id: businessId,
+          channel: c.channel,
+          sessions: c.sessions,
+          conversions: c.conversions,
+          purchase_revenue: c.purchaseRevenue,
+          session_share: c.sessionShare,
+          synced_at: nowISO,
+        })),
+        "business_id,channel",
+      );
+
+      const sources = Array.from(
+        new Set([...business.connectedSources, "ga4"]),
+      );
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: sources },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+    } catch (err) {
+      throw describeDbError(err, "GA4");
+    }
+
+    setGA4LastSyncedAt(nowISO);
+    setGA4Creds(creds);
+    writeGA4Cache({
+      businessId,
+      account: result.account,
+      lastSyncedAt: nowISO,
+      monthly: result.monthly,
+      channels: result.channels,
+    });
+
+    return result;
+  };
+
+  const syncGA4WithSource = async (
+    source: "oauth" | "manual",
+    propertyId: string,
+    refreshToken: string,
+  ) => {
+    const result = await syncGA4Fn({ data: { propertyId, refreshToken } });
+    return commitGA4Sync(result, {
+      source,
+      propertyId: result.account.propertyId,
+      refreshToken,
+    });
+  };
+
+  // Connect / refresh via the manual connector (pasted property id + refresh token).
+  const syncGA4 = (propertyId: string, refreshToken: string) =>
+    syncGA4WithSource("manual", propertyId, refreshToken);
+
+  // Commit a dataset pulled via the in-app OAuth flow.
+  const syncGA4ViaOAuth = (propertyId: string, refreshToken: string) =>
+    syncGA4WithSource("oauth", propertyId, refreshToken);
+
+  // Refresh using the stored GA4 refresh token (fetched from Supabase on demand).
+  const resyncGA4 = async () => {
+    let creds = ga4Creds;
+    if (!creds) {
+      if (!isSupabaseConfigured || !user || !business.id) {
+        throw new Error("Connect a GA4 property first.");
+      }
+      const { data, error } = await supabase
+        .from("ga4_accounts")
+        .select("property_id, refresh_token, source")
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (error) throw describeDbError(error, "GA4");
+      if (!data?.refresh_token) {
+        throw new Error("No stored GA4 credentials — reconnect the property.");
+      }
+      creds = {
+        source: (data.source as "oauth" | "manual") ?? "oauth",
+        propertyId: data.property_id,
+        refreshToken: data.refresh_token ?? null,
+      };
+      setGA4Creds(creds);
+    }
+    if (!creds.refreshToken) {
+      throw new Error("No stored GA4 credentials — reconnect the property.");
+    }
+    return syncGA4(creds.propertyId, creds.refreshToken);
+  };
+
+  // Disconnect GA4: delete all stored GA4 data + credentials, drop the source,
+  // and clear local state/cache.
+  const disconnectGA4 = async () => {
+    const remaining = business.connectedSources.filter(
+      (s) => s.toLowerCase() !== "ga4",
+    );
+
+    setGA4Account(null);
+    setGA4Monthly([]);
+    setGA4Channels([]);
+    setGA4LastSyncedAt(null);
+    setGA4Creds(null);
+    clearGA4Cache();
+    setBusiness((b) => ({ ...b, connectedSources: remaining }));
+
+    if (!isSupabaseConfigured || !user || !business.id) {
+      toast.success("GA4 disconnected.");
+      return;
+    }
+
+    const businessId = business.id;
+    try {
+      await supabase
+        .from("ga4_monthly_insights")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("ga4_channels")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("ga4_accounts")
+        .delete()
+        .eq("business_id", businessId);
+      const { error: valErr } = await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
+      if (valErr) throw valErr;
+      toast.success("GA4 disconnected.");
+    } catch (err) {
+      throw describeDbError(err, "GA4");
+    }
+  };
+
   // Persist a freshly pulled Google Ads dataset to Supabase + local cache/state.
   // Mirrors commitMetaSync; stores the durable refresh token for later refresh.
   const commitGoogleSync = async (
@@ -3141,6 +3578,9 @@ function useBusinessDataImpl() {
   const isSnapchatConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("snapchat"),
   );
+  const isGA4Connected = business.connectedSources.some(
+    (s) => s.toLowerCase() === "ga4",
+  );
   const isBankConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("bank_statements"),
   );
@@ -3160,6 +3600,7 @@ function useBusinessDataImpl() {
     isGoogleConnected,
     isTikTokConnected,
     isSnapchatConnected,
+    isGA4Connected,
     isBankConnected,
     isPLConnected,
     // Raw Shopify data
@@ -3188,6 +3629,11 @@ function useBusinessDataImpl() {
     snapchatMonthly,
     snapchatCampaigns,
     snapchatLastSyncedAt,
+    // Raw GA4 (web analytics) data
+    ga4Account,
+    ga4Monthly,
+    ga4Channels,
+    ga4LastSyncedAt,
     // Bank Statements
     bankStatementMonthly,
     bankStatementFiles,
@@ -3201,6 +3647,7 @@ function useBusinessDataImpl() {
     canResyncGoogle: !!googleAccount || isGoogleConnected,
     canResyncTikTok: !!tikTokAccount || isTikTokConnected,
     canResyncSnapchat: !!snapchatAccount || isSnapchatConnected,
+    canResyncGA4: !!ga4Account || isGA4Connected,
     // Actions
     refetch: fetchData,
     updateBusiness,
@@ -3224,6 +3671,10 @@ function useBusinessDataImpl() {
     syncSnapchatViaOAuth,
     resyncSnapchat,
     disconnectSnapchat,
+    syncGA4,
+    syncGA4ViaOAuth,
+    resyncGA4,
+    disconnectGA4,
     uploadBankStatements,
     disconnectBankStatements,
     uploadPL,

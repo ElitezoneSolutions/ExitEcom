@@ -84,6 +84,26 @@ export interface AnalyticsMeta {
 // Both ad platforms share the same feed shape, so they're scored uniformly.
 export type AnalyticsAdsFeed = AnalyticsMeta;
 
+// Optional GA4 (web analytics) feed. This is NOT an ad feed — it has no spend or
+// ROAS, so it must never be summed into adSpend/roas. It contributes a separate
+// "traffic" signal: session growth (corroborates the growth trajectory) and
+// traffic-channel concentration (a diversification/dependency risk). Field names
+// mirror RawGA4Monthly/RawGA4Channel so callers can pass the raw arrays directly.
+export interface AnalyticsGA4Monthly {
+  month: string;
+  sessions: number;
+  conversions: number;
+}
+export interface AnalyticsGA4Channel {
+  channel: string;
+  sessions: number;
+  sessionShare: number;
+}
+export interface AnalyticsGA4 {
+  monthly: AnalyticsGA4Monthly[];
+  channels: AnalyticsGA4Channel[];
+}
+
 export interface AnalyticsInput {
   store: AnalyticsStore | null;
   orders: AnalyticsOrder[];
@@ -94,6 +114,8 @@ export interface AnalyticsInput {
   google?: AnalyticsAdsFeed | null;
   tiktok?: AnalyticsAdsFeed | null;
   snapchat?: AnalyticsAdsFeed | null;
+  // GA4 is web analytics, NOT an ad feed — kept separate from the ad feeds above.
+  ga4?: AnalyticsGA4 | null;
   bankStatements?: { fileCount: number } | null;
   pl?: { fileCount: number } | null;
 }
@@ -146,6 +168,19 @@ export interface StoreMetrics {
   hasData: boolean;
   bankStatementsMonthCount: number;
   plFileCount: number;
+  // GA4 (web analytics) traffic signals — populated only when a GA4 feed is
+  // supplied. These feed the growth-trajectory + platform/channel-risk
+  // dimensions and a traffic-concentration risk; they never touch revenue/spend.
+  ga4Connected: boolean;
+  sessionGrowth: number; // last-3mo vs prior-3mo session growth (e.g. 0.12 = +12%)
+  // True only when there were ≥6 months with prior-window sessions, so
+  // sessionGrowth is a real signal (not a 0 from insufficient history). The
+  // growth dimension only folds in session growth when this holds — otherwise a
+  // short GA4 history would wrongly drag down a high-revenue-growth store.
+  sessionGrowthAvailable: boolean;
+  trafficConversionRate: number; // total conversions / total sessions (0–1)
+  trafficChannelConcentration: number; // 0–1; top channel's share of sessions (0 when no channel rows)
+  topTrafficChannel: string; // name of the highest-session channel
 }
 
 export interface ScoreDimension {
@@ -332,9 +367,12 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   // spend-stability score, and Marketing Efficiency is their average (so a weak
   // channel isn't masked by a strong one). Total spend is summed for the
   // buyer-credible blended CAC = total ad spend ÷ new customers (computed below).
-  const adFeeds = [input.meta, input.google, input.tiktok, input.snapchat].filter(
-    (f): f is AnalyticsAdsFeed => !!f && f.monthly.length > 0,
-  );
+  const adFeeds = [
+    input.meta,
+    input.google,
+    input.tiktok,
+    input.snapchat,
+  ].filter((f): f is AnalyticsAdsFeed => !!f && f.monthly.length > 0);
   const adSpendVerified = adFeeds.length > 0;
   let adSpend = round(revenueTTM * 0.22);
   let roas = 0;
@@ -397,6 +435,48 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     blendedCac = round2(adSpend / Math.max(1, newCustomers));
   }
 
+  // GA4 traffic signals (separate from the ad feeds — no spend/ROAS). Session
+  // growth corroborates the growth trajectory; channel concentration measures
+  // traffic-source dependency (the top channel's share of all sessions).
+  const ga4 = input.ga4;
+  const ga4Connected = !!ga4 && ga4.monthly.length > 0;
+  let sessionGrowth = 0;
+  let sessionGrowthAvailable = false;
+  let trafficConversionRate = 0;
+  let trafficChannelConcentration = 0;
+  let topTrafficChannel = "";
+  if (ga4Connected && ga4) {
+    const sorted = [...ga4.monthly].sort((a, b) =>
+      a.month.localeCompare(b.month),
+    );
+    const gLast3 = sorted.slice(-3).reduce((s, m) => s + m.sessions, 0);
+    const gPrior3 = sorted.slice(-6, -3).reduce((s, m) => s + m.sessions, 0);
+    sessionGrowthAvailable = gPrior3 > 0;
+    sessionGrowth = sessionGrowthAvailable
+      ? round2((gLast3 - gPrior3) / gPrior3)
+      : 0;
+    const totalSessions = sorted.reduce((s, m) => s + m.sessions, 0);
+    const totalConversions = sorted.reduce((s, m) => s + m.conversions, 0);
+    trafficConversionRate =
+      totalSessions > 0 ? round2(totalConversions / totalSessions) : 0;
+    // Prefer the explicit per-channel share; fall back to recomputing it from
+    // the channel sessions so a partial feed still yields a sane number.
+    const channels = ga4.channels ?? [];
+    const channelSessionSum = channels.reduce((s, c) => s + c.sessions, 0);
+    let top = { channel: "", share: 0 };
+    for (const c of channels) {
+      const share =
+        c.sessionShare > 0
+          ? c.sessionShare
+          : channelSessionSum > 0
+            ? c.sessions / channelSessionSum
+            : 0;
+      if (share > top.share) top = { channel: c.channel, share };
+    }
+    trafficChannelConcentration = round2(top.share);
+    topTrafficChannel = top.channel;
+  }
+
   return {
     currency: store?.currency || "USD",
     orderCount,
@@ -433,6 +513,12 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
     hasData: orderCount > 0,
     bankStatementsMonthCount: input.bankStatements?.fileCount ?? 0,
     plFileCount: input.pl?.fileCount ?? 0,
+    ga4Connected,
+    sessionGrowth,
+    sessionGrowthAvailable,
+    trafficConversionRate,
+    trafficChannelConcentration,
+    topTrafficChannel,
   };
 }
 
@@ -489,10 +575,27 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
       "growthTrajectory",
       "Growth Trajectory & Potential",
       10,
-      (m.growthRate + 0.1) / 0.4,
+      // Revenue growth, corroborated by GA4 session growth ONLY when we actually
+      // computed a session-growth signal (≥6 months of history). A short GA4
+      // history must not blend a placeholder 0 in and drag the score down.
+      m.sessionGrowthAvailable
+        ? ((m.growthRate + 0.1) / 0.4 + (m.sessionGrowth + 0.1) / 0.4) / 2
+        : (m.growthRate + 0.1) / 0.4,
     ),
     // Single sales channel (Shopify only) — moderate platform risk by default.
-    dim("platformChannelRisk", "Platform & Channel Risk", 10, 0.6),
+    // With a real GA4 channel mix (at least one channel with sessions), score
+    // traffic-source diversification: a less concentrated top channel
+    // (0.25 share → green, 0.75+ → red) means lower acquisition-dependency risk.
+    // No channel rows ⇒ keep the neutral 0.6 (concentration 0 must NOT read as
+    // perfectly diversified).
+    dim(
+      "platformChannelRisk",
+      "Platform & Channel Risk",
+      10,
+      m.ga4Connected && m.trafficChannelConcentration > 0
+        ? clamp01(1 - (m.trafficChannelConcentration - 0.25) / 0.5)
+        : 0.6,
+    ),
   ];
 
   const exitScore = breakdown.reduce((s, d) => s + d.score, 0);
@@ -511,6 +614,9 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
   // A verified ad feed materially raises confidence — marketing efficiency is no
   // longer a proxy guess.
   if (m.adSpendVerified) dataConfidence += 10;
+  // A connected GA4 property verifies traffic quality + channel mix, so growth
+  // and channel-risk are no longer proxy guesses.
+  if (m.ga4Connected) dataConfidence += 10;
   // Bank statements on file verify cash deposits match Shopify revenue.
   if (m.bankStatementsMonthCount >= 1) dataConfidence += 10;
   // P&L statement on file tightens the valuation range with verified financials.
@@ -605,7 +711,7 @@ export function computeRisks(m: StoreMetrics, v: ValuationResult): RiskItem[] {
   const gap = v.valueGap || Math.round(m.sde * 0.4);
   const pct = (n: number) => `${round(n * 100)}%`;
 
-  return [
+  const risks: RiskItem[] = [
     {
       title: "Product Concentration Risk",
       severity:
@@ -652,6 +758,32 @@ export function computeRisks(m: StoreMetrics, v: ValuationResult): RiskItem[] {
         : "Connect ad and analytics sources, and build an owned audience.",
     },
   ];
+
+  // Traffic Concentration — only when a GA4 feed verifies the real channel mix.
+  // A high top-channel share means most visits depend on one source (e.g. paid
+  // search or one algorithm), which buyers treat as fragile demand.
+  if (m.ga4Connected && m.trafficChannelConcentration > 0) {
+    risks.push({
+      title: "Traffic Concentration Risk",
+      severity:
+        m.trafficChannelConcentration > 0.6
+          ? "high"
+          : m.trafficChannelConcentration > 0.45
+            ? "medium"
+            : "low",
+      description: `${pct(m.trafficChannelConcentration)} of GA4 sessions come from a single channel${m.topTrafficChannel ? ` (${m.topTrafficChannel})` : ""}, with a ${pct(m.trafficConversionRate)} site-wide conversion rate.`,
+      impact: -round(gap * 0.18),
+      buyerSees: "Demand concentrated in one acquisition channel.",
+      buyerFears:
+        "An algorithm update, rising CPCs or a deindexing event chokes traffic and revenue.",
+      buyerDoes:
+        "Discount for channel fragility and ask for a diversification plan.",
+      recommendation:
+        "Grow the under-weighted channels (SEO, email/SMS, referral) so no single source exceeds ~40% of sessions.",
+    });
+  }
+
+  return risks;
 }
 
 // --- 5. Optimization actions ------------------------------------------------

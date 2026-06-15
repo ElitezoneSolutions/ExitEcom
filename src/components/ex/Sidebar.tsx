@@ -39,6 +39,7 @@ const groups = [
           { to: "/google-data", label: "Google Ads Data" },
           { to: "/tiktok-data", label: "TikTok Ads Data" },
           { to: "/snapchat-data", label: "Snapchat Ads Data" },
+          { to: "/ga4-data", label: "Google Analytics 4 Data" },
         ],
       },
     ],

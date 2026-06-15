@@ -18,6 +18,7 @@ function DataSources() {
     disconnectGoogle,
     disconnectTikTok,
     disconnectSnapchat,
+    disconnectGA4,
     disconnectBankStatements,
     disconnectPL,
   } = useBusinessData();
@@ -31,11 +32,13 @@ function DataSources() {
           ? disconnectTikTok
           : name === "Snapchat Ads"
             ? disconnectSnapchat
-            : name === "Bank Statements"
-              ? disconnectBankStatements
-              : name === "P&L Upload"
-                ? disconnectPL
-                : disconnectShopify;
+            : name === "Google Analytics 4"
+              ? disconnectGA4
+              : name === "Bank Statements"
+                ? disconnectBankStatements
+                : name === "P&L Upload"
+                  ? disconnectPL
+                  : disconnectShopify;
 
   const isShopifyConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("shopify"),
@@ -51,6 +54,9 @@ function DataSources() {
   );
   const isSnapchatConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("snapchat"),
+  );
+  const isGA4Connected = business.connectedSources.some(
+    (s) => s.toLowerCase() === "ga4",
   );
   const isBankConnected = business.connectedSources.some((s) =>
     s.toLowerCase().includes("bank_statements"),
@@ -75,7 +81,8 @@ function DataSources() {
       status: isBankConnected ? "connected" : "missing",
       sync: isBankConnected ? "Uploaded" : "—",
       impact: "Bank statements on file — Data Confidence +10",
-      explanation: "Upload PDF exports from your bank to verify revenue for buyers.",
+      explanation:
+        "Upload PDF exports from your bank to verify revenue for buyers.",
     },
     {
       name: "P&L Upload",
@@ -83,7 +90,8 @@ function DataSources() {
       status: isPLConnected ? "connected" : "missing",
       sync: isPLConnected ? "Uploaded" : "—",
       impact: "P&L statement on file — Data Confidence +10",
-      explanation: "Upload your Profit & Loss statement to tighten your valuation range.",
+      explanation:
+        "Upload your Profit & Loss statement to tighten your valuation range.",
     },
     {
       name: "Meta Ads",
@@ -126,10 +134,12 @@ function DataSources() {
     },
     {
       name: "Google Analytics 4",
-      section: "Coming Soon",
-      status: "missing",
-      sync: "—",
-      explanation: "Give buyers confidence in your traffic quality.",
+      section: "Analytics",
+      status: isGA4Connected ? "connected" : "missing",
+      sync: isGA4Connected ? "Synced live" : "—",
+      impact: "Traffic quality & channel mix verified — Data Confidence +10",
+      explanation:
+        "Verify traffic quality, conversion rate and channel diversification for buyers.",
     },
     {
       name: "Amazon Seller Central",
@@ -147,14 +157,16 @@ function DataSources() {
     },
   ] as const;
 
-  const sections = ["Store", "Marketing", "Coming Soon"] as const;
+  const sections = ["Store", "Marketing", "Analytics", "Coming Soon"] as const;
 
   const sectionLabel = (sec: (typeof sections)[number]) =>
     sec === "Coming Soon"
       ? "More Integrations — Coming Soon"
       : sec === "Marketing"
         ? "Connect Your Marketing"
-        : "Connect Your Store";
+        : sec === "Analytics"
+          ? "Connect Your Analytics"
+          : "Connect Your Store";
 
   return (
     <>
@@ -250,6 +262,17 @@ function DataSources() {
                               p.status === "connected"
                                 ? "/snapchat-data"
                                 : "/snapchat-connect"
+                            }
+                            className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
+                          >
+                            {p.status === "connected" ? "Manage" : "Connect"}
+                          </Link>
+                        ) : p.name === "Google Analytics 4" ? (
+                          <Link
+                            to={
+                              p.status === "connected"
+                                ? "/ga4-data"
+                                : "/ga4-connect"
                             }
                             className="text-xs text-[var(--accent)] hover:text-[var(--accent-muted)] font-medium"
                           >

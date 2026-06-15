@@ -24,6 +24,8 @@ export function useReport() {
     metaCampaigns,
     googleMonthly,
     googleCampaigns,
+    ga4Monthly,
+    ga4Channels,
     saveComputedReport,
   } = bd;
   const [computing, setComputing] = useState(false);
@@ -53,6 +55,13 @@ export function useReport() {
         googleMonthly.length > 0
           ? { monthly: googleMonthly, campaigns: googleCampaigns }
           : null,
+      // GA4 is web analytics, not an ad feed — passed in its own field so the
+      // traffic signal (session growth + channel concentration) reaches the
+      // persisted Exit Score, never the adSpend/ROAS sum.
+      ga4:
+        ga4Monthly.length > 0
+          ? { monthly: ga4Monthly, channels: ga4Channels }
+          : null,
     }),
     [
       store,
@@ -64,6 +73,8 @@ export function useReport() {
       metaCampaigns,
       googleMonthly,
       googleCampaigns,
+      ga4Monthly,
+      ga4Channels,
     ],
   );
 

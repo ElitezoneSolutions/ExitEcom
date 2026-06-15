@@ -41,6 +41,9 @@ import { Route as AppInvestmentMemoRouteImport } from './routes/_app.investment-
 import { Route as AppGoogleOauthCallbackRouteImport } from './routes/_app.google-oauth-callback'
 import { Route as AppGoogleDataRouteImport } from './routes/_app.google-data'
 import { Route as AppGoogleConnectRouteImport } from './routes/_app.google-connect'
+import { Route as AppGa4OauthCallbackRouteImport } from './routes/_app.ga4-oauth-callback'
+import { Route as AppGa4DataRouteImport } from './routes/_app.ga4-data'
+import { Route as AppGa4ConnectRouteImport } from './routes/_app.ga4-connect'
 import { Route as AppFinancialNormalizerRouteImport } from './routes/_app.financial-normalizer'
 import { Route as AppExitScoreRouteImport } from './routes/_app.exit-score'
 import { Route as AppDataSourcesRouteImport } from './routes/_app.data-sources'
@@ -211,6 +214,21 @@ const AppGoogleConnectRoute = AppGoogleConnectRouteImport.update({
   path: '/google-connect',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGa4OauthCallbackRoute = AppGa4OauthCallbackRouteImport.update({
+  id: '/ga4-oauth-callback',
+  path: '/ga4-oauth-callback',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGa4DataRoute = AppGa4DataRouteImport.update({
+  id: '/ga4-data',
+  path: '/ga4-data',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGa4ConnectRoute = AppGa4ConnectRouteImport.update({
+  id: '/ga4-connect',
+  path: '/ga4-connect',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFinancialNormalizerRoute = AppFinancialNormalizerRouteImport.update({
   id: '/financial-normalizer',
   path: '/financial-normalizer',
@@ -275,6 +293,9 @@ export interface FileRoutesByFullPath {
   '/data-sources': typeof AppDataSourcesRoute
   '/exit-score': typeof AppExitScoreRoute
   '/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/ga4-connect': typeof AppGa4ConnectRoute
+  '/ga4-data': typeof AppGa4DataRoute
+  '/ga4-oauth-callback': typeof AppGa4OauthCallbackRoute
   '/google-connect': typeof AppGoogleConnectRoute
   '/google-data': typeof AppGoogleDataRoute
   '/google-oauth-callback': typeof AppGoogleOauthCallbackRoute
@@ -317,6 +338,9 @@ export interface FileRoutesByTo {
   '/data-sources': typeof AppDataSourcesRoute
   '/exit-score': typeof AppExitScoreRoute
   '/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/ga4-connect': typeof AppGa4ConnectRoute
+  '/ga4-data': typeof AppGa4DataRoute
+  '/ga4-oauth-callback': typeof AppGa4OauthCallbackRoute
   '/google-connect': typeof AppGoogleConnectRoute
   '/google-data': typeof AppGoogleDataRoute
   '/google-oauth-callback': typeof AppGoogleOauthCallbackRoute
@@ -361,6 +385,9 @@ export interface FileRoutesById {
   '/_app/data-sources': typeof AppDataSourcesRoute
   '/_app/exit-score': typeof AppExitScoreRoute
   '/_app/financial-normalizer': typeof AppFinancialNormalizerRoute
+  '/_app/ga4-connect': typeof AppGa4ConnectRoute
+  '/_app/ga4-data': typeof AppGa4DataRoute
+  '/_app/ga4-oauth-callback': typeof AppGa4OauthCallbackRoute
   '/_app/google-connect': typeof AppGoogleConnectRoute
   '/_app/google-data': typeof AppGoogleDataRoute
   '/_app/google-oauth-callback': typeof AppGoogleOauthCallbackRoute
@@ -405,6 +432,9 @@ export interface FileRouteTypes {
     | '/data-sources'
     | '/exit-score'
     | '/financial-normalizer'
+    | '/ga4-connect'
+    | '/ga4-data'
+    | '/ga4-oauth-callback'
     | '/google-connect'
     | '/google-data'
     | '/google-oauth-callback'
@@ -447,6 +477,9 @@ export interface FileRouteTypes {
     | '/data-sources'
     | '/exit-score'
     | '/financial-normalizer'
+    | '/ga4-connect'
+    | '/ga4-data'
+    | '/ga4-oauth-callback'
     | '/google-connect'
     | '/google-data'
     | '/google-oauth-callback'
@@ -490,6 +523,9 @@ export interface FileRouteTypes {
     | '/_app/data-sources'
     | '/_app/exit-score'
     | '/_app/financial-normalizer'
+    | '/_app/ga4-connect'
+    | '/_app/ga4-data'
+    | '/_app/ga4-oauth-callback'
     | '/_app/google-connect'
     | '/_app/google-data'
     | '/_app/google-oauth-callback'
@@ -753,6 +789,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGoogleConnectRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/ga4-oauth-callback': {
+      id: '/_app/ga4-oauth-callback'
+      path: '/ga4-oauth-callback'
+      fullPath: '/ga4-oauth-callback'
+      preLoaderRoute: typeof AppGa4OauthCallbackRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ga4-data': {
+      id: '/_app/ga4-data'
+      path: '/ga4-data'
+      fullPath: '/ga4-data'
+      preLoaderRoute: typeof AppGa4DataRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ga4-connect': {
+      id: '/_app/ga4-connect'
+      path: '/ga4-connect'
+      fullPath: '/ga4-connect'
+      preLoaderRoute: typeof AppGa4ConnectRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/financial-normalizer': {
       id: '/_app/financial-normalizer'
       path: '/financial-normalizer'
@@ -829,6 +886,9 @@ interface AppRouteChildren {
   AppDataSourcesRoute: typeof AppDataSourcesRoute
   AppExitScoreRoute: typeof AppExitScoreRoute
   AppFinancialNormalizerRoute: typeof AppFinancialNormalizerRoute
+  AppGa4ConnectRoute: typeof AppGa4ConnectRoute
+  AppGa4DataRoute: typeof AppGa4DataRoute
+  AppGa4OauthCallbackRoute: typeof AppGa4OauthCallbackRoute
   AppGoogleConnectRoute: typeof AppGoogleConnectRoute
   AppGoogleDataRoute: typeof AppGoogleDataRoute
   AppGoogleOauthCallbackRoute: typeof AppGoogleOauthCallbackRoute
@@ -864,6 +924,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppDataSourcesRoute: AppDataSourcesRoute,
   AppExitScoreRoute: AppExitScoreRoute,
   AppFinancialNormalizerRoute: AppFinancialNormalizerRoute,
+  AppGa4ConnectRoute: AppGa4ConnectRoute,
+  AppGa4DataRoute: AppGa4DataRoute,
+  AppGa4OauthCallbackRoute: AppGa4OauthCallbackRoute,
   AppGoogleConnectRoute: AppGoogleConnectRoute,
   AppGoogleDataRoute: AppGoogleDataRoute,
   AppGoogleOauthCallbackRoute: AppGoogleOauthCallbackRoute,
