@@ -43,7 +43,7 @@ sharpens the score, but Shopify remains the gate that unlocks the result pages.
 Each connector still obeys the no-dummy-data rule — sandbox creds are only used
 when the user explicitly supplies test/demo/sandbox credentials.
 
-`useBusinessData` (`src/hooks/useBusinessData.ts`) is the single read/write layer.
+`useBusinessData` (`src/hooks/useBusinessData.tsx`) is the single read/write layer.
 It maps `businesses` → profile fields, the `shopify_*` tables → raw data, and
 `valuation_data` → result metrics, with **no mock fallbacks** (absent values stay
 `""`/`0`). It exposes `isShopifyConnected`, the raw arrays (`store`, `orders`,

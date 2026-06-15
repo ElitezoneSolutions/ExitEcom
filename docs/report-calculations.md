@@ -41,7 +41,7 @@ computeFullReport() bundles all of the above + a persistable businessUpdate
 - Orchestrated by `computeFullReport()`
   ([`analytics.ts:900`](../src/lib/analytics.ts)) and triggered by the user
   pressing **Run** on any report page (`useReport.run()`,
-  [`useReport.ts:55`](../src/hooks/useReport.ts)).
+  [`useReport.ts:97`](../src/hooks/useReport.ts)).
 - Notice the dependency chain: **Score feeds Valuation, and Valuation feeds both
   Risks and the Optimization Plan.** The `valueGap` produced by the Valuation
   Engine is the common currency that Risks and Actions are sized against.
@@ -142,7 +142,7 @@ These are the constants the order feed can't supply:
 ### 1.6 Business age
 
 `businessAgeYears = (now − store.shopCreatedAt) / 1 year`, floored at 0; `0` if
-the store creation date is unknown. (`analytics.ts:291`)
+the store creation date is unknown. (`analytics.ts:429`)
 
 ### 1.7 Optional connector inputs (ad feeds + GA4)
 
