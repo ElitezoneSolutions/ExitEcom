@@ -247,7 +247,9 @@ function computeTotals(monthly: RawTikTokMonthly[]): TikTokTotals {
   };
 }
 
-// Paginate the reporting endpoint (POST). Returns all rows across pages up to `cap`.
+// Paginate the reporting endpoint (GET). Returns all rows across pages up to `cap`.
+// TikTok's /report/integrated/get/ is a GET endpoint — params go in the query string.
+// Arrays (dimensions, metrics) are JSON-encoded as strings in the QS.
 async function fetchReportPages<T>(
   body: Record<string, unknown>,
   accessToken: string,
@@ -259,10 +261,13 @@ async function fetchReportPages<T>(
   let capped = false;
 
   while (page <= totalPages) {
-    const res = await fetch(`${API_BASE}/report/integrated/get/`, {
-      method: "POST",
-      headers: tikTokHeaders(accessToken),
-      body: JSON.stringify({ ...body, page, page_size: Math.min(1000, cap) }),
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries({ ...body, page, page_size: Math.min(1000, cap) })) {
+      qs.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+    }
+    const res = await fetch(`${API_BASE}/report/integrated/get/?${qs.toString()}`, {
+      method: "GET",
+      headers: { "Access-Token": accessToken, Accept: "application/json" },
     });
     const json = await safeJson<TikTokEnvelope<{
       list?: T[];
