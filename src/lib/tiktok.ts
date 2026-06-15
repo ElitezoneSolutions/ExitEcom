@@ -106,7 +106,7 @@ interface ApiDailyRow {
     impressions?: string | number;
     clicks?: string | number;
     conversion?: string | number;
-    value?: string | number;
+    total_value?: string | number;
   };
 }
 
@@ -115,7 +115,7 @@ interface ApiCampaignRow {
   metrics: {
     spend?: string | number;
     conversion?: string | number;
-    value?: string | number;
+    total_value?: string | number;
   };
 }
 
@@ -198,8 +198,9 @@ function tikTokErrorMessage(code: number, msg: string, label: string): string {
 function hintForCode(code: number): string {
   switch (code) {
     case 40001:
+      return "A required parameter is missing or has the wrong type. Check your advertiser ID format.";
     case 40002:
-      return "The access token is invalid or expired. Reconnect your TikTok Ads account.";
+      return "One or more metric or dimension names are invalid for this account or data level.";
     case 40100:
       return "The advertiser id is invalid or not accessible with this token.";
     case 40300:
@@ -312,7 +313,7 @@ async function pull(
     report_type: "BASIC",
     data_level: "AUCTION_ADVERTISER",
     dimensions: ["stat_time_day"],
-    metrics: ["spend", "impressions", "clicks", "conversion", "value"],
+    metrics: ["spend", "impressions", "clicks", "conversion", "total_value"],
     start_date: startDate,
     end_date: endDate,
   };
@@ -322,7 +323,7 @@ async function pull(
     report_type: "BASIC",
     data_level: "AUCTION_CAMPAIGN",
     dimensions: ["campaign_id"],
-    metrics: ["spend", "conversion", "value"],
+    metrics: ["spend", "conversion", "total_value"],
     start_date: startDate,
     end_date: endDate,
   };
@@ -378,7 +379,7 @@ async function pull(
     m.impressions += toNumber(row.metrics?.impressions);
     m.clicks += toNumber(row.metrics?.clicks);
     m.conversions += toNumber(row.metrics?.conversion);
-    m.conversionValue += toNumber(row.metrics?.value);
+    m.conversionValue += toNumber(row.metrics?.total_value);
     byMonth.set(month, m);
   }
   const monthly = Array.from(byMonth.values())
@@ -403,7 +404,7 @@ async function pull(
       const id = row.dimensions?.campaign_id ?? "";
       const meta = metaById.get(id);
       const spend = round(toNumber(row.metrics?.spend));
-      const conversionValue = round(toNumber(row.metrics?.value));
+      const conversionValue = round(toNumber(row.metrics?.total_value));
       const conversions = toNumber(row.metrics?.conversion);
       return {
         tikTokCampaignId: id,
