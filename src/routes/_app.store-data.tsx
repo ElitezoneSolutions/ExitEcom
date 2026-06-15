@@ -167,7 +167,7 @@ function StoreData() {
         />
         <Meta label="Plan" value={store?.plan || "—"} />
         <Meta label="Business age" value={metrics.businessAge} />
-        <Meta label="Revenue (TTM)" value={money.format(metrics.revenueTTM)} />
+        <Meta label="Overall Revenue" value={money.format(metrics.revenueTTM)} />
       </div>
 
       {/* At-a-glance counts */}
