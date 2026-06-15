@@ -1,20 +1,16 @@
 # TikTok Ads — Setup Guide
 
-The TikTok Ads connector's **OAuth** method is a real TikTok Marketing API OAuth
-flow handled **entirely inside this app** — no external service, no extra domain.
-The App ID/Secret live in this app's server environment and are used only inside
-`createServerFn` handlers (`src/lib/tiktok.ts`); the redirect URI is a route on
-this app's own origin (`/tiktok-oauth-callback`). Tokens are stored in Supabase
-(`tiktok_accounts`, RLS-protected).
+## Must-Have Checklist
 
-TikTok access tokens are **long-lived (~365 days)** with no refresh-token exchange
-needed — they behave like Meta's long-lived tokens, not Google's refresh-token model.
+Everything below must be in place before the connector will work end-to-end.
 
-This guide has three parts:
-
-1. **TikTok App setup** — what to configure in the TikTok for Business portal
-2. **App configuration** — the env vars this app reads
-3. **How the flow works / verify / troubleshoot**
+- [ ] **TikTok for Business account** — the account that owns the TikTok app (not just a regular TikTok account)
+- [ ] **App created** in the TikTok for Business developer portal with type **Web**
+- [ ] **Two scopes enabled** on the app: `Ad Account Read` (Reporting) + `Ad Reporting Read`
+- [ ] **Redirect URI** added to the app's Basic Settings — must match `TIKTOK_OAUTH_REDIRECT_URI` exactly
+- [ ] **Three env vars set** on the server: `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET`, `TIKTOK_OAUTH_REDIRECT_URI`
+- [ ] **App in Development/Sandbox mode** is fine for connecting your own account — you do not need App Review for that
+- [ ] **App submitted for review** only if you want *other people's* TikTok Ads accounts to connect via your platform
 
 ---
 
@@ -27,138 +23,145 @@ This guide has three parts:
 2. Top nav → **My Apps** → **Create App**.
 3. Choose **Web** app type and fill in the name, description and category.
 4. After creation you'll see your **App ID** and **App Secret** on the app detail
-   page. Note both.
+   page. Copy both — you'll need them in Part 2.
 
-### Step 2 — Add scopes
+### Step 2 — Enable scopes (critical)
 
-In **App Detail → Scopes**, enable:
+In **App Detail → Scopes**, enable **both** of these:
 
-| Scope | Why |
+| Scope | Why it's needed |
 | --- | --- |
-| `Ad Account Read` (under Reporting) | Read campaign and performance data |
-| `Ad Reporting Read` | Pull spend/ROAS/impression reports |
+| `Ad Account Read` (under Reporting) | Read advertiser account metadata and campaign list |
+| `Ad Reporting Read` | Pull spend, impressions, clicks, conversions, and conversion value reports |
 
-Read-only scopes are sufficient — ExitEcom never writes to TikTok Ads.
+Without `Ad Reporting Read` the connector will connect successfully but fail when pulling data (code 40300 — permission denied).
 
-### Step 3 — Configure OAuth redirect URI
+### Step 3 — Add the redirect URI
 
-In **App Detail → Basic Settings**, add the redirect URI under **Redirect URI**:
+In **App Detail → Basic Settings**, add your redirect URI under **Redirect URI**:
 
 ```
 https://dash.exitecom.com/tiktok-oauth-callback
-http://localhost:8080/tiktok-oauth-callback      # local dev
+http://localhost:8080/tiktok-oauth-callback      # local dev (check your actual port)
 ```
 
-The value must match `TIKTOK_OAUTH_REDIRECT_URI` **exactly** — scheme, host, port,
-path, no trailing slash.
+Rules:
+- Must match `TIKTOK_OAUTH_REDIRECT_URI` **exactly** — scheme, host, port, path
+- No trailing slash
+- If your local dev server runs on a different port (e.g. 8081), add that URI too
 
-### Step 4 — Submit for review (for multi-user production use)
+### Step 4 — App review (production multi-user only)
 
-> Skip during development. Your own accounts are always accessible while the app
-> is in Sandbox / Development mode.
+> **Skip this during development.** Your own TikTok Ads accounts always work while
+> the app is in Development/Sandbox mode.
 
-For production, where your platform users connect **their own** TikTok Ads accounts,
-submit the app for API review in **App Detail → Review**. Approval grants access to
-live advertiser data for all authorised users.
+For production, where your platform's customers connect their own TikTok Ads accounts,
+submit the app for API review in **App Detail → Review**. Approval is required before
+other users' data can be accessed.
 
 ---
 
 ## Part 2: Configure this app
 
-Set these in `.env` (and in the hosting platform's env for production). They are
-**server-side only — never `VITE_`-prefixed**. See `env-vars.md`.
+Set these in `.env` (and in the hosting platform's environment for production).
+They are **server-side only — never use the `VITE_` prefix** or the secret leaks to the browser.
 
 ```env
 TIKTOK_APP_ID=your_app_id
 TIKTOK_APP_SECRET=your_app_secret
 TIKTOK_OAUTH_REDIRECT_URI=https://dash.exitecom.com/tiktok-oauth-callback
-# Local dev: http://localhost:8080/tiktok-oauth-callback
+# Local dev: http://localhost:8080/tiktok-oauth-callback  (match the port Vite actually uses)
 ```
 
-- Read only inside `getTikTokOAuthUrlFn` and `exchangeTikTokOAuthCodeFn` in
-  `src/lib/tiktok.ts`. The App Secret never reaches the client.
-- When unset, the **OAuth** tab on `/tiktok-connect` shows a "not configured"
-  message and the **Access token** method (and sandbox via `test`/`demo` creds)
-  still works.
-- The connected token and account metadata are stored in Supabase `tiktok_accounts`
-  (`source = 'oauth'`), under the user's RLS policy.
+These are read only inside `getTikTokOAuthUrlFn` and `exchangeTikTokOAuthCodeFn` in
+`src/lib/tiktok.ts`. The App Secret never reaches the browser.
 
-### Access token (direct) path
+When unset, the **OAuth** tab on `/tiktok-connect` shows "not configured" and falls
+back gracefully — the **Access token** tab and sandbox mode (use `test`/`demo`/`sandbox`
+in any field) still work.
 
-Users can also connect without OAuth by generating a token manually:
+### Access token (direct) path — no env vars needed
 
-1. In the TikTok Marketing API portal → **App Detail → Authentication →
-   Access Token** — generate a token authorised against the target advertiser.
-2. In TikTok Ads Manager → **Account Settings** — copy the 13-digit
-   **Advertiser ID**.
+Users can also connect by generating a token manually:
+
+1. TikTok Marketing API portal → **App Detail → Authentication → Access Token** —
+   generate a token authorised against the target advertiser account.
+2. TikTok Ads Manager → **Account Settings** — copy the 13-digit **Advertiser ID**.
 3. Paste both into the **Access token** tab on `/tiktok-connect`.
 
-Direct tokens also last ~365 days. Stored with `source = 'direct'` in
-`tiktok_accounts`.
+Direct tokens last ~365 days. Stored in Supabase `tiktok_accounts` with `source = 'direct'`.
 
 ---
 
 ## Part 3: How the flow works
 
 ```
-/tiktok-connect  "OAuth" tab → getTikTokOAuthUrlFn(state)    [server: builds TikTok consent URL]
+/tiktok-connect  "OAuth" tab → getTikTokOAuthUrlFn(state)     [server: builds TikTok consent URL]
       ↓ browser → business-api.tiktok.com consent
-TikTok redirects → /tiktok-oauth-callback?auth_code=&state=  [this app, authenticated route]
+TikTok redirects → /tiktok-oauth-callback?auth_code=&state=   [this app, authenticated route]
       ↓ validate state (CSRF), then:
 exchangeTikTokOAuthCodeFn({authCode})  [server: auth_code → access_token + advertiser_ids[]]
       ↓ GET /advertiser/info/ → { accessToken, accounts[] }
-pick advertiser account (auto if one, picker if several)
+pick advertiser account (auto if one, picker UI if several)
       ↓
-syncTikTokViaOAuth(advertiserId, accessToken)  → syncTikTokAdsFn pull + commitTikTokSync(source:'oauth')
+syncTikTokViaOAuth(advertiserId, accessToken)  → syncTikTokAdsFn → pull() + commitTikTokSync(source:'oauth')
       ↓ stored in Supabase tiktok_accounts (RLS)
 → /tiktok-data
 ```
 
-**Key differences from Meta/Google:**
+**Key TikTok API differences from Meta/Google:**
 
 | Detail | TikTok | Meta | Google |
 | --- | --- | --- | --- |
 | Auth header | `Access-Token: <token>` | query param | `Authorization: Bearer` |
 | OAuth callback param | `auth_code` | `code` | `code` |
 | Token endpoint body | JSON | form-encoded | form-encoded |
-| Refresh token | None (token is long-lived) | None (long-lived) | Yes (refresh_token) |
-| Response check | `body.code === 0` (HTTP always 200) | `res.ok` | `res.ok` |
-| Monthly data | Daily reports → bucketed in code | `time_increment=monthly` | GAQL `segments.month` |
+| Refresh token | None (token is long-lived ~365d) | None (long-lived) | Yes (refresh_token) |
+| Response status check | `body.code === 0` (HTTP always 200) | `res.ok` | `res.ok` |
+| Monthly data | Daily reports (`stat_time_day`) bucketed in code | `time_increment=monthly` | GAQL `segments.month` |
+| Reporting HTTP method | GET with JSON-encoded query params | POST body | POST body |
 
 ### Data pulled per sync
 
-1. **Account metadata** — advertiser name, currency, timezone, status
-2. **Daily report** — spend, impressions, clicks, conversions, value — bucketed
-   into months (`stat_time_day` dimension → YYYY-MM grouping)
-3. **Campaign report** — spend, conversions, value per campaign
-4. **Campaign list** — name, objective, status (merged with report by campaign ID)
+1. **Account metadata** (`GET /advertiser/info/`) — name, currency, timezone, status
+2. **Daily report** (`GET /report/integrated/get/`, `data_level: AUCTION_ADVERTISER`) — spend, impressions, clicks, conversion, total_value — bucketed by YYYY-MM
+3. **Campaign report** (`GET /report/integrated/get/`, `data_level: AUCTION_CAMPAIGN`) — spend, conversion, total_value per campaign
+4. **Campaign list** (`GET /campaign/get/`) — name, objective, status — merged with report by campaign ID
 
 All stored in `tiktok_accounts`, `tiktok_monthly_insights`, `tiktok_campaigns`.
 TikTok spend feeds into the Exit Score via the shared `adFeeds` pipeline in
-`src/lib/analytics.ts` alongside Meta and Google.
+`src/lib/analytics.ts` alongside Meta, Google, and Snapchat.
+
+**Correct metric names (TikTok v1.3 API):**
+- `conversion` — number of conversions (singular, not `conversions`)
+- `total_value` — total conversion value / revenue (not `value`, not `conversion_value`)
+- `stat_time_day` — daily time dimension (not `date` or `date_time`)
 
 ### Verify end-to-end
 
-1. Set the three env vars; run `npm run dev`.
+1. Set all three env vars; run `npm run dev`.
 2. Open `/tiktok-connect` → **OAuth** tab → **Continue with TikTok** → approve access.
 3. You return to `/tiktok-oauth-callback`; pick an account if prompted; you land on
    `/tiktok-data` with real spend / ROAS / campaigns.
 4. **Refresh** on `/tiktok-data` re-pulls using the stored access token.
 5. **Disconnect** clears all stored TikTok data for that business.
-6. Without env vars: the OAuth tab shows "not configured"; the Access token tab
-   and sandbox creds (`test`/`demo`/`sandbox` in any field) still work.
+6. Without env vars: OAuth tab shows "not configured"; Access token tab and sandbox
+   creds (`test`/`demo`/`sandbox` in any field) still work.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Fix |
-| --- | --- |
-| OAuth tab says "not configured" | Set `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET`, `TIKTOK_OAUTH_REDIRECT_URI` in the server env and restart. |
-| "Redirect URI mismatch" on TikTok consent screen | The portal's **Redirect URI** must match `TIKTOK_OAUTH_REDIRECT_URI` exactly — check scheme, host, port, path, no trailing slash. |
-| `code 40001` / `40002` — invalid token | The access token has expired or is invalid. The user must reconnect via `/tiktok-connect`. |
-| `code 40100` — advertiser not accessible | The token doesn't have access to the chosen advertiser. Check the app's scopes include `Ad Account Read`. |
-| `code 40300` — permission denied | The app doesn't have the `Ad Reporting Read` scope approved. Check scopes in the portal. |
-| "No advertiser accounts were authorised" | The user didn't approve any accounts during the consent flow. Try again. |
-| No data in tables (reports return empty) | The advertiser account has no spend in the trailing 365-day window. Sandbox mode (`test`/`demo` creds) works without a real account. |
-| App stuck in Sandbox | Submit for review in **App Detail → Review** for production multi-user access. |
+| Problem | Cause | Fix |
+| --- | --- | --- |
+| OAuth tab says "not configured" | Env vars missing | Set `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET`, `TIKTOK_OAUTH_REDIRECT_URI` and restart the server. |
+| "Redirect URI mismatch" on TikTok | URI not registered | Add the exact URI (scheme + host + port + path, no trailing slash) to the app's Basic Settings in the portal. |
+| code 40001 — missing/wrong parameter | Wrong advertiser ID format | Check that the Advertiser ID is numeric (no spaces, dashes, or letters). |
+| code 40002 — invalid metric/dimension | API metric name changed | Check `src/lib/tiktok.ts` — metrics must be `total_value` (not `value`) and `conversion` (not `conversions`). |
+| code 40100 — advertiser not accessible | Token scope missing | Check `Ad Account Read` scope is enabled on the app in the portal. |
+| code 40300 — permission denied | Reporting scope missing | Enable `Ad Reporting Read` scope in the app's Scopes settings in the portal. |
+| HTML page / 405 from reporting endpoint | Wrong HTTP method | The reporting endpoint is GET, not POST. Current code is correct — if this appears again check `fetchReportPages` in `src/lib/tiktok.ts`. |
+| "No advertiser accounts were authorised" | User didn't approve | Ask the user to re-authorise and approve at least one advertiser account on the TikTok consent screen. |
+| Accounts show but picking one errors | Any of the above | The error message in the red box on `/tiktok-connect` tells you the exact code — match it to the table above. |
+| No data in tables (reports empty) | No spend in window | The advertiser has no spend in the trailing 365 days. Sandbox mode (`test`/`demo` creds) works without a real account. |
+| App stuck in Sandbox for other users | No App Review | Submit for review in **App Detail → Review** for production multi-user access. |
