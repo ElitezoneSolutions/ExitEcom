@@ -30,6 +30,11 @@ const DATA_BASE = "https://analyticsdata.googleapis.com/v1beta";
 const ADMIN_BASE = "https://analyticsadmin.googleapis.com/v1beta";
 const CHANNEL_CAP = 50;
 const LOOKBACK_DAYS = 365;
+// Earliest date the GA4 Data API accepts. GA4 properties never have data this
+// old, and standard aggregated reports (unlike Explorations) aren't capped by
+// the property's data-retention setting, so this pulls the property's full
+// history — the report returns rows only from the property's first data month.
+const REPORT_START_DATE = "2015-08-14";
 
 export interface GA4SyncInput {
   propertyId: string;
@@ -295,7 +300,7 @@ async function runReport(
       Accept: "application/json",
     },
     body: JSON.stringify({
-      dateRanges: [{ startDate: `${LOOKBACK_DAYS}daysAgo`, endDate: "today" }],
+      dateRanges: [{ startDate: REPORT_START_DATE, endDate: "today" }],
       dimensions: dimensions.map((name) => ({ name })),
       metrics: metrics.map((name) => ({ name })),
       limit: 250,
