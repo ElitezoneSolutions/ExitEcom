@@ -1,20 +1,31 @@
 # ExitEcom Dashboard Context
 
-This file is the working map for the dashboard/application area. The landing page is intentionally out of scope for upcoming backend work unless explicitly requested.
+This file is the original working map of the dashboard/application area — a
+module-by-module intent reference. The landing page is intentionally out of scope.
+
+> **Status (2026-06):** The backend described under each module's "Backend needs"
+> is now largely **built**. The core result pages compute from **real** data via
+> the deterministic engine (`src/lib/analytics.ts`), persisted in Supabase; store
+> data comes from Shopify and is enriched by the Meta/Google/TikTok/Snapchat/GA4
+> connectors. `src/lib/mock.ts` is **no longer the data source** — it survives only
+> as scaffolding for a few not-yet-wired pages (investment memo, financial
+> normalizer, data room). Route files are now `_app.*.tsx` (the authed, pathless
+> layout) rather than `app.*.tsx`; the URL paths are unchanged. For the current,
+> authoritative picture see [`architecture.md`](architecture.md),
+> [`report-calculations.md`](report-calculations.md) and
+> [`data-display.md`](data-display.md). The notes below are kept as the product map.
 
 ## Product Summary
 
 ExitEcom is a pre-exit intelligence dashboard for e-commerce founders preparing to sell their business. The app turns connected store, marketing, analytics, and financial data into a buyer-grade view of readiness, risk, valuation, and value-improvement actions.
-
-The current application is a polished prototype. Most values come from `src/lib/mock.ts`; UI actions are mostly local state, links, or disabled buttons. The next phase is to preserve the current interface while replacing prototype data and placeholder actions with real backend-backed behavior.
 
 ## Current Stack
 
 - TanStack Start, TanStack Router, React 19, Vite.
 - Tailwind v4 style utilities and app-wide tokens live in `src/styles.css`.
 - Shared dashboard components live in `src/components/ex`.
-- Dashboard routes live under `src/routes/app*.tsx`.
-- Mock product data, formatters, risks, actions, add-backs, and data-room categories live in `src/lib/mock.ts`.
+- Dashboard routes live under `src/routes/_app.*.tsx` (the authed pathless layout).
+- `src/lib/mock.ts` survives only as scaffolding for a few not-yet-wired pages and a couple of formatters — it is **not** the live data source.
 - Cloudflare/Vite deployment config exists through `vite.config.ts` and `wrangler.jsonc`.
 
 ## UI Direction

@@ -1,5 +1,13 @@
 # Meta Ads Connector — Build Plan
 
+> **Status (2026-06): SHIPPED.** This is the original build plan, kept for
+> context. The Meta connector now exists (`src/lib/meta.ts`) — along with Google,
+> TikTok, Snapchat and GA4 — and the `adFeeds` pipeline in `src/lib/analytics.ts`
+> drives *Marketing Efficiency & Stability* off real ROAS + spend stability when a
+> feed is connected (the `adSpend = revenueTTM × 0.22` guess is now the no-feed
+> fallback only). See [`architecture.md`](architecture.md) and
+> [`meta-ads-setup.md`](meta-ads-setup.md) for the as-built reality.
+
 Goal: connect a merchant's Meta (Facebook/Instagram) Ads account, pull spend +
 performance + conversion data, persist it raw, and feed **real** ROAS / CAC into
 the Exit Score's *Marketing Efficiency & Stability* category (weight 15) — which

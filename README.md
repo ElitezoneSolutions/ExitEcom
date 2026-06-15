@@ -79,6 +79,14 @@ Create a `.env` file in the project root:
 runs against `localStorage` only (auth is mocked; see
 [Operating modes](#operating-modes)).
 
+**Optional marketing connectors.** Meta, Google Ads, TikTok, Snapchat and GA4
+each have their own server-side OAuth credentials (e.g. `FACEBOOK_APP_ID`,
+`GOOGLE_ADS_*`, `TIKTOK_APP_ID`, `SNAPCHAT_CLIENT_ID`, `GA4_OAUTH_REDIRECT_URI`).
+They are all optional — when unset, that connector's OAuth tab shows a "not
+configured" notice and the rest of the app is unaffected. See
+[`docs/env-vars.md`](docs/env-vars.md) for the full list and each connector's
+`docs/*-ads-setup.md` / `docs/ga4-setup.md` guide.
+
 > **Never set `VITE_GEMINI_API_KEY`.** The `VITE_` prefix inlines the value into
 > the browser bundle and would leak the key publicly. The key is read **only**
 > via `process.env.GEMINI_API_KEY` inside a server function (`src/lib/ai.ts`).
@@ -168,9 +176,11 @@ supabase/
 | `/onboarding`             | 4-step intake wizard; seeds a business in Supabase      |
 | `/dashboard`          | Overview / home                                         |
 | `/profile`            | Business Profile                                        |
-| `/data-sources`       | Connections — Shopify / Meta / Google / uploads         |
+| `/data-sources`       | Connections — Shopify / Meta / Google / TikTok / Snapchat / GA4 / uploads |
 | `/store-data`         | Store Data — all pulled orders / products / customers   |
 | `/shopify-connect`    | Shopify credential + sync flow (authenticate + pull)    |
+| `/{meta,google,tiktok,snapchat}-connect` · `/ga4-connect` | Ad-platform / GA4 OAuth + sync flows |
+| `/{meta,google,tiktok,snapchat}-data` · `/ga4-data` | Per-connector data pages (spend, ROAS, campaigns; GA4 traffic) |
 | `/exit-score`         | Exit Readiness Score (9 dimensions)                     |
 | `/risk-scanner`       | Risk intelligence                                       |
 | `/valuation`          | Valuation Engine                                        |

@@ -2,6 +2,43 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06 — Ad-platform & analytics connectors
+
+Real marketing data now feeds the Exit Score, beyond Shopify. Each connector
+authenticates, pulls raw data, stores it (RLS-protected), and surfaces it on its
+own data page; the figures flow into `src/lib/analytics.ts` via a shared
+`adFeeds` pipeline (Meta / Google / TikTok / Snapchat) plus a separate GA4
+traffic signal.
+
+- **Meta Ads** (`src/lib/meta.ts`, migration `..._meta_raw_data.sql`) — spend,
+  ROAS, per-campaign breakdown.
+- **Google Ads** (`src/lib/google.ts`, `..._google_raw_data.sql` +
+  `..._google_login_customer_id.sql`) — GAQL monthly + per-campaign; `cost_micros ÷ 1M`.
+- **TikTok Ads** (`src/lib/tiktok.ts`, `..._tiktok_raw_data.sql`) — `Access-Token`
+  header, code-`0` envelope, daily reports bucketed to months; in-app OAuth.
+- **Snapchat Ads** (`src/lib/snapchat.ts`, `..._snapchat_raw_data.sql`) — OAuth
+  with 1-hour tokens + auto-refresh. **Account-level stats expose only `spend`**,
+  so the monthly series comes from account-level DAY spend (≤28-day, timezone-
+  aligned windows) and conversions/value come from per-campaign TOTAL stats; the
+  monthly table shows "—" for per-month conversions. The real period conversion
+  value reaches the score via the feed's `conversionValueTotal`. See
+  [snapchat-ads-setup.md](snapchat-ads-setup.md).
+- **GA4** (`src/lib/ga4.ts`, `..._ga4_raw_data.sql`) — web-analytics traffic
+  signal (session growth + channel concentration), **not** an ad feed (no
+  spend/ROAS). Pulls full property history; the data page has a year filter.
+- **Bank statements** (`..._bank_statements.sql` + `..._bank_statements_storage.sql`)
+  and **P&L upload** (`..._pl_upload.sql`) — verified-financials inputs.
+
+### Scoring & confidence updates (`src/lib/analytics.ts`)
+- **Marketing Efficiency & Stability** (dim 3) now uses real per-platform
+  ROAS + spend-stability when any ad feed is connected (`adSpendVerified`),
+  falling back to the repeat-rate proxy otherwise.
+- **Growth Trajectory** (dim 8) folds in GA4 session growth only when ≥6 months
+  of history exist; **Platform & Channel Risk** (dim 9) scores GA4 traffic-channel
+  concentration when a real channel mix is present.
+- **Data Confidence** gains +10 each for a verified ad feed, a connected GA4
+  property, bank statements on file, and a P&L on file (still capped at 95).
+
 ## 2026-06 — Deterministic engine, raw data store & on-demand reports
 
 ### Sync and reporting are now decoupled

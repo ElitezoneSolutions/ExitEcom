@@ -26,7 +26,22 @@ live paths:
 | --- | --- | --- | --- |
 | Business profile (name, industry, channel, country, age, monthly revenue, founder context, exit timeframe) | **Onboarding** (`src/routes/onboarding.tsx`) | `businesses` | Profile (`/profile`) |
 | Raw store data: orders, products, customers, store metadata | **Shopify Connect** (`syncShopifyStoreFn`) | `shopify_stores`, `shopify_orders`, `shopify_products`, `shopify_customers` | Store Data (`/store-data`) |
+| Meta Ads: account, monthly insights (spend/ROAS), campaigns | **Meta Connect** (`_app.meta-connect`, OAuth + sync server fn) | `meta_accounts`, `meta_monthly_insights`, `meta_campaigns` | Meta Data (`/meta-data`); enriches Exit Score (Marketing Efficiency) |
+| Google Ads: account, monthly insights (spend/ROAS), campaigns | **Google Connect** (`_app.google-connect`, OAuth + sync server fn) | `google_accounts`, `google_monthly_insights`, `google_campaigns` | Google Data (`/google-data`); enriches Exit Score (Marketing Efficiency) |
+| TikTok Ads: account, monthly insights (spend/ROAS), campaigns | **TikTok Connect** (`_app.tiktok-connect`, OAuth + sync server fn) | `tiktok_accounts`, `tiktok_monthly_insights`, `tiktok_campaigns` | TikTok Data (`/tiktok-data`); enriches Exit Score (Marketing Efficiency) |
+| Snapchat Ads: account, monthly insights (spend/ROAS), campaigns | **Snapchat Connect** (`_app.snapchat-connect`, OAuth + sync server fn) | `snapchat_accounts`, `snapchat_monthly_insights`, `snapchat_campaigns` | Snapchat Data (`/snapchat-data`); enriches Exit Score (Marketing Efficiency) |
+| GA4 web analytics: account, monthly sessions/conversions, traffic channels | **GA4 Connect** (`_app.ga4-connect`, OAuth + sync server fn) | `ga4_accounts`, `ga4_monthly_insights`, `ga4_channels` | GA4 Data (`/ga4-data`); enriches Exit Score (traffic / growth + channel-risk signal) |
 | Results: Exit Score, valuation range, multiples, KPIs, risks, actions, documents | **Computed on demand** from the raw data (`src/lib/analytics.ts`) | `valuation_data`, `risks`, `actions`, `documents` | Dashboard + result pages |
+
+The ad-platform connectors (Meta / Google / TikTok / Snapchat) and GA4 are
+**optional and additive on top of Shopify** — they are not a second gate. The ad
+feeds replace the benchmark ad-spend estimate and drive **Marketing Efficiency**
+off real per-platform ROAS + spend stability; GA4 is a separate **traffic**
+signal that feeds **Growth** and a traffic-channel-concentration (**channel /
+dependency risk**) dimension. Connecting them raises **Data Confidence** and
+sharpens the score, but Shopify remains the gate that unlocks the result pages.
+Each connector still obeys the no-dummy-data rule — sandbox creds are only used
+when the user explicitly supplies test/demo/sandbox credentials.
 
 `useBusinessData` (`src/hooks/useBusinessData.ts`) is the single read/write layer.
 It maps `businesses` → profile fields, the `shopify_*` tables → raw data, and
@@ -51,9 +66,16 @@ if (!isShopifyConnected) return <ConnectShopifyGate title="…" feature="…" />
 `_app.risk-scanner`, `_app.optimization`, `_app.investment-memo`,
 `_app.financial-normalizer`, `_app.data-room`, `_app.buyer-matching`.
 
-**Always reachable:** `_app.profile`, `_app.data-sources`, `_app.store-data`,
-`_app.shopify-connect`, `_app.settings`, `_app.billing` — you need these to enter
-data, connect, and inspect the pulled raw data.
+**Always reachable:** `_app.profile`, `_app.data-sources`, `_app.settings`,
+`_app.billing`, and every connector's connect + data page — you need these to
+enter data, connect, and inspect the pulled raw data:
+`_app.shopify-connect` / `_app.store-data`,
+`_app.meta-connect` / `_app.meta-data`,
+`_app.google-connect` / `_app.google-data`,
+`_app.tiktok-connect` / `_app.tiktok-data`,
+`_app.snapchat-connect` / `_app.snapchat-data`,
+`_app.ga4-connect` / `_app.ga4-data`, plus the
+`_app.bank-statements-data` and `_app.pl-data` import pages.
 
 Once a store is connected, `isShopifyConnected` is true and the gate lifts. The
 report pages then show a **"Run <feature>"** CTA until the user computes a report;
@@ -70,6 +92,10 @@ Sign up ──▶ Onboarding (4 steps) ──writes businesses row──▶ Data
                                   writes shopify_stores/_orders/_products/_customers
                                                                 ▼
                           Store Data page + result pages unlock (gate lifts)
+                                                                │
+              (optional, additive) Connect Meta / Google / TikTok / Snapchat / GA4
+              writes <platform>_accounts/_monthly_insights/_campaigns (+ ga4_channels)
+              → analytics.ts enriches Marketing Efficiency / Growth / channel-risk
                                                                 │
                                           user clicks "Run" on a report page
                                                                 │

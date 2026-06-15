@@ -119,7 +119,9 @@ Snapchat redirects → /snapchat-oauth-callback?code=&state=     [this app, auth
       ↓ validate state (CSRF), then:
 exchangeSnapchatOAuthCodeFn({code})  [server: code → access_token + refresh_token]
       ↓ GET /v1/me/organizations?with_ad_accounts=true
-      ↓ flatten ad accounts from all orgs → { accessToken, refreshToken, adAccounts[] }
+      ↓ unwrap each organizations[].organization.ad_accounts (Snapchat wraps every
+      ↓ list item as { sub_request_status, <entity> }); per-org fallback to
+      ↓ GET /v1/organizations/{id}/adaccounts → { accessToken, refreshToken, adAccounts[] }
 pick ad account (auto if one, picker if several)
       ↓
 syncSnapchatViaOAuth(adAccountId, accessToken, refreshToken)
@@ -140,23 +142,40 @@ syncSnapchatViaOAuth(adAccountId, accessToken, refreshToken)
 | Refresh token | Yes (1 h expiry) | None (long-lived) | None (long-lived) | Yes (long-lived) |
 | Spend field | `spend` (÷ 1,000,000) | `spend` (raw) | `spend` (raw) | `metrics.cost_micros` (÷ 1M) |
 | Clicks | `swipes` | `clicks` | `clicks` | `metrics.clicks` |
-| Monthly data | Daily timeseries → bucketed | Daily reports → bucketed | `time_increment=monthly` | GAQL `segments.month` |
-| Per-campaign stats | One GET per campaign | Batch report | Batch report | GAQL per campaign |
+| Monthly data | **Account-level DAY `spend` only**, ≤28-day windows → bucketed | Daily reports → bucketed | `time_increment=monthly` | GAQL `segments.month` |
+| Per-campaign stats | One GET per campaign (TOTAL) | Batch report | Batch report | GAQL per campaign |
+| Per-month conversions | **Not available** (account level exposes only spend) | per-day | per-month | per-month |
 
 ### Data pulled per sync
 
-1. **Account metadata** — `GET /v1/adaccounts/{id}` → name, currency, timezone, status
-2. **Daily stats** — `GET /v1/adaccounts/{id}/stats?granularity=DAY` → spend, impressions,
-   swipes, conversions, `conversion_purchases_value` for 365-day lookback, then bucketed
-   to YYYY-MM months in code
-3. **Campaign list** — `GET /v1/adaccounts/{id}/campaigns` → campaign IDs, names,
-   status, objective (capped at 100)
-4. **Per-campaign TOTAL stats** — `GET /v1/campaigns/{id}/stats?granularity=TOTAL` —
-   one request per campaign, all run in parallel
+**The critical constraint:** Snapchat's stats API exposes **only `spend` at the
+ad-account level** — `impressions`, `swipes` and all conversion metrics are
+available **only at the campaign level**. Requesting the full field set against
+`/adaccounts/{id}/stats` returns HTTP 400. The pull is built around that split:
+
+1. **Account metadata** — `GET /v1/adaccounts/{id}` → name, currency, timezone,
+   status (response is `adaccounts[].adaccount`, not a bare object).
+2. **Monthly spend** — `GET /v1/adaccounts/{id}/stats?granularity=DAY&fields=spend`.
+   DAY granularity is capped at **31 days/request** and the `start_time`/`end_time`
+   must be **midnight-aligned in the ad account's timezone** (ISO 8601 + offset), so
+   the 365-day lookback is split into contiguous **≤28-day windows** (`dayWindows()`),
+   fetched in parallel and bucketed to YYYY-MM. This is the authoritative total spend.
+3. **Campaign list** — `GET /v1/adaccounts/{id}/campaigns` → IDs, names, status,
+   objective (capped at `CAMPAIGN_CAP = 100`).
+4. **Per-campaign TOTAL stats** — `GET /v1/campaigns/{id}/stats?granularity=TOTAL`
+   with the full field set → per-campaign spend, conversions and conversion value.
+   Run with **bounded concurrency** (`STATS_CONCURRENCY`) and a QPS/5xx retry
+   (`snapGetRetry`) to stay under the serverless function time limit.
+
+Because conversions exist only per campaign, the **monthly table shows spend per
+month and "—" for the conversion columns** (never a misleading 0). Account totals
+for conversions/value are summed from the campaign breakdown.
 
 All stored in `snapchat_accounts`, `snapchat_monthly_insights`, `snapchat_campaigns`.
-Snapchat spend and conversions feed into the Exit Score via the shared `adFeeds`
-pipeline in `src/lib/analytics.ts` alongside Meta, Google, and TikTok.
+Snapchat spend feeds the Exit Score via the shared `adFeeds` pipeline in
+`src/lib/analytics.ts` alongside Meta, Google and TikTok; the real period
+conversion value is passed as the feed's `conversionValueTotal` (campaign-summed)
+so the score's ROAS reflects real data instead of a per-month zero.
 
 ### Verify end-to-end
 
@@ -181,7 +200,9 @@ pipeline in `src/lib/analytics.ts` alongside Meta, Google, and TikTok.
 | "Snapchat token exchange failed" | Client ID / Secret mismatch. Double-check both values in `.env` against the Snapchat app portal. |
 | HTTP 401 on data pull | Access token expired and refresh failed. Likely because `SNAPCHAT_CLIENT_ID` / `SNAPCHAT_CLIENT_SECRET` are not set — the server cannot refresh without them. Set both env vars. |
 | "Snapchat session has expired and the automatic token refresh failed" | The stored `refresh_token` itself expired (Snapchat revokes them after ~1 year of inactivity). The user must reconnect via `/snapchat-connect`. |
-| "No ad accounts were found" | The Snapchat login has no associated ad accounts, or the consent was denied. Ensure the login has the correct business account linked. |
+| "No ad accounts were found" | The Snapchat login has no associated ad accounts, or consent was denied. Note: each `organizations[]` item is wrapped as `{ sub_request_status, organization: {...} }` — the code unwraps `organization.ad_accounts` and falls back to `GET /organizations/{id}/adaccounts`. If this still fails, the login genuinely has no linked ad account. |
+| `Snapchat API error 400 … /adaccounts/{id}/stats` | Only `spend` is valid at the **ad-account level**. The pull requests `fields=spend` there and gets every other metric from per-campaign TOTAL stats. If you re-add account-level metrics like `impressions`/`conversion_purchases`, Snapchat returns 400. |
 | Empty monthly data | The ad account has no spend in the trailing 365-day window. Sandbox mode (`test`/`demo` creds) returns deterministic demo data without a real account. |
-| Campaigns table empty | Either no campaigns exist in the account, or all 100-campaign slots were filled with campaigns that have no stats in the lookback window. |
+| Monthly table shows "—" for conversions | Expected — conversions/value aren't available per month at the account level. The headline ROAS/conversions and the **Campaigns** tab show the real campaign-level figures. |
+| Campaigns show £0 spend while the account has spend | The per-campaign TOTAL parse (`total_stats[].total_stat.stats`) returned nothing. Verify the response shape against the Snapchat docs — this is the one path validated only against the API reference, not a live account. |
 | `spend` looks 1,000,000× too large | The raw `spend` field from Snapchat's API is in micro-currency units. `src/lib/snapchat.ts` divides by 1,000,000 — if you're seeing inflated numbers, check that you're reading from the stored DB column (already converted), not the raw API response. |

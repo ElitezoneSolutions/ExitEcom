@@ -52,6 +52,28 @@ Required for the in-app OAuth flow. Without these the OAuth tab shows a fallback
 
 ---
 
+## Snapchat Ads
+
+Required for the in-app OAuth flow. Without these the OAuth tab shows a fallback message and users must use the Access token tab. Snapchat access tokens expire after 1 hour; a stored refresh token (used with the Client ID/Secret) renews them automatically.
+
+| Variable | Description |
+|---|---|
+| `SNAPCHAT_CLIENT_ID` | OAuth Client ID from the Snapchat Business → Marketing API app |
+| `SNAPCHAT_CLIENT_SECRET` | OAuth Client Secret from the same app — server-side only |
+| `SNAPCHAT_REDIRECT_URI` | Full callback URL, e.g. `https://yourdomain.com/snapchat-oauth-callback` — must match the Snapchat app exactly |
+
+---
+
+## GA4 (Google Analytics 4)
+
+GA4 **reuses the Google Ads OAuth client** (`GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS_CLIENT_SECRET` above) — it only needs its own redirect URI. Add the read-only Analytics scope to that OAuth client in Google Cloud Console.
+
+| Variable | Description |
+|---|---|
+| `GA4_OAUTH_REDIRECT_URI` | Full callback URL, e.g. `https://yourdomain.com/ga4-oauth-callback` — must be registered on the shared Google OAuth client |
+
+---
+
 ## Shopify Analytic Connector
 
 Only needed if you use the ExitEcom-hosted Shopify connection key flow.
@@ -93,6 +115,14 @@ GOOGLE_OAUTH_REDIRECT_URI=https://yourdomain.com/google-oauth-callback
 TIKTOK_APP_ID=
 TIKTOK_APP_SECRET=
 TIKTOK_OAUTH_REDIRECT_URI=https://yourdomain.com/tiktok-oauth-callback
+
+# Snapchat Ads OAuth
+SNAPCHAT_CLIENT_ID=
+SNAPCHAT_CLIENT_SECRET=
+SNAPCHAT_REDIRECT_URI=https://yourdomain.com/snapchat-oauth-callback
+
+# GA4 (reuses the Google Ads OAuth client above)
+GA4_OAUTH_REDIRECT_URI=https://yourdomain.com/ga4-oauth-callback
 
 # Shopify Analytic Connector (optional)
 # SHOPIFY_ANALYTIC_APP_URL=

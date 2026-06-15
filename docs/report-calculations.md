@@ -39,7 +39,7 @@ computeFullReport() bundles all of the above + a persistable businessUpdate
 ```
 
 - Orchestrated by `computeFullReport()`
-  ([`analytics.ts:644`](../src/lib/analytics.ts)) and triggered by the user
+  ([`analytics.ts:900`](../src/lib/analytics.ts)) and triggered by the user
   pressing **Run** on any report page (`useReport.run()`,
   [`useReport.ts:55`](../src/hooks/useReport.ts)).
 - Notice the dependency chain: **Score feeds Valuation, and Valuation feeds both
@@ -69,7 +69,7 @@ industry so results stay comparable and auditable.
 
 ## 1. Base metrics (`computeMetrics`)
 
-Source: [`analytics.ts:159`](../src/lib/analytics.ts). Produces a `StoreMetrics`
+Source: [`analytics.ts:239`](../src/lib/analytics.ts). Produces a `StoreMetrics`
 object consumed by all four reports.
 
 ### 1.1 Revenue
@@ -132,23 +132,61 @@ These are the constants the order feed can't supply:
 | `ebitda`     | `revenueTTM × netMargin`             | |
 | **`sde`**    | `ebitda × 1.25`                      | Seller's Discretionary Earnings — **the basis the valuation multiplies.** |
 | `opex`       | `grossProfit − ebitda`               | |
-| `adSpend`    | `revenueTTM × 0.22`                  | Benchmark (no ad-platform feed). |
+| `adSpend`    | `revenueTTM × 0.22`                  | **No-feed fallback only.** When any ad-platform feed is connected, this is **overridden** by the summed real spend across feeds (see §1.7). |
 | `netRevenue` | `revenueTTM × 0.95`                  | After returns/discounts allowance. |
-| `roas`       | `0`                                  | Unknown without an ad connection. |
+| `roas`       | `0`                                  | **No-feed fallback only.** When an ad-platform feed is connected, this is **overridden** by the real blended ROAS = total conversion value ÷ total spend (see §1.7). |
+| `blendedCac` | `0`                                  | **No-feed fallback only.** With a feed: `adSpend ÷ newCustomers`. |
 
-(`analytics.ts:271`)
+(`computeMetrics`, [`analytics.ts`](../src/lib/analytics.ts))
 
 ### 1.6 Business age
 
 `businessAgeYears = (now − store.shopCreatedAt) / 1 year`, floored at 0; `0` if
 the store creation date is unknown. (`analytics.ts:291`)
 
+### 1.7 Optional connector inputs (ad feeds + GA4)
+
+Beyond the Shopify feed, `computeMetrics` accepts optional connectors that
+**replace benchmark assumptions with real data**. These are computed in
+`computeMetrics` (the ad-feed block and the GA4 block).
+
+**Ad-platform feeds (`AnalyticsAdsFeed`).** Any of **Meta**, **Google**,
+**TikTok**, and **Snapchat** may be connected (`input.meta`, `input.google`,
+`input.tiktok`, `input.snapchat`). A feed counts as present when it has at least
+one monthly row; `adSpendVerified` is true if **any** feed is connected.
+
+- Each connected platform is **scored separately**, then averaged — so a weak
+  channel isn't masked by a strong one. Per platform:
+  `score = 0.6 × clamp(ROAS/3) + 0.4 × spendStability`, where
+  `spendStability = clamp(1 − stdev(monthlySpend) / mean(monthlySpend))`.
+  `marketingEfficiencyRatio` = the mean of those per-platform scores, and it
+  drives **Marketing Efficiency & Stability** (§2.1, dim 3).
+- `adSpend` = summed real spend across feeds; `roas` = total conversion value ÷
+  total spend (real blended ROAS); `blendedCac = adSpend ÷ max(1, newCustomers)`.
+- Conversion value per platform prefers an account-level
+  `conversionValueTotal` when supplied, else sums the monthly `conversionValue`.
+  **Snapchat** passes `conversionValueTotal` because its account-level API can't
+  break conversion value out per month.
+
+**GA4 feed (`input.ga4`).** A **separate traffic signal** — never summed into
+spend or ROAS. Present when it has at least one monthly row (`ga4Connected`).
+
+- `sessionGrowth` = last-3-months vs. prior-3-months sessions. It is only marked
+  available (`sessionGrowthAvailable`) when the prior-3-month window has data
+  (≥6 months of history); otherwise it stays 0 and is **not** blended in. It
+  corroborates **Growth Trajectory** (§2.1, dim 8).
+- `trafficChannelConcentration` = the top channel's share of all sessions (from
+  the per-channel `sessionShare`, or recomputed from channel sessions). It
+  drives **Platform & Channel Risk** (§2.1, dim 9).
+- `trafficConversionRate` = total conversions ÷ total sessions (surfaced for
+  transparency).
+
 ---
 
 ## 2. Exit Readiness Score
 
 **Page:** `/exit-score` · **Function:** `computeExitScore(metrics)`
-([`analytics.ts:334`](../src/lib/analytics.ts))
+([`analytics.ts:532`](../src/lib/analytics.ts))
 
 A score out of **100** built from **9 weighted dimensions**. The weights (max
 points) sum to exactly 100.
@@ -162,17 +200,20 @@ clamps it to `[0, 1]`, then awards `score = round(max × ratio)`.
 | - | --------- | --- | ------------- | --------------- |
 | 1 | **Financial Quality** | 15 | `(grossMargin/0.7 + netMargin/0.2) / 2` | Healthy margins vs. a 70%/20% target. |
 | 2 | **Revenue Quality** | 10 | `revenueTTM / 500,000` | Absolute scale; full marks at ~£500k TTM. |
-| 3 | **Marketing Efficiency & Stability** | 15 | `repeatRate / 0.3` | Retention as a proxy for non-paid stability; full marks at 30% repeat. |
+| 3 | **Marketing Efficiency & Stability** | 15 | `adSpendVerified ? marketingEfficiencyRatio : repeatRate / 0.3` | With an ad feed (§1.7): the average of each connected platform's own `0.6·clamp(ROAS/3) + 0.4·spendStability` score. Without one: retention proxy, full marks at 30% repeat. |
 | 4 | **Customer Economics** | 10 | `(repeatRate/0.3 + avgOrderValue/80) / 2` | Repeat rate **and** AOV (target £80). |
 | 5 | **Product & Supply Risk** | 10 | `1 − (topProductShare − 0.2)/0.6` | _Lower_ concentration scores higher. ~20% share ≈ full marks; ~80% ≈ zero. |
 | 6 | **Operational Maturity** | 10 | `(clamp(productCount/20) + clamp(orderCount/200)) / 2` | Catalogue breadth + order volume. |
 | 7 | **Founder Dependency** | 10 | `0.5` (fixed) | Can't be read from Shopify → **neutral** placeholder. |
-| 8 | **Growth Trajectory & Potential** | 10 | `(growthRate + 0.1)/0.4` | Recent momentum; flat growth ≈ 0.25 ratio. |
-| 9 | **Platform & Channel Risk** | 10 | `0.6` (fixed) | Single channel (Shopify only) → moderate default. |
+| 8 | **Growth Trajectory & Potential** | 10 | `sessionGrowthAvailable ? ((growthRate + 0.1)/0.4 + (sessionGrowth + 0.1)/0.4)/2 : (growthRate + 0.1)/0.4` | Revenue momentum, **corroborated by GA4 session growth** only when ≥6 months of GA4 history exist (§1.7). Without GA4: revenue growth alone; flat growth ≈ 0.25 ratio. |
+| 9 | **Platform & Channel Risk** | 10 | `ga4Connected && trafficChannelConcentration > 0 ? clamp(1 − (trafficChannelConcentration − 0.25)/0.5) : 0.6` | With a real GA4 channel mix (§1.7): rewards a **less concentrated** top traffic channel (0.25 share ≈ full marks, 0.75+ ≈ zero). Without it: neutral 0.6 default (single channel, Shopify only). |
 
-> Dimensions 7 and 9 are **fixed** because the underlying facts (who runs the
-> business, what other channels exist) aren't in the Shopify feed. They're held
-> at honest, moderate defaults rather than guessed.
+> Dimension 7 is **fixed** because the underlying fact (who runs the business)
+> isn't in any feed — held at an honest, moderate default rather than guessed.
+> Dimension 9 is **no longer always fixed**: it uses real GA4 traffic-channel
+> concentration when a channel mix exists, and only falls back to the neutral
+> `0.6` when no GA4 channel data is connected. Dimensions 3 and 8 likewise use
+> real ad-feed / GA4 data when available, falling back to proxies otherwise.
 
 ### 2.2 Status colour per dimension
 
@@ -181,7 +222,7 @@ ratio ≥ 0.66 → green
 ratio ≥ 0.40 → amber
 else         → red
 ```
-(`statusFor`, [`analytics.ts:148`](../src/lib/analytics.ts))
+(`statusFor`, [`analytics.ts:228`](../src/lib/analytics.ts))
 
 ### 2.3 Total, tier & confidence
 
@@ -199,19 +240,26 @@ exitScore = Σ dimension scores            (0–100)
 **Data Confidence** (how much real data backs the score):
 ```
 dataConfidence = 50 + clamp(orderCount/200) × 30
-               + 10 if customerCount > 0
-               + 10 if productCount  > 0
+               + 10 if customerCount         > 0
+               + 10 if productCount          > 0
+               + 10 if adSpendVerified            (any ad feed connected)
+               + 10 if ga4Connected               (GA4 property connected)
+               + 10 if bankStatementsMonthCount >= 1
+               + 10 if plFileCount           >= 1
 capped at 95
 ```
-So a brand-new store with a handful of orders sits near 50%, and a store with
-200+ orders plus customer and product data approaches the 95% cap.
+So a brand-new store with a handful of orders sits near 50%; a store with 200+
+orders plus customer and product data already approaches the cap, and each
+verified connector (ad feed, GA4, bank statements, P&L) adds further confidence
+up to the 95% ceiling — because the affected dimensions are no longer proxy
+guesses.
 
 ---
 
 ## 3. Risk Scanner
 
 **Page:** `/risk-scanner` · **Function:** `computeRisks(metrics, valuation)`
-([`analytics.ts:488`](../src/lib/analytics.ts))
+([`analytics.ts:716`](../src/lib/analytics.ts))
 
 Surfaces the risks a buyer prices in, and quantifies each in **£ impact on
 valuation**. Impacts are sized as fractions of the **value gap** from the
@@ -237,7 +285,7 @@ and a `recommendation`. These strings are deterministic templates — and are th
 only thing Gemini may later rephrase (never the numbers).
 
 > **Related score field:** `riskScore = max(0, 100 − exitScore)`
-> (`buildBusinessUpdate`, [`analytics.ts:629`](../src/lib/analytics.ts)) — the
+> (`buildBusinessUpdate`, [`analytics.ts:842`](../src/lib/analytics.ts)) — the
 > inverse of the Exit Score, shown as an overall risk read-out.
 
 ---
@@ -245,7 +293,7 @@ only thing Gemini may later rephrase (never the numbers).
 ## 4. Valuation Engine
 
 **Page:** `/valuation` · **Function:** `computeValuation(metrics, exitScore)`
-([`analytics.ts:408`](../src/lib/analytics.ts))
+([`analytics.ts:636`](../src/lib/analytics.ts))
 
 Turns earnings into a buyer-grade valuation **range** using an SDE multiple that
 is itself driven by the Exit Score.
@@ -295,7 +343,7 @@ These labels explain the multiple to the user; the actual multiple comes from
 
 **Page:** `/optimization` · **Function:**
 `computeOptimization(metrics, valuation)`
-([`analytics.ts:540`](../src/lib/analytics.ts))
+([`analytics.ts:796`](../src/lib/analytics.ts))
 
 A prioritised, costed roadmap: each action carries an **£ uplift** (a slice of
 the value gap it would recover) and a time estimate. Same `gap` basis as Risks:
@@ -325,7 +373,7 @@ and `optimised`.
 ## 6. Persistence & display
 
 After computing, `buildBusinessUpdate()`
-([`analytics.ts:586`](../src/lib/analytics.ts)) flattens everything into the
+([`analytics.ts:842`](../src/lib/analytics.ts)) flattens everything into the
 shape stored in Supabase (`valuation_data`, `risks`, `actions`) and cached in
 `localStorage`. Key persisted roll-ups:
 

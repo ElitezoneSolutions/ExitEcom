@@ -203,6 +203,14 @@ always yields the same numbers.
   12-month revenue buckets, AOV, repeat rate, per-product revenue +
   `topProductShare` (from real line items), industry margins, COGS, gross profit,
   EBITDA, SDE (= EBITDA × 1.25), opex, business age, growth rate.
+  - It also consumes **optional ad feeds** (Meta/Google/TikTok/Snapchat) and an
+    **optional GA4 traffic signal**. The four ad feeds are each an
+    `AnalyticsAdsFeed` (`{ monthly, campaigns, conversionValueTotal? }`) collected
+    into an `adFeeds` array; they drive **Marketing Efficiency** (dim 3), **Growth**
+    (dim 8) and **Platform/Channel Risk** (dim 9), and raise **Data Confidence**.
+    GA4 (`AnalyticsGA4`: monthly traffic/conversion series + per-channel breakdown)
+    is **not** an ad feed — it carries no spend/ROAS, so it feeds a separate session
+    growth + traffic-channel-concentration signal and its own Data Confidence bump.
 - `computeExitScore(metrics)` → score across **9 dimensions** summing to 100, a
   `scoreTier`, and a `dataConfidence`.
 - `computeValuation(metrics, exitScore)` → low / mid / high / optimised values,
@@ -223,6 +231,54 @@ original text unchanged (`passthrough`). Numbers never pass through here.
 
 ---
 
+## 5b. The ad-platform & analytics connectors
+
+The Shopify pipeline (§5) is the template for every other data source. Each
+connector is its own `src/lib/<platform>.ts` exposing one or more
+`createServerFn`s that **only authenticate, pull raw data, and return it** — never
+compute a score. A connector authenticates via OAuth (a real in-app flow whose
+App ID/secret live in this app's server env, redirecting to a route on this app's
+own origin) **and/or** a direct-token path (the user pastes a token they generated
+themselves). The server fn returns the raw `{ account, monthly[], campaigns[] }`
+to the connect-page hook, which holds the authed Supabase session and persists the
+rows into RLS-protected per-business tables (a server-side anon client would be
+blocked by RLS, exactly as in §5). The stored figures then feed the Exit Score on
+demand via `useReport` and surface on the per-platform data pages.
+
+Per-platform key quirks (full details in each `docs/*-setup.md`):
+
+- **Meta** (`src/lib/meta.ts`, [`docs/meta-ads-setup.md`](./meta-ads-setup.md)) —
+  Graph API uses **query-param auth** (`access_token=…`); conversions are read
+  from `actions`/`action_values` purchase-style entries.
+- **Google Ads** (`src/lib/google.ts`,
+  [`docs/google-ads-setup.md`](./google-ads-setup.md)) — spend comes back as
+  `cost_micros`, so divide by **1,000,000**; needs three server secrets and an
+  approved developer token, plus a per-connection `login_customer_id` for MCC
+  hierarchies.
+- **TikTok** (`src/lib/tiktok.ts`,
+  [`docs/tiktok-ads-setup.md`](./tiktok-ads-setup.md)) — auth is an
+  **`Access-Token:` header** (not Bearer) and the response is a **`{ code: 0, data }`
+  envelope** (check `code`, not HTTP status); there is **no refresh token** (the
+  access token is long-lived), so nothing to refresh.
+- **Snapchat** (`src/lib/snapchat.ts`,
+  [`docs/snapchat-ads-setup.md`](./snapchat-ads-setup.md)) — standard
+  **`Bearer` auth** but access tokens expire in **1 hour**, so a `refresh_token` is
+  stored and used on 401 (refreshed creds are returned for the caller to persist);
+  the ad account exposes **only spend**, so conversions come from **per-campaign
+  TOTAL stats** (one request per campaign).
+- **GA4** (`src/lib/ga4.ts`, [`docs/ga4-setup.md`](./ga4-setup.md)) — a
+  **web-analytics** source, not an ad platform (no spend/ROAS). It reuses the
+  Google Ads OAuth client (same GCP project) with the read-only Analytics scope and
+  a GA4-specific redirect URI, and pulls a monthly traffic/conversion series plus a
+  per-channel breakdown that feeds the **traffic** signal (see §5a).
+
+> The P&L and bank-statement uploads follow the same store-raw-only rule, but their
+> source is an uploaded PDF rather than an API. The PDFs live in **private,
+> owner-scoped Supabase Storage buckets** (`bank-statements`, `pl-uploads`); the
+> parsed monthly figures land in the tables below.
+
+---
+
 ## 6. Data model (Supabase)
 
 Defined in `supabase/migrations/`. Every table has **Row-Level Security** so a
@@ -240,21 +296,48 @@ user only ever sees rows tied to their own `auth.uid()`.
 | `shopify_orders`    | `business_id` + UNIQUE Shopify ID  | Raw orders: total, currency, dates, financial status, customer id, `line_items` jsonb. |
 | `shopify_products`  | `business_id` + UNIQUE Shopify ID  | Raw products: title, type, vendor, status, `variants` jsonb.     |
 | `shopify_customers` | `business_id` + UNIQUE Shopify ID  | Raw customers: email, name, `orders_count`, `total_spent`, last-order date. |
+| `meta_accounts`     | `business_id` (PK/FK)              | One Meta ad account per business: id, name, currency, timezone, status, token. |
+| `meta_monthly_insights` | `business_id` + UNIQUE `month`  | Monthly Meta spend/impressions/clicks/conversions series.        |
+| `meta_campaigns`    | `business_id` + UNIQUE `meta_campaign_id` | Per-campaign Meta breakdown.                            |
+| `google_accounts`   | `business_id` (PK/FK)              | One Google Ads account: `customer_id`, name, currency, refresh token, `login_customer_id`. |
+| `google_monthly_insights` | `business_id` + UNIQUE `month` | Monthly Google Ads spend (from `cost_micros`)/clicks/conversions series. |
+| `google_campaigns`  | `business_id` + UNIQUE `google_campaign_id` | Per-campaign Google Ads breakdown.                   |
+| `tiktok_accounts`   | `business_id` (PK/FK)              | One TikTok account: `advertiser_id`, name, currency, timezone, status, token. |
+| `tiktok_monthly_insights` | `business_id` + UNIQUE `month` | Monthly TikTok spend/impressions/clicks/conversions series.      |
+| `tiktok_campaigns`  | `business_id` + UNIQUE `tiktok_campaign_id` | Per-campaign TikTok breakdown.                       |
+| `snapchat_accounts` | `business_id` (PK/FK)              | One Snapchat account: ad-account id, name, currency, timezone, status, access + refresh tokens. |
+| `snapchat_monthly_insights` | `business_id` + UNIQUE `month` | Monthly Snapchat spend (account-level) + conversions series.    |
+| `snapchat_campaigns`| `business_id` + UNIQUE `snapchat_campaign_id` | Per-campaign Snapchat breakdown (source of conversions). |
+| `ga4_accounts`      | `business_id` (PK/FK)              | One GA4 property: `property_id`, name, currency, timezone, refresh token. |
+| `ga4_monthly_insights` | `business_id` + UNIQUE `month`  | Monthly GA4 traffic/sessions/conversions/revenue series.         |
+| `ga4_channels`      | `business_id` + UNIQUE `channel`  | Per-channel GA4 traffic breakdown.                               |
+| `bank_statement_files` | `id`, FK `business_id`          | Uploaded bank-statement PDF metadata + `file_path` into the `bank-statements` Storage bucket. |
+| `bank_statement_monthly` | `business_id` + UNIQUE `month` | Parsed monthly inflow/outflow figures from bank statements.      |
+| `pl_files`          | `id`, FK `business_id`             | Uploaded P&L PDF metadata + path into the `pl-uploads` Storage bucket. |
 
 The `valuation_data` / `risks` / `actions` tables store **computed report
-snapshots**; the `shopify_*` tables store the **raw pulled data** that those
-reports are computed from. Per-product revenue, repeat rates, concentration and
-TTM are always **derived at compute time** from the raw rows, never denormalised.
+snapshots**; the `shopify_*`, `<platform>_*`, `ga4_*` and upload tables store the
+**raw pulled/parsed data** that those reports are computed from. Per-product
+revenue, repeat rates, concentration and TTM are always **derived at compute time**
+from the raw rows, never denormalised.
 
-RLS on every child table (`valuation_data`/`risks`/`actions`/`documents` and all
-four `shopify_*` tables) is enforced via an
-`exists (... where businesses.owner_id = auth.uid())` subquery. The UNIQUE
-`(business_id, shopify_*_id)` keys make re-syncs idempotent upserts.
+RLS on every child table (`valuation_data`/`risks`/`actions`/`documents`, all four
+`shopify_*` tables, and the per-platform `meta_*`/`google_*`/`tiktok_*`/
+`snapchat_*`/`ga4_*` and `bank_statement_*`/`pl_files` tables) is enforced via an
+`exists (... where businesses.owner_id = auth.uid())` subquery so each row stays
+scoped to the owning business. The UNIQUE keys (`shopify_*_id`, `month`,
+`<platform>_campaign_id`, `channel`) make re-syncs idempotent upserts. The
+`bank-statements` and `pl-uploads` Storage buckets are private with owner-scoped
+path policies on `storage.objects`.
 
-> The raw tables were added in `supabase/migrations/20260606000000_shopify_raw_data.sql`,
-> which also extended `valuation_data` with the new columns above (all via
-> `add column if not exists`). **Migrations must be applied to the live hosted
-> project** — see the standing note in memory.
+> The raw tables were added across `supabase/migrations/` — the
+> `shopify_raw_data` migration plus one per platform
+> (`*_meta_raw_data`, `*_google_raw_data`, `*_tiktok_raw_data`,
+> `*_snapchat_raw_data`, `*_ga4_raw_data`) and the upload migrations
+> (`*_bank_statements`, `*_bank_statements_storage`, `*_pl_upload`). The original
+> `shopify_raw_data` migration also extended `valuation_data` with the new columns
+> above (all via `add column if not exists`). **Migrations must be applied to the
+> live hosted project** — see the standing note in memory.
 
 ---
 
