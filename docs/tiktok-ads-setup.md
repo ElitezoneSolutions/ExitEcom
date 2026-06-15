@@ -134,8 +134,17 @@ TikTok spend feeds into the Exit Score via the shared `adFeeds` pipeline in
 
 **Correct metric names (TikTok v1.3 API):**
 - `conversion` — number of conversions (singular, not `conversions`)
-- `total_value` — total conversion value / revenue (not `value`, not `conversion_value`)
+- `total_value` — total conversion value / revenue (not `value`, not `conversion_value`); silently omitted for accounts that don't track purchase value
 - `stat_time_day` — daily time dimension (not `date` or `date_time`)
+
+**Silent fallback chain (daily report):**
+The connector tries the richest data shape first and falls back automatically if TikTok rejects it:
+1. `AUCTION_ADVERTISER` + `total_value` + 365-day window (production)
+2. → `total_value` invalid → retry without it (ROAS/conversionValue = 0)
+3. → `AUCTION_ADVERTISER` unsupported → retry with `AUCTION_CAMPAIGN` (sandbox)
+4. → time span > 30 days → retry with 30-day window (sandbox)
+
+QPS rate limits (code 40100 + "qps" in message) trigger automatic backoff and retry at each step.
 
 ### Verify end-to-end
 
@@ -158,10 +167,15 @@ TikTok spend feeds into the Exit Score via the shared `adFeeds` pipeline in
 | "Redirect URI mismatch" on TikTok | URI not registered | Add the exact URI (scheme + host + port + path, no trailing slash) to the app's Basic Settings in the portal. |
 | code 40001 — missing/wrong parameter | Wrong advertiser ID format | Check that the Advertiser ID is numeric (no spaces, dashes, or letters). |
 | code 40002 — invalid metric/dimension | API metric name changed | Check `src/lib/tiktok.ts` — metrics must be `total_value` (not `value`) and `conversion` (not `conversions`). |
+| code 40100 + "QPS" in message — rate limit | Too many parallel requests | Code automatically retries with backoff. If it persists, the account's QPS quota is very low — wait a moment and retry. |
 | code 40100 — advertiser not accessible | Token scope missing | Check `Ad Account Read` scope is enabled on the app in the portal. |
+| code 40105 — token revoked | Token expired or revoked | Generate a new token in the TikTok Marketing API portal and reconnect. |
 | code 40300 — permission denied | Reporting scope missing | Enable `Ad Reporting Read` scope in the app's Scopes settings in the portal. |
+| code 40009 — unsupported data_level | Sandbox limitation | Code automatically falls back to `AUCTION_CAMPAIGN` data level. No action needed. |
+| "max time span is 30 days" | Sandbox daily report limit | Code automatically retries with a 30-day window. No action needed — you'll get 1 month of data instead of 12. |
 | HTML page / 405 from reporting endpoint | Wrong HTTP method | The reporting endpoint is GET, not POST. Current code is correct — if this appears again check `fetchReportPages` in `src/lib/tiktok.ts`. |
 | "No advertiser accounts were authorised" | User didn't approve | Ask the user to re-authorise and approve at least one advertiser account on the TikTok consent screen. |
 | Accounts show but picking one errors | Any of the above | The error message in the red box on `/tiktok-connect` tells you the exact code — match it to the table above. |
-| No data in tables (reports empty) | No spend in window | The advertiser has no spend in the trailing 365 days. Sandbox mode (`test`/`demo` creds) works without a real account. |
+| OAuth connects but data gone after refresh | `business.id` race in popup | Fixed in code — `commitTikTokSync` now fetches business ID directly from Supabase if not in state yet. |
+| No data in tables (reports empty) | No spend in window | The advertiser has no spend in the trailing 365 days (or 30 days in sandbox). Use the sandbox checkbox + TikTok sandbox creds to test without real spend. |
 | App stuck in Sandbox for other users | No App Review | Submit for review in **App Detail → Review** for production multi-user access. |
