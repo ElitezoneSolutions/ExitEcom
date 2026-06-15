@@ -100,12 +100,9 @@ interface SnapchatTokenResponse {
   error_description?: string;
 }
 
-interface SnapchatOrg {
-  id: string;
-  name?: string;
-  ad_accounts?: SnapchatAdAccountRaw[];
-}
-
+// Snapchat wraps every list item as { sub_request_status, <entity>: {...} }, where
+// the entity key differs per endpoint (organization / adaccount / timeseries_stat /
+// total_stat / campaign). unwrapEntries() pulls the inner objects out uniformly.
 interface SnapchatAdAccountRaw {
   id: string;
   name?: string;
@@ -114,18 +111,14 @@ interface SnapchatAdAccountRaw {
   status?: string;
 }
 
-interface SnapchatStatsItem {
-  sub_request_status?: string;
-  timeseries_stats?: {
-    id?: string;
-    granularity?: string;
-    stats?: SnapchatStatFields;
-    timeseries?: Array<{
-      start_time?: string;
-      end_time?: string;
-      stats?: SnapchatStatFields;
-    }>;
-  };
+interface SnapchatOrg {
+  id: string;
+  name?: string;
+  // with_ad_accounts=true inlines accounts UNWRAPPED. Some responses wrap them
+  // like the standalone endpoint, so each item may also carry an `adaccount`.
+  ad_accounts?: Array<
+    SnapchatAdAccountRaw & { adaccount?: SnapchatAdAccountRaw }
+  >;
 }
 
 interface SnapchatStatFields {
@@ -136,11 +129,40 @@ interface SnapchatStatFields {
   conversion_purchases_value?: number;
 }
 
-interface SnapchatCampaignItem {
+interface OrgEntry {
+  organization?: SnapchatOrg;
+}
+
+interface AdAccountEntry {
+  adaccount?: SnapchatAdAccountRaw;
+}
+
+// DAY granularity → timeseries_stat (a series of buckets); TOTAL → total_stat (one bucket).
+interface TimeseriesStatEntry {
+  timeseries_stat?: {
+    id?: string;
+    granularity?: string;
+    timeseries?: Array<{
+      start_time?: string;
+      end_time?: string;
+      stats?: SnapchatStatFields;
+    }>;
+  };
+}
+
+interface TotalStatEntry {
+  total_stat?: {
+    id?: string;
+    stats?: SnapchatStatFields;
+  };
+}
+
+interface CampaignEntry {
   campaign?: {
     id?: string;
     name?: string;
     status?: string;
+    objective?: string;
     objective_v2_properties?: { objective?: string };
   };
 }
@@ -159,8 +181,63 @@ function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function toISODateTime(d: Date): string {
-  return d.toISOString().replace(".000Z", "-0000");
+// DAY-granularity stats are capped at 31 days per request AND require start/end
+// times aligned to midnight in the ad account's timezone (ISO 8601 with offset).
+// These helpers build contiguous, zone-aligned ≤28-day windows over the lookback.
+function zoneOffset(at: Date, timeZone: string): string {
+  const name = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(at)
+    .find((p) => p.type === "timeZoneName")?.value;
+  const m = name?.match(/([+-]\d{2}):?(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : "+00:00";
+}
+
+function zonedMidnight(at: Date, timeZone: string): string {
+  // en-CA formats as YYYY-MM-DD; pair it with the zone's offset at that instant.
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+  return `${ymd}T00:00:00${zoneOffset(at, timeZone)}`;
+}
+
+// Snapchat returns IANA zone names (e.g. "America/Los_Angeles"); fall back to
+// UTC if the value is missing or unrecognised so Intl can't throw mid-pull.
+function safeTimeZone(tz: string | undefined): string {
+  if (!tz) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return "UTC";
+  }
+}
+
+function dayWindows(
+  since: Date,
+  until: Date,
+  timeZone: string,
+  maxDays = 28,
+): Array<{ start: string; end: string }> {
+  const windows: Array<{ start: string; end: string }> = [];
+  let cursor = new Date(zonedMidnight(since, timeZone));
+  const end = new Date(zonedMidnight(until, timeZone));
+  while (cursor < end) {
+    const next = new Date(
+      Math.min(cursor.getTime() + maxDays * 86400000, end.getTime()),
+    );
+    windows.push({
+      start: zonedMidnight(cursor, timeZone),
+      end: zonedMidnight(next, timeZone),
+    });
+    cursor = next;
+  }
+  return windows;
 }
 
 function round(n: number): number {
@@ -204,7 +281,16 @@ async function snapGet<T>(url: string, accessToken: string): Promise<T> {
       `Snapchat API error ${res.status} for ${url.replace(API_BASE, "")}`,
     );
   }
-  return res.json() as Promise<T>;
+  // Snapchat can return HTTP 200 with request_status "ERROR" (e.g. a permission
+  // problem). Surface that instead of letting it read as an empty result.
+  const json = (await res.json()) as T & { request_status?: string };
+  const status = json.request_status;
+  if (status && status.toUpperCase() !== "SUCCESS") {
+    throw new Error(
+      `Snapchat API request failed (request_status: ${status}) for ${url.replace(API_BASE, "")}`,
+    );
+  }
+  return json;
 }
 
 async function refreshAccessToken(
@@ -255,22 +341,42 @@ function computeTotals(monthly: RawSnapchatMonthly[]): SnapchatTotals {
     conversionValue: round(sum.conversionValue),
     roas: sum.spend > 0 ? round(sum.conversionValue / sum.spend) : 0,
     cpa: sum.conversions > 0 ? round(sum.spend / sum.conversions) : 0,
-    ctr:
-      sum.impressions > 0
-        ? round((sum.clicks / sum.impressions) * 100)
-        : 0,
+    ctr: sum.impressions > 0 ? round((sum.clicks / sum.impressions) * 100) : 0,
     cpc: sum.clicks > 0 ? round(sum.spend / sum.clicks) : 0,
   };
 }
 
-function extractStats(item?: SnapchatStatsItem): SnapchatStatFields {
-  return item?.timeseries_stats?.stats ?? {};
+// Snapchat list items nest their entity under a per-endpoint key; lift them out,
+// dropping any entry whose inner object is absent.
+function unwrapEntries<E, V>(
+  entries: E[] | undefined,
+  pick: (entry: E) => V | undefined,
+): V[] {
+  return (entries ?? []).map(pick).filter((v): v is V => v != null);
+}
+
+// Tolerates both the unwrapped inline shape and a wrapped { adaccount } item.
+function mapAdAccount(
+  raw: SnapchatAdAccountRaw & { adaccount?: SnapchatAdAccountRaw },
+): SnapchatAdAccount {
+  const a = raw.adaccount ?? raw;
+  return {
+    adAccountId: a.id,
+    name: a.name ?? a.id,
+    currency: a.currency ?? "USD",
+    timezone: a.timezone ?? "",
+    accountStatus: (a.status ?? "ACTIVE").toLowerCase(),
+  };
+}
+
+function extractTotalStats(entry?: TotalStatEntry): SnapchatStatFields {
+  return entry?.total_stat?.stats ?? {};
 }
 
 function extractTimeseries(
-  item?: SnapchatStatsItem,
+  entry?: TimeseriesStatEntry,
 ): Array<{ start_time?: string; stats?: SnapchatStatFields }> {
-  return item?.timeseries_stats?.timeseries ?? [];
+  return entry?.timeseries_stat?.timeseries ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -282,33 +388,50 @@ async function pull(
 ): Promise<Omit<SnapchatSyncResult, "updatedTokens">> {
   const until = new Date();
   const since = new Date(until.getTime() - LOOKBACK_DAYS * 86400000);
-  const startTime = toISODateTime(since);
-  const endTime = toISODateTime(until);
   const statsFields =
     "impressions,swipes,spend,conversion_purchases,conversion_purchases_value";
 
-  // 1. Account metadata + 2. Daily stats — in parallel
-  const [acctJson, dailyJson, campaignsJson] = await Promise.all([
-    snapGet<{ request_status: string; adaccount?: SnapchatAdAccountRaw }>(
-      `${API_BASE}/adaccounts/${adAccountId}`,
-      accessToken,
+  // 1. Account metadata first — its timezone determines how we align the
+  //    midnight-bounded windows that Snapchat's DAY-granularity stats require.
+  const acctJson = await snapGet<{
+    request_status: string;
+    adaccounts?: AdAccountEntry[];
+  }>(`${API_BASE}/adaccounts/${adAccountId}`, accessToken);
+  const acct = acctJson.adaccounts?.[0]?.adaccount;
+  const timeZone = safeTimeZone(acct?.timezone);
+
+  // DAY granularity is capped at 31 days/request, so split the lookback into
+  // contiguous ≤28-day windows. TOTAL granularity (per-campaign) has no cap.
+  const windows = dayWindows(since, until, timeZone);
+  const rangeStart = windows[0]?.start ?? zonedMidnight(since, timeZone);
+  const rangeEnd =
+    windows[windows.length - 1]?.end ?? zonedMidnight(until, timeZone);
+
+  // 2. Daily stats (one request per window) + 3. Campaign list — in parallel.
+  const [dailyJsons, campaignsJson] = await Promise.all([
+    Promise.all(
+      windows.map((w) =>
+        snapGet<{
+          request_status: string;
+          timeseries_stats?: TimeseriesStatEntry[];
+        }>(
+          `${API_BASE}/adaccounts/${adAccountId}/stats` +
+            `?granularity=DAY&fields=${statsFields}` +
+            `&start_time=${encodeURIComponent(w.start)}&end_time=${encodeURIComponent(w.end)}`,
+          accessToken,
+        ),
+      ),
     ),
-    snapGet<{ request_status: string; stats?: SnapchatStatsItem[] }>(
-      `${API_BASE}/adaccounts/${adAccountId}/stats` +
-        `?granularity=DAY&fields=${statsFields}&start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`,
-      accessToken,
-    ),
-    snapGet<{ request_status: string; campaigns?: SnapchatCampaignItem[] }>(
+    snapGet<{ request_status: string; campaigns?: CampaignEntry[] }>(
       `${API_BASE}/adaccounts/${adAccountId}/campaigns?limit=250`,
       accessToken,
     ),
   ]);
 
-  // Account
-  const acct = acctJson.adaccount;
-
-  // Monthly series — aggregate daily timeseries to YYYY-MM buckets
-  const dailyRows = extractTimeseries(dailyJson.stats?.[0]);
+  // Monthly series — aggregate every window's daily timeseries to YYYY-MM buckets
+  const dailyRows = dailyJsons.flatMap((j) =>
+    extractTimeseries(j.timeseries_stats?.[0]),
+  );
   const byMonth = new Map<string, RawSnapchatMonthly>();
   for (const row of dailyRows) {
     const day = row.start_time?.slice(0, 10) ?? ""; // YYYY-MM-DD
@@ -353,21 +476,24 @@ async function pull(
       try {
         const json = await snapGet<{
           request_status: string;
-          stats?: SnapchatStatsItem[];
+          total_stats?: TotalStatEntry[];
         }>(
           `${API_BASE}/campaigns/${c.id}/stats` +
-            `?granularity=TOTAL&fields=${statsFields}&start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`,
+            `?granularity=TOTAL&fields=${statsFields}&start_time=${encodeURIComponent(rangeStart)}&end_time=${encodeURIComponent(rangeEnd)}`,
           accessToken,
         );
-        const s = extractStats(json.stats?.[0]);
+        const s = extractTotalStats(json.total_stats?.[0]);
         const spend = round(fromMicro(s.spend));
         const conversionValue = round(s.conversion_purchases_value ?? 0);
         const conversions = s.conversion_purchases ?? 0;
+        const objectiveRaw =
+          c.objective_v2_properties?.objective ?? c.objective ?? null;
         return {
           snapchatCampaignId: c.id,
           name: c.name ?? c.id,
-          objective:
-            c.objective_v2_properties?.objective?.toLowerCase().replace(/_/g, " ") ?? null,
+          objective: objectiveRaw
+            ? objectiveRaw.toLowerCase().replace(/_/g, " ")
+            : null,
           status: c.status?.toLowerCase() ?? null,
           spend,
           conversions,
@@ -404,7 +530,9 @@ async function pull(
 // ---------------------------------------------------------------------------
 // Sandbox — deterministic demo data for local/dev use
 // ---------------------------------------------------------------------------
-function buildSandbox(adAccountId: string): Omit<SnapchatSyncResult, "updatedTokens"> {
+function buildSandbox(
+  adAccountId: string,
+): Omit<SnapchatSyncResult, "updatedTokens"> {
   const now = Date.now();
   const monthly: RawSnapchatMonthly[] = [];
   for (let i = 11; i >= 0; i--) {
@@ -416,11 +544,23 @@ function buildSandbox(adAccountId: string): Omit<SnapchatSyncResult, "updatedTok
     const conversions = Math.max(1, Math.round(conversionValue / 50));
     const clicks = Math.round(spend / 0.9);
     const impressions = clicks * 60;
-    monthly.push({ month, spend, impressions, clicks, conversions, conversionValue, roas });
+    monthly.push({
+      month,
+      spend,
+      impressions,
+      clicks,
+      conversions,
+      conversionValue,
+      roas,
+    });
   }
 
   const seeds = [
-    { name: "Snap Ads — Prospecting", objective: "awareness and engagement", share: 0.4 },
+    {
+      name: "Snap Ads — Prospecting",
+      objective: "awareness and engagement",
+      share: 0.4,
+    },
     { name: "Story Ads — Retargeting 7d", objective: "sales", share: 0.35 },
     { name: "Collection Ads — Catalogue", objective: "sales", share: 0.18 },
     { name: "Dynamic Ads — Lookalike", objective: "traffic", share: 0.07 },
@@ -583,30 +723,50 @@ export const exchangeSnapchatOAuthCodeFn = createServerFn({ method: "POST" })
     });
     const tokenJson = (await tokenRes.json()) as SnapchatTokenResponse;
     if (!tokenRes.ok || !tokenJson.access_token) {
-      const msg = tokenJson.error_description ?? tokenJson.error ?? "Token exchange failed";
+      const msg =
+        tokenJson.error_description ??
+        tokenJson.error ??
+        "Token exchange failed";
       throw new Error(`Snapchat token exchange failed: ${msg}`);
     }
     const accessToken = tokenJson.access_token;
     const refreshToken = tokenJson.refresh_token ?? "";
 
-    // Fetch ad accounts from organizations
+    // Fetch ad accounts from organizations. Snapchat wraps each org as
+    // { sub_request_status, organization: { ..., ad_accounts } }, so we unwrap
+    // the `organization` object before reading its inline ad_accounts.
     const orgsJson = await snapGet<{
       request_status: string;
-      organizations?: SnapchatOrg[];
-    }>(
-      `${API_BASE}/me/organizations?with_ad_accounts=true`,
-      accessToken,
-    );
+      organizations?: OrgEntry[];
+    }>(`${API_BASE}/me/organizations?with_ad_accounts=true`, accessToken);
 
-    const adAccounts: SnapchatAdAccount[] = (orgsJson.organizations ?? [])
-      .flatMap((org) => org.ad_accounts ?? [])
-      .map((a) => ({
-        adAccountId: a.id,
-        name: a.name ?? a.id,
-        currency: a.currency ?? "USD",
-        timezone: a.timezone ?? "",
-        accountStatus: (a.status ?? "ACTIVE").toLowerCase(),
-      }));
+    const orgs = unwrapEntries(
+      orgsJson.organizations,
+      (e) => e.organization,
+    ).filter((o) => !!o.id);
+
+    const adAccounts: SnapchatAdAccount[] = [];
+    for (const org of orgs) {
+      let raws = org.ad_accounts ?? [];
+      // with_ad_accounts=true didn't inline them (or this org's role omits them) —
+      // fetch the org's ad accounts explicitly. Isolated so one inaccessible org
+      // can't sink the whole list.
+      if (raws.length === 0) {
+        try {
+          const accJson = await snapGet<{
+            request_status: string;
+            adaccounts?: AdAccountEntry[];
+          }>(`${API_BASE}/organizations/${org.id}/adaccounts`, accessToken);
+          raws = unwrapEntries(accJson.adaccounts, (e) => e.adaccount);
+        } catch {
+          // skip — org may not grant ad-account read to this token
+        }
+      }
+      for (const raw of raws) {
+        const mapped = mapAdAccount(raw);
+        if (mapped.adAccountId) adAccounts.push(mapped);
+      }
+    }
 
     if (adAccounts.length === 0) {
       throw new Error(
