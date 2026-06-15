@@ -20,6 +20,7 @@ import {
 } from "@/lib/shopify";
 import {
   syncMetaAdAccountFn,
+  runMetaApiCallFn,
   type RawMetaAccount,
   type RawMetaMonthly,
   type RawMetaCampaign,
@@ -2852,6 +2853,38 @@ function useBusinessDataImpl() {
     return syncMeta(creds.adAccountId, creds.accessToken);
   };
 
+  // TEMPORARY — fire one real ads_read call for Meta App Review. Remove later.
+  const runMetaApiCall = async () => {
+    let creds = metaCreds;
+    if (!creds) {
+      if (!isSupabaseConfigured || !user || !business.id) {
+        throw new Error("Connect a Meta ad account first.");
+      }
+      const { data, error } = await supabase
+        .from("meta_accounts")
+        .select("ad_account_id, access_token, source")
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (error) throw describeDbError(error, "Meta");
+      if (!data?.access_token) {
+        throw new Error("No stored Meta credentials — reconnect the account.");
+      }
+      creds = {
+        source: (data.source as "direct" | "oauth") ?? "direct",
+        adAccountId: data.ad_account_id,
+        accessToken: data.access_token ?? null,
+        connectionKey: null,
+      };
+      setMetaCreds(creds);
+    }
+    if (!creds.accessToken) {
+      throw new Error("No stored Meta credentials — reconnect the account.");
+    }
+    return runMetaApiCallFn({
+      data: { adAccountId: creds.adAccountId, accessToken: creds.accessToken },
+    });
+  };
+
   // Disconnect Meta: delete all stored Meta data + credentials, drop the source,
   // and clear local state/cache. Mirrors disconnectShopify.
   const disconnectMeta = async () => {
@@ -3658,6 +3691,7 @@ function useBusinessDataImpl() {
     syncMeta,
     syncMetaViaOAuth,
     resyncMeta,
+    runMetaApiCall,
     disconnectMeta,
     syncGoogle,
     syncGoogleViaOAuth,
