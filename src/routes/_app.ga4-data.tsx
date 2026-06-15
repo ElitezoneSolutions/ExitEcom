@@ -37,7 +37,27 @@ function GA4Data() {
 
   const [tab, setTab] = useState<Tab>("monthly");
   const [syncing, setSyncing] = useState(false);
+  const [yearFilter, setYearFilter] = useState<string>("all");
   const autoTried = useRef(false);
+
+  // Years present in the synced monthly data, newest first.
+  const years = useMemo(
+    () =>
+      Array.from(new Set(ga4Monthly.map((m) => m.month.slice(0, 4)))).sort(
+        (a, b) => b.localeCompare(a),
+      ),
+    [ga4Monthly],
+  );
+  // Fall back to "all" if a previously-selected year is gone after a resync.
+  const activeYear =
+    yearFilter === "all" || years.includes(yearFilter) ? yearFilter : "all";
+  const filteredMonthly = useMemo(
+    () =>
+      activeYear === "all"
+        ? ga4Monthly
+        : ga4Monthly.filter((m) => m.month.startsWith(activeYear)),
+    [ga4Monthly, activeYear],
+  );
 
   const money = useMemo(() => {
     const code = ga4Account?.currency || "USD";
@@ -53,13 +73,16 @@ function GA4Data() {
   }, [ga4Account?.currency]);
 
   const totals = useMemo(() => {
-    const sessions = ga4Monthly.reduce((s, m) => s + m.sessions, 0);
-    const conversions = ga4Monthly.reduce((s, m) => s + m.conversions, 0);
-    const purchaseRevenue = ga4Monthly.reduce(
+    const sessions = filteredMonthly.reduce((s, m) => s + m.sessions, 0);
+    const conversions = filteredMonthly.reduce((s, m) => s + m.conversions, 0);
+    const purchaseRevenue = filteredMonthly.reduce(
       (s, m) => s + m.purchaseRevenue,
       0,
     );
-    const transactions = ga4Monthly.reduce((s, m) => s + m.transactions, 0);
+    const transactions = filteredMonthly.reduce(
+      (s, m) => s + m.transactions,
+      0,
+    );
     return {
       sessions,
       conversions,
@@ -67,19 +90,19 @@ function GA4Data() {
       transactions,
       conversionRate: sessions > 0 ? conversions / sessions : 0,
     };
-  }, [ga4Monthly]);
+  }, [filteredMonthly]);
 
   // Session growth: trailing 3 months vs the prior 3 (matches the Exit Score's
   // growth-trajectory signal in src/lib/analytics.ts).
   const sessionGrowth = useMemo(() => {
-    const sorted = [...ga4Monthly].sort((a, b) =>
+    const sorted = [...filteredMonthly].sort((a, b) =>
       a.month.localeCompare(b.month),
     );
     if (sorted.length < 6) return null;
     const last3 = sorted.slice(-3).reduce((s, m) => s + m.sessions, 0);
     const prior3 = sorted.slice(-6, -3).reduce((s, m) => s + m.sessions, 0);
     return prior3 > 0 ? (last3 - prior3) / prior3 : null;
-  }, [ga4Monthly]);
+  }, [filteredMonthly]);
 
   const runResync = async () => {
     if (syncing) return;
@@ -140,7 +163,7 @@ function GA4Data() {
     );
   }
 
-  const months = ga4Monthly.map((m) => m.month).sort();
+  const months = filteredMonthly.map((m) => m.month).sort();
   const windowLabel =
     months.length > 0 ? `${months[0]} → ${months[months.length - 1]}` : "—";
   const totalChannelSessions = ga4Channels.reduce((s, c) => s + c.sessions, 0);
@@ -186,9 +209,35 @@ function GA4Data() {
         <Field label="Timezone" value={ga4Account?.timezone || "—"} />
         <Field label="Type" value={ga4Account?.propertyType || "—"} />
         <Field label="Reporting window" value={windowLabel} />
-        <Field label="Months of data" value={String(ga4Monthly.length)} />
+        <Field label="Months of data" value={String(filteredMonthly.length)} />
         <Field label="Channels" value={String(ga4Channels.length)} />
       </div>
+
+      {/* Year filter — applies to the headline counts and the monthly table.
+          Channel mix has no time dimension here, so it stays all-time. */}
+      {years.length > 1 && (
+        <div className="mt-5 flex items-center gap-2">
+          <label
+            htmlFor="ga4-year"
+            className="label-caps text-[var(--text-muted)]"
+          >
+            Year
+          </label>
+          <select
+            id="ga4-year"
+            value={activeYear}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="border border-[var(--border-warm)] rounded-md bg-[var(--bg-primary)] px-3 py-1.5 text-sm text-[var(--text-primary)]"
+          >
+            <option value="all">All years</option>
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* At-a-glance counts */}
       <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -236,7 +285,8 @@ function GA4Data() {
                 : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
             }`}
           >
-            {t} ({t === "monthly" ? ga4Monthly.length : ga4Channels.length})
+            {t} ({t === "monthly" ? filteredMonthly.length : ga4Channels.length}
+            )
           </button>
         ))}
       </div>
@@ -254,7 +304,7 @@ function GA4Data() {
               "Revenue",
             ]}
             empty="No monthly insights synced."
-            rows={[...ga4Monthly]
+            rows={[...filteredMonthly]
               .sort((a, b) => a.month.localeCompare(b.month))
               .map((m) => [
                 m.month,
@@ -278,6 +328,11 @@ function GA4Data() {
               "% of sessions",
             ]}
             empty="No channels synced."
+            note={
+              activeYear !== "all"
+                ? "Channel mix covers all synced history; it isn't broken down by year."
+                : undefined
+            }
             rows={ga4Channels.map((c) => [
               c.channel,
               Math.round(c.sessions).toLocaleString(),
