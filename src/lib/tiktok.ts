@@ -356,17 +356,41 @@ async function fetchReportWithValueFallback<T>(
   }
 }
 
-// Sandbox doesn't support AUCTION_ADVERTISER — falls back to AUCTION_CAMPAIGN
-// with an extra campaign_id dimension. The downstream aggregation groups by
-// stat_time_day only, so the extra dimension is transparently ignored.
+function isTimeSpanError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message.toLowerCase() : "";
+  return msg.includes("time span") || (msg.includes("30 days") && msg.includes("stat_time"));
+}
+
+function capTo30Days(body: Record<string, unknown>): Record<string, unknown> {
+  const endDate = (body.end_date as string) ?? new Date().toISOString().slice(0, 10);
+  const end = new Date(endDate);
+  const start = new Date(end.getTime() - 30 * 86400000);
+  return { ...body, start_date: start.toISOString().slice(0, 10) };
+}
+
+// Handles all three silent fallbacks for the daily report, in order:
+//  1. total_value metric invalid → retry without it (in fetchReportWithValueFallback)
+//  2. AUCTION_ADVERTISER unsupported (sandbox) → retry with AUCTION_CAMPAIGN
+//  3. stat_time_day time span > 30 days (sandbox) → retry with 30-day window
 async function fetchDailyWithDataLevelFallback(
   body: Record<string, unknown>,
   accessToken: string,
   cap: number,
   base: string,
 ): Promise<{ rows: ApiDailyRow[]; capped: boolean; hasValue: boolean }> {
+  const tryWithTimeSpan = async (b: Record<string, unknown>) => {
+    try {
+      return await fetchReportWithValueFallback<ApiDailyRow>(b, accessToken, cap, base);
+    } catch (err) {
+      if (isTimeSpanError(err)) {
+        return fetchReportWithValueFallback<ApiDailyRow>(capTo30Days(b), accessToken, cap, base);
+      }
+      throw err;
+    }
+  };
+
   try {
-    return await fetchReportWithValueFallback<ApiDailyRow>(body, accessToken, cap, base);
+    return await tryWithTimeSpan(body);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("40009") || msg.toLowerCase().includes("unsupported data_level")) {
@@ -375,7 +399,7 @@ async function fetchDailyWithDataLevelFallback(
         data_level: "AUCTION_CAMPAIGN",
         dimensions: ["stat_time_day", "campaign_id"],
       };
-      return fetchReportWithValueFallback<ApiDailyRow>(fallbackBody, accessToken, cap, base);
+      return tryWithTimeSpan(fallbackBody);
     }
     throw err;
   }
