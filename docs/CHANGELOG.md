@@ -2,6 +2,26 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-19 — Data pages design consistency
+
+Unified the UI across all eight data pages (`store-data`,
+`bank-statements-data`, `pl-data`, `meta-data`, `google-data`, `tiktok-data`,
+`snapchat-data`, `ga4-data`) onto one design language. `store/meta/google/ga4`
+were already the reference; the others were brought in line.
+
+- **`tiktok-data` / `snapchat-data`** rebuilt to match the reference layout:
+  descriptive `PageHeader` (account details moved into the metadata grid),
+  header `Sync now` (`btn-primary`) + `Disconnect` (`variant="button"`) with a
+  `Last synced` line, a 4-up account-metadata grid (`Field`), 4 at-a-glance
+  `Count` cards (incl. blended CAC, replacing the old inline banner), underline
+  tabs, and the shared `DataTable`. They now auto-resync when data is stale (6h)
+  like the others, instead of only on first load. Snapchat keeps its
+  account-level-spend-only monthly note.
+- **`bank-statements-data` / `pl-data`** empty states now use the reference gate
+  card (circle icon, `font-display` headline, accent CTA) with a `PageHeader`;
+  the header action row matches (`Disconnect` `variant="button"` + primary
+  `Upload more` + `Last updated` line).
+
 ## 2026-06-19 — "Continue with Google" button polish
 
 Visual + UX upgrade to the OAuth button on `/login` and `/signup`

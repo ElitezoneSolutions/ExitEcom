@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_app/tiktok-data")({
   component: TikTokData,
 });
 
-const STALE_MS = 6 * 60 * 60 * 1000;
+const STALE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 type Tab = "monthly" | "campaigns";
 
@@ -58,10 +58,14 @@ function TikTokData() {
     }
   }, [tikTokAccount?.currency]);
 
+  // Totals straight from the monthly series (display figures).
   const totals = useMemo(() => {
     const spend = tikTokMonthly.reduce((s, m) => s + m.spend, 0);
     const conversions = tikTokMonthly.reduce((s, m) => s + m.conversions, 0);
-    const conversionValue = tikTokMonthly.reduce((s, m) => s + m.conversionValue, 0);
+    const conversionValue = tikTokMonthly.reduce(
+      (s, m) => s + m.conversionValue,
+      0,
+    );
     return {
       spend,
       conversions,
@@ -70,11 +74,18 @@ function TikTokData() {
     };
   }, [tikTokMonthly]);
 
+  // Blended CAC needs new-customer counts from the store, so run the engine with
+  // the TikTok feed to keep the figure consistent with the Exit Score.
   const metrics = useMemo(
     () =>
       computeMetrics({
         store: store
-          ? { name: store.name, currency: store.currency, country: store.country, shopCreatedAt: store.shopCreatedAt }
+          ? {
+              name: store.name,
+              currency: store.currency,
+              country: store.country,
+              shopCreatedAt: store.shopCreatedAt,
+            }
           : null,
         orders,
         products,
@@ -82,251 +93,357 @@ function TikTokData() {
         industry: business.industry || "E-commerce",
         tiktok: { monthly: tikTokMonthly, campaigns: tikTokCampaigns },
       }),
-    [store, orders, products, customers, business.industry, tikTokMonthly, tikTokCampaigns],
+    [
+      store,
+      orders,
+      products,
+      customers,
+      business.industry,
+      tikTokMonthly,
+      tikTokCampaigns,
+    ],
   );
 
-  const isStale =
-    tikTokLastSyncedAt &&
-    Date.now() - new Date(tikTokLastSyncedAt).getTime() > STALE_MS;
+  const totalCampaignSpend = useMemo(
+    () => tikTokCampaigns.reduce((s, c) => s + c.spend, 0),
+    [tikTokCampaigns],
+  );
 
-  useEffect(() => {
-    if (autoTried.current || loading || !isTikTokConnected) return;
-    if (!tikTokAccount && canResyncTikTok) {
-      autoTried.current = true;
-      resyncTikTok().catch((err) =>
-        console.error("TikTok auto-resync failed:", err),
-      );
-    }
-  }, [loading, isTikTokConnected, tikTokAccount, canResyncTikTok, resyncTikTok]);
-
-  const handleResync = async () => {
+  const runResync = async () => {
+    if (syncing) return;
     setSyncing(true);
     try {
-      await resyncTikTok();
-      toast.success("TikTok Ads data refreshed.");
+      const r = await resyncTikTok();
+      const spend = r.monthly.reduce((s, m) => s + m.spend, 0);
+      toast.success(
+        `Synced: ${money.format(spend)} spend across ${r.campaigns.length} campaigns.`,
+      );
     } catch (err) {
-      toast.error((err instanceof Error && err.message) || "Refresh failed.");
+      toast.error(
+        (err instanceof Error && err.message) || "Could not refresh ad data.",
+      );
     } finally {
       setSyncing(false);
     }
   };
 
-  if (!loading && !isTikTokConnected) {
+  // Auto-refresh on open when the data is stale.
+  useEffect(() => {
+    if (autoTried.current || loading || !canResyncTikTok) return;
+    autoTried.current = true;
+    const stale =
+      !tikTokLastSyncedAt ||
+      Date.now() - new Date(tikTokLastSyncedAt).getTime() > STALE_MS;
+    if (stale) runResync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, canResyncTikTok, tikTokLastSyncedAt]);
+
+  if (!isTikTokConnected) {
     return (
-      <div className="card-light max-w-xl mx-auto p-10 flex flex-col items-center text-center gap-6 my-12">
-        <div className="w-14 h-14 rounded-full bg-[var(--blue-100)] flex items-center justify-center">
-          <Lock className="w-7 h-7 text-[var(--accent)]" />
-        </div>
-        <div>
-          <h3 className="text-xl font-bold font-display">TikTok Ads not connected</h3>
-          <p className="text-sm text-[var(--text-muted)] mt-2 leading-relaxed max-w-sm mx-auto">
-            Connect your TikTok Ads account to see spend, ROAS and campaign performance here.
+      <>
+        <PageHeader
+          title="TikTok Ads Data"
+          subtitle="We build your marketing efficiency, verified ROAS and blended CAC directly from your ad data. Connect TikTok Ads to get started."
+        />
+        <div className="card-light p-10 rounded-lg text-center max-w-xl mx-auto">
+          <div className="w-12 h-12 mx-auto rounded-full bg-[var(--sidebar-active)] flex items-center justify-center text-[var(--accent)]">
+            <Lock className="w-6 h-6" strokeWidth={1.5} />
+          </div>
+          <h2 className="mt-5 font-display text-2xl text-[var(--text-primary)]">
+            No ad data yet
+          </h2>
+          <p className="mt-3 text-[15px] text-[var(--text-secondary)]">
+            Once your TikTok Ads account is connected, we pull your spend, ROAS
+            and campaign performance to verify marketing efficiency. Nothing
+            here is simulated — it is all built from your real ad account.
           </p>
+          <Link
+            to="/tiktok-connect"
+            className="mt-8 inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-white text-sm font-medium rounded-md hover:bg-[var(--accent-hover)] transition-colors"
+          >
+            Connect TikTok Ads <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
-        <Link to="/tiktok-connect" className="btn-primary py-3 px-6 rounded-md font-semibold text-sm justify-center">
-          Connect TikTok Ads <ArrowRight className="w-4 h-4" />
-        </Link>
-      </div>
+      </>
     );
   }
+
+  const months = tikTokMonthly.map((m) => m.month).sort();
+  const windowLabel =
+    months.length > 0 ? `${months[0]} → ${months[months.length - 1]}` : "—";
 
   return (
     <>
       <PageHeader
-        title="TikTok Ads"
-        subtitle={
-          tikTokAccount
-            ? `${tikTokAccount.name} · ${tikTokAccount.currency} · ${tikTokAccount.accountStatus}`
-            : "Loading…"
-        }
+        title="TikTok Ads Data"
+        subtitle="Everything we pulled from your TikTok ad account. Reports are computed from this data on demand."
         right={
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleResync}
-              disabled={syncing || !canResyncTikTok}
-              className="btn-ghost-dark py-2 px-4 text-xs font-semibold rounded-md flex items-center gap-1.5 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Refreshing…" : "Refresh"}
-            </button>
-            <DisconnectButton name="TikTok Ads" onConfirm={disconnectTikTok} />
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <DisconnectButton
+                name="TikTok Ads"
+                onConfirm={disconnectTikTok}
+                variant="button"
+              />
+              <button
+                onClick={runResync}
+                disabled={syncing || !canResyncTikTok}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+                />
+                {syncing ? "Syncing…" : "Sync now"}
+              </button>
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              {tikTokLastSyncedAt
+                ? `Last synced ${new Date(tikTokLastSyncedAt).toLocaleString("en-GB")}`
+                : "Not synced yet"}
+            </span>
           </div>
         }
       />
 
-      {tikTokLastSyncedAt && (
-        <p className="text-[11px] text-[var(--text-muted)] mb-4">
-          Last synced {new Date(tikTokLastSyncedAt).toLocaleString()}
-          {isStale && (
-            <span className="ml-2 text-amber-600 font-medium">· data may be stale</span>
-          )}
-        </p>
-      )}
+      {/* Account metadata */}
+      <div className="card-light p-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <Field label="Account" value={tikTokAccount?.name || "—"} />
+        <Field
+          label="Advertiser ID"
+          value={tikTokAccount?.advertiserId || "—"}
+          mono
+        />
+        <Field label="Currency" value={tikTokAccount?.currency || "—"} />
+        <Field label="Timezone" value={tikTokAccount?.timezone || "—"} />
+        <Field label="Status" value={tikTokAccount?.accountStatus || "—"} />
+        <Field label="Reporting window" value={windowLabel} />
+        <Field label="Months of data" value={String(tikTokMonthly.length)} />
+        <Field label="Campaigns" value={String(tikTokCampaigns.length)} />
+      </div>
 
-      {/* Summary cards */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          icon={<DollarSign className="w-4 h-4 text-[var(--accent)]" />}
-          label="Total Spend"
+      {/* At-a-glance counts */}
+      <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Count
+          icon={<DollarSign className="w-4 h-4" />}
+          label="Spend (window)"
           value={money.format(totals.spend)}
-          sub="trailing 12 months"
+          raw
         />
-        <StatCard
-          icon={<TrendingUp className="w-4 h-4 text-[var(--accent)]" />}
-          label="Blended ROAS"
+        <Count
+          icon={<TrendingUp className="w-4 h-4" />}
+          label="ROAS"
           value={`${totals.roas.toFixed(2)}x`}
-          sub="self-reported by TikTok"
+          raw
+          note="self-reported by TikTok"
         />
-        <StatCard
-          icon={<Target className="w-4 h-4 text-[var(--accent)]" />}
+        <Count
+          icon={<Megaphone className="w-4 h-4" />}
           label="Conversions"
-          value={totals.conversions.toLocaleString()}
-          sub="trailing 12 months"
+          value={Math.round(totals.conversions)}
         />
-        <StatCard
-          icon={<Megaphone className="w-4 h-4 text-[var(--accent)]" />}
-          label="Active Campaigns"
-          value={tikTokCampaigns
-            .filter((c) => c.status?.toLowerCase() === "enable")
-            .length.toLocaleString()}
-          sub={`of ${tikTokCampaigns.length} total`}
+        <Count
+          icon={<Target className="w-4 h-4" />}
+          label="Blended CAC"
+          value={
+            metrics.blendedCac > 0 ? money.format(metrics.blendedCac) : "—"
+          }
+          raw
+          note="ad spend ÷ new customers"
         />
       </div>
 
-      {/* CAC if Shopify connected */}
-      {store && metrics.blendedCac > 0 && (
-        <div className="card-light p-4 mb-6 flex items-center gap-3 text-sm">
-          <Target className="w-4 h-4 text-[var(--accent)] shrink-0" />
-          <span>
-            Estimated blended CAC:{" "}
-            <strong>{money.format(metrics.blendedCac)}</strong> — calculated
-            from TikTok spend vs new customer acquisition.
-          </span>
-        </div>
-      )}
-
       {/* Tabs */}
-      <div className="inline-flex p-1 mb-5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-warm)] gap-1">
+      <div className="mt-10 flex gap-1 border-b border-[var(--border-warm)]">
         {(["monthly", "campaigns"] as Tab[]).map((t) => (
           <button
             key={t}
-            type="button"
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${
+            className={`px-4 py-2.5 text-sm font-medium capitalize border-b-2 -mb-px transition-colors ${
               tab === t
-                ? "bg-white text-[var(--accent)] shadow-sm"
-                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
             }`}
           >
-            {t === "monthly" ? "Monthly Trends" : "Campaigns"}
+            {t} (
+            {t === "monthly" ? tikTokMonthly.length : tikTokCampaigns.length})
           </button>
         ))}
       </div>
 
-      {tab === "monthly" && (
-        <div className="card-light overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[var(--border-warm)] bg-[var(--bg-secondary)]">
-                  {["Month", "Spend", "Impressions", "Clicks", "Conversions", "Conv. Value", "ROAS"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left font-semibold text-[var(--text-secondary)] uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[...tikTokMonthly].reverse().map((m) => (
-                  <tr key={m.month} className="border-b border-[var(--border-warm)] hover:bg-[var(--bg-secondary)] transition-colors">
-                    <td className="px-4 py-3 font-mono font-medium">{m.month}</td>
-                    <td className="px-4 py-3">{money.format(m.spend)}</td>
-                    <td className="px-4 py-3">{m.impressions.toLocaleString()}</td>
-                    <td className="px-4 py-3">{m.clicks.toLocaleString()}</td>
-                    <td className="px-4 py-3">{m.conversions.toLocaleString()}</td>
-                    <td className="px-4 py-3">{money.format(m.conversionValue)}</td>
-                    <td className="px-4 py-3 font-medium">{m.roas.toFixed(2)}x</td>
-                  </tr>
-                ))}
-                {tikTokMonthly.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-[var(--text-muted)]">
-                      No monthly data yet — refresh to pull the latest figures.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <div className="mt-5">
+        {tab === "monthly" && (
+          <DataTable
+            head={[
+              "Month",
+              "Spend",
+              "Impressions",
+              "Clicks",
+              "Conversions",
+              "Conv. value",
+              "ROAS",
+            ]}
+            empty="No monthly insights synced."
+            rows={[...tikTokMonthly]
+              .sort((a, b) => a.month.localeCompare(b.month))
+              .map((m) => [
+                m.month,
+                money.format(m.spend),
+                Math.round(m.impressions).toLocaleString(),
+                Math.round(m.clicks).toLocaleString(),
+                String(Math.round(m.conversions)),
+                money.format(m.conversionValue),
+                `${m.roas.toFixed(2)}x`,
+              ])}
+          />
+        )}
 
-      {tab === "campaigns" && (
-        <div className="card-light overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[var(--border-warm)] bg-[var(--bg-secondary)]">
-                  {["Campaign", "Objective", "Status", "Spend", "Conversions", "Conv. Value", "ROAS"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left font-semibold text-[var(--text-secondary)] uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tikTokCampaigns.map((c) => (
-                  <tr key={c.tikTokCampaignId} className="border-b border-[var(--border-warm)] hover:bg-[var(--bg-secondary)] transition-colors">
-                    <td className="px-4 py-3 font-medium max-w-[200px] truncate">{c.name}</td>
-                    <td className="px-4 py-3 text-[var(--text-muted)] capitalize">{c.objectiveType?.toLowerCase().replace(/_/g, " ") ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                        c.status?.toLowerCase() === "enable"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-gray-100 text-gray-600"
-                      }`}>
-                        {c.status?.toLowerCase() ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{money.format(c.spend)}</td>
-                    <td className="px-4 py-3">{c.conversions.toLocaleString()}</td>
-                    <td className="px-4 py-3">{money.format(c.conversionValue)}</td>
-                    <td className="px-4 py-3 font-medium">{c.roas.toFixed(2)}x</td>
-                  </tr>
-                ))}
-                {tikTokCampaigns.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-[var(--text-muted)]">
-                      No campaign data yet — refresh to pull the latest figures.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        {tab === "campaigns" && (
+          <DataTable
+            head={[
+              "Campaign",
+              "Objective",
+              "Status",
+              "Spend",
+              "Conversions",
+              "ROAS",
+              "% of spend",
+            ]}
+            empty="No campaigns synced."
+            rows={tikTokCampaigns
+              .slice(0, 500)
+              .map((c) => [
+                c.name,
+                c.objectiveType
+                  ? c.objectiveType.toLowerCase().replace(/_/g, " ")
+                  : "—",
+                c.status ?? "—",
+                money.format(c.spend),
+                String(Math.round(c.conversions)),
+                `${c.roas.toFixed(2)}x`,
+                totalCampaignSpend > 0
+                  ? `${Math.round((c.spend / totalCampaignSpend) * 100)}%`
+                  : "0%",
+              ])}
+            note={
+              tikTokCampaigns.length > 500
+                ? `Showing first 500 of ${tikTokCampaigns.length}.`
+                : undefined
+            }
+          />
+        )}
+      </div>
     </>
   );
 }
 
-function StatCard({
+function Field({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <div className="label-caps" style={{ fontSize: 10 }}>
+        {label}
+      </div>
+      <div
+        className={`text-sm mt-1.5 text-[var(--text-primary)] truncate ${mono ? "font-mono text-xs" : "font-medium"}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Count({
   icon,
   label,
   value,
-  sub,
+  raw,
+  note,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
-  sub?: string;
+  value: number | string;
+  raw?: boolean;
+  note?: string;
 }) {
   return (
-    <div className="card-light p-5">
-      <div className="label-caps flex items-center gap-1.5">{icon} {label}</div>
-      <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">{value}</div>
-      {sub && <div className="text-[10px] text-[var(--text-muted)] mt-1">{sub}</div>}
+    <div className="card-light px-5 py-4">
+      <div className="label-caps flex items-center gap-1.5 text-[var(--accent)]">
+        {icon} {label}
+      </div>
+      <div className="font-display text-2xl mt-2">
+        {raw ? value : Number(value).toLocaleString()}
+      </div>
+      {note && (
+        <div className="text-[10px] text-[var(--text-muted)] mt-1">{note}</div>
+      )}
+    </div>
+  );
+}
+
+function DataTable({
+  head,
+  rows,
+  empty,
+  note,
+}: {
+  head: string[];
+  rows: string[][];
+  empty: string;
+  note?: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="card-light p-10 text-center text-sm text-[var(--text-muted)]">
+        {empty}
+      </div>
+    );
+  }
+  return (
+    <div className="card-light overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[var(--border-warm)] text-left">
+            {head.map((h) => (
+              <th
+                key={h}
+                className="px-5 py-3 label-caps font-semibold text-[var(--text-muted)] whitespace-nowrap"
+                style={{ fontSize: 10 }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr
+              key={i}
+              className="border-b border-[var(--border-warm)] last:border-0 hover:bg-[var(--bg-primary)]"
+            >
+              {r.map((cell, j) => (
+                <td
+                  key={j}
+                  className="px-5 py-3 text-[var(--text-secondary)] whitespace-nowrap"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {note && (
+        <div className="px-5 py-3 text-[11px] text-[var(--text-muted)] border-t border-[var(--border-warm)]">
+          {note}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Upload, FileText, Clock, AlertTriangle } from "lucide-react";
+import { Upload, FileText, AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { DisconnectButton } from "@/components/ex/DisconnectButton";
 import { useBusinessData } from "@/hooks/useBusinessData";
@@ -33,20 +33,30 @@ function BankStatementsData() {
 
   if (!isBankConnected || bankStatementFiles.length === 0) {
     return (
-      <div className="max-w-xl mx-auto py-12 text-center space-y-4">
-        <FileText className="w-12 h-12 mx-auto text-[var(--text-muted)]" />
-        <h2 className="text-base font-semibold">No bank statements on file</h2>
-        <p className="text-sm text-[var(--text-muted)]">
-          Upload PDF exports from your bank to verify cash flow for buyers.
-        </p>
-        <Link
-          to="/bank-statements-upload"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white transition-colors"
-          style={{ backgroundColor: "var(--accent)" }}
-        >
-          <Upload className="w-4 h-4" /> Upload Statements
-        </Link>
-      </div>
+      <>
+        <PageHeader
+          title="Bank Statements"
+          subtitle="Upload PDF exports from your bank so buyers can verify your cash flow. Reports are computed from your data on demand."
+        />
+        <div className="card-light p-10 rounded-lg text-center max-w-xl mx-auto">
+          <div className="w-12 h-12 mx-auto rounded-full bg-[var(--sidebar-active)] flex items-center justify-center text-[var(--accent)]">
+            <FileText className="w-6 h-6" strokeWidth={1.5} />
+          </div>
+          <h2 className="mt-5 font-display text-2xl text-[var(--text-primary)]">
+            No bank statements yet
+          </h2>
+          <p className="mt-3 text-[15px] text-[var(--text-secondary)]">
+            Upload PDF exports from your bank to verify cash flow for buyers.
+            Your statements stay private until you choose to share them.
+          </p>
+          <Link
+            to="/bank-statements-upload"
+            className="mt-8 inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-white text-sm font-medium rounded-md hover:bg-[var(--accent-hover)] transition-colors"
+          >
+            Upload Statements <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </>
     );
   }
 
@@ -56,20 +66,25 @@ function BankStatementsData() {
         title="Bank Statements"
         subtitle={`${bankStatementFiles.length} file${bankStatementFiles.length !== 1 ? "s" : ""} on file`}
         right={
-          <div className="flex items-center gap-3">
-            {bankLastSyncedAt && (
-              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                <Clock className="w-3.5 h-3.5" />
-                Last updated {new Date(bankLastSyncedAt).toLocaleDateString("en-GB")}
-              </div>
-            )}
-            <Link
-              to="/bank-statements-upload"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-[var(--border-warm)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" /> Upload more
-            </Link>
-            <DisconnectButton name="Bank Statements" onConfirm={disconnectBankStatements} />
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <DisconnectButton
+                name="Bank Statements"
+                onConfirm={disconnectBankStatements}
+                variant="button"
+              />
+              <Link
+                to="/bank-statements-upload"
+                className="btn-primary text-sm"
+              >
+                <Upload className="w-4 h-4" /> Upload more
+              </Link>
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              {bankLastSyncedAt
+                ? `Last updated ${new Date(bankLastSyncedAt).toLocaleString("en-GB")}`
+                : "Not uploaded yet"}
+            </span>
           </div>
         }
       />
@@ -77,7 +92,8 @@ function BankStatementsData() {
       {isStale && (
         <div className="mb-6 card-light border border-amber-500/30 px-4 py-3 flex items-center gap-2 text-sm text-amber-600">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          Statements last updated over 30 days ago. Consider uploading your latest month.
+          Statements last updated over 30 days ago. Consider uploading your
+          latest month.
         </div>
       )}
 
@@ -92,7 +108,9 @@ function BankStatementsData() {
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate">{f.fileName}</div>
                 <div className="text-xs text-[var(--text-muted)]">
-                  {f.fileSize != null ? `${(f.fileSize / 1024).toFixed(0)} KB · ` : ""}
+                  {f.fileSize != null
+                    ? `${(f.fileSize / 1024).toFixed(0)} KB · `
+                    : ""}
                   {new Date(f.syncedAt).toLocaleDateString("en-GB")}
                 </div>
               </div>
