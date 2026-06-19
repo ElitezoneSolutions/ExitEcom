@@ -96,8 +96,8 @@ function Profile() {
   if (loading) {
     return (
       <div className="min-h-[400px] flex flex-col items-center justify-center gap-4">
-        <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin" />
-        <p className="text-sm text-[var(--text-muted)]">Loading profile...</p>
+        <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin" aria-hidden="true" />
+        <p className="text-sm text-[var(--text-muted)]" role="status">Loading profile…</p>
       </div>
     );
   }
@@ -114,7 +114,7 @@ function Profile() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="btn-primary text-sm disabled:opacity-60"
+            className="btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {saving ? "Saving..." : "Save Changes"}
           </button>
@@ -122,27 +122,32 @@ function Profile() {
       />
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 card-light p-8 space-y-5">
-          {FIELDS.map(({ key, label }) => (
-            <div key={key} className="grid grid-cols-3 gap-4 items-center">
-              <div className="label-caps" style={{ fontSize: 10 }}>
-                {label}
+          {FIELDS.map(({ key, label }) => {
+            const inputId = `profile-field-${key}`;
+            return (
+              <div key={key} className="grid grid-cols-3 gap-4 items-center">
+                <label htmlFor={inputId} className="label-caps">
+                  {label}
+                </label>
+                <div className="col-span-2 space-y-1">
+                  <input
+                    id={inputId}
+                    value={form[key]}
+                    onChange={set(key)}
+                    disabled={saving}
+                    placeholder="—"
+                    className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+                  />
+                  {key === "age" && isYoungBusiness && (
+                    <p className="text-xs text-[var(--risk-medium)]">
+                      Business age below 3 years may compress your multiple. See
+                      Risk Scanner.
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="col-span-2 space-y-1">
-                <input
-                  value={form[key]}
-                  onChange={set(key)}
-                  placeholder="—"
-                  className="w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent)]"
-                />
-                {key === "age" && isYoungBusiness && (
-                  <p className="text-xs text-[var(--risk-medium)]">
-                    ⚠️ Business age below 3 years may compress your multiple.
-                    See Risk Scanner.
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-warm)]">
             Buyers verify your profile details during due diligence. Keep this

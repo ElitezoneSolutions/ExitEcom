@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { Field } from "./signup";
@@ -48,28 +48,70 @@ const DEFAULT_PREFS: NotificationPrefs = {
 
 function Settings() {
   const [tab, setTab] = useState<Tab>("Profile");
+  // IDs for aria-controls / aria-labelledby wiring
+  const panelId = "settings-panel";
+  const tabId = (t: Tab) => `settings-tab-${t.toLowerCase()}`;
+
   return (
     <>
-      <PageHeader title="Settings" />
-      <div className="border-b border-[var(--border-warm)] flex gap-6">
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your account details, notification preferences, and security."
+      />
+
+      {/* Tab bar */}
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        className="border-b border-[var(--border-warm)] flex gap-1"
+      >
         {tabs.map((t) => (
           <button
             key={t}
+            id={tabId(t)}
+            role="tab"
+            aria-selected={tab === t}
+            aria-controls={panelId}
             onClick={() => setTab(t)}
-            className="pb-3 text-sm relative transition-colors"
-            style={{
-              color: tab === t ? "var(--text-primary)" : "var(--text-muted)",
+            onKeyDown={(e) => {
+              // Arrow-key navigation between tabs (ARIA tabs pattern)
+              const idx = tabs.indexOf(t);
+              if (e.key === "ArrowRight") {
+                const next = tabs[(idx + 1) % tabs.length];
+                setTab(next);
+                document.getElementById(tabId(next))?.focus();
+              }
+              if (e.key === "ArrowLeft") {
+                const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+                setTab(prev);
+                document.getElementById(tabId(prev))?.focus();
+              }
             }}
+            tabIndex={tab === t ? 0 : -1}
+            className={`pb-3 px-1 text-sm relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 rounded-sm ${
+              tab === t
+                ? "text-[var(--text-primary)] font-medium"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            }`}
           >
             {t}
             {tab === t && (
-              <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-[var(--accent)]" />
+              <span
+                aria-hidden="true"
+                className="absolute left-0 right-0 -bottom-px h-0.5 bg-[var(--accent)]"
+              />
             )}
           </button>
         ))}
       </div>
 
-      <div className="mt-8 card-light p-8 max-w-2xl">
+      {/* Tab panel */}
+      <div
+        id={panelId}
+        role="tabpanel"
+        aria-labelledby={tabId(tab)}
+        className="mt-8 card-light p-4 sm:p-8 max-w-2xl"
+      >
         {tab === "Profile" && <ProfileTab />}
         {tab === "Notifications" && <NotificationsTab />}
         {tab === "Integrations" && <IntegrationsTab />}
@@ -91,6 +133,9 @@ function ProfileTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Track original email so we can detect a change and show the confirmation note
+  const originalEmail = useRef<string>("");
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -100,7 +145,9 @@ function ProfileTab() {
         "";
       if (active) {
         setFullName(metaName);
-        setEmail(user?.email ?? "");
+        const initialEmail = user?.email ?? "";
+        setEmail(initialEmail);
+        originalEmail.current = initialEmail;
       }
 
       if (isSupabaseConfigured && user) {
@@ -123,6 +170,8 @@ function ProfileTab() {
     };
   }, [user, isDemoMode]);
 
+  const emailChanged = email.trim() !== originalEmail.current;
+
   async function save() {
     if (!fullName.trim()) {
       toast.error("Please enter your full name.");
@@ -134,8 +183,6 @@ function ProfileTab() {
         toast.success("Profile saved (Demo Mode — not persisted).");
         return;
       }
-
-      const emailChanged = email.trim() !== (user.email ?? "");
 
       // Keep the auth user_metadata in sync — `full_name` there is what the rest
       // of the app reads for the owner's name. Update the email only if changed
@@ -158,11 +205,15 @@ function ProfileTab() {
       );
       if (profileErr) throw profileErr;
 
-      toast.success(
-        emailChanged
-          ? "Profile saved. Check your inbox to confirm the new email address."
-          : "Profile saved.",
-      );
+      if (emailChanged) {
+        // Optimistically reset — actual address only changes after confirmation
+        originalEmail.current = email.trim();
+        toast.success(
+          "Profile saved. Check your inbox to confirm the new email address.",
+        );
+      } else {
+        toast.success("Profile saved.");
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to save profile.",
@@ -173,7 +224,11 @@ function ProfileTab() {
   }
 
   if (loading)
-    return <p className="text-sm text-[var(--text-muted)]">Loading…</p>;
+    return (
+      <p className="text-sm text-[var(--text-muted)]" role="status">
+        Loading…
+      </p>
+    );
 
   return (
     <div className="space-y-4">
@@ -185,15 +240,28 @@ function ProfileTab() {
         disabled={saving}
         required={false}
       />
-      <Field
-        label="Email Address"
-        type="email"
-        value={email}
-        onChange={setEmail}
+      <div>
+        <Field
+          label="Email Address"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          disabled={saving}
+          required={false}
+        />
+        {emailChanged && (
+          <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+            A confirmation link will be sent to the new address before it takes
+            effect.
+          </p>
+        )}
+      </div>
+      <SelectField
+        label="Timezone"
+        value={timezone}
+        onChange={setTimezone}
         disabled={saving}
-        required={false}
-      />
-      <SelectField label="Timezone" value={timezone} onChange={setTimezone}>
+      >
         <option value="">Not set</option>
         {TIMEZONES.map((t) => (
           <option key={t} value={t}>
@@ -201,7 +269,12 @@ function ProfileTab() {
           </option>
         ))}
       </SelectField>
-      <SelectField label="Currency" value={currency} onChange={setCurrency}>
+      <SelectField
+        label="Currency"
+        value={currency}
+        onChange={setCurrency}
+        disabled={saving}
+      >
         <option value="">Not set</option>
         {CURRENCIES.map((c) => (
           <option key={c} value={c}>
@@ -279,34 +352,51 @@ function NotificationsTab() {
   }
 
   if (loading)
-    return <p className="text-sm text-[var(--text-muted)]">Loading…</p>;
+    return (
+      <p className="text-sm text-[var(--text-muted)]" role="status">
+        Loading…
+      </p>
+    );
 
   return (
-    <div className="space-y-4">
-      {NOTIFICATION_FIELDS.map(({ key, label }) => (
-        <label
-          key={key}
-          className="flex items-center justify-between border-b border-[var(--border-warm)] py-3 text-sm"
-        >
-          {label}
-          <input
-            type="checkbox"
-            checked={prefs[key] ?? false}
-            onChange={(e) =>
-              setPrefs((p) => ({ ...p, [key]: e.target.checked }))
-            }
-            className="accent-[var(--accent)]"
-          />
-        </label>
-      ))}
+    <fieldset disabled={saving} className="space-y-0 border-0 p-0 m-0">
+      <legend className="sr-only">Notification preferences</legend>
+      <div className="divide-y divide-[var(--border-warm)]">
+        {NOTIFICATION_FIELDS.map(({ key, label }) => {
+          const inputId = `notif-${key}`;
+          return (
+            <div
+              key={key}
+              className="flex items-center justify-between py-3 text-sm"
+            >
+              <label
+                htmlFor={inputId}
+                className="flex-1 cursor-pointer text-[var(--text-primary)]"
+              >
+                {label}
+              </label>
+              <input
+                id={inputId}
+                type="checkbox"
+                checked={prefs[key] ?? false}
+                onChange={(e) =>
+                  setPrefs((p) => ({ ...p, [key]: e.target.checked }))
+                }
+                className="accent-[var(--accent)] w-4 h-4 cursor-pointer"
+              />
+            </div>
+          );
+        })}
+      </div>
       <button
+        type="button"
         onClick={save}
         disabled={saving}
-        className="btn-primary mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="btn-primary mt-5 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {saving ? "Saving…" : "Save Changes"}
       </button>
-    </div>
+    </fieldset>
   );
 }
 
@@ -335,10 +425,35 @@ function SecurityTab() {
   const [confirm, setConfirm] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // The first field in the open form — focus it when the form opens
+  const firstFieldRef = useRef<HTMLDivElement>(null);
+  // The trigger button — return focus here when the form closes
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Detect whether this account uses a password provider (vs. Google-only).
+  // Supabase populates `user.identities` with one entry per auth method.
+  const hasPasswordProvider = user?.identities?.some(
+    (id) => id.provider === "email",
+  );
+  const isGoogleOnly =
+    user !== null && user?.identities !== undefined && !hasPasswordProvider;
+
+  function openForm() {
+    setOpen(true);
+    // Defer focus until after the form renders
+    setTimeout(() => {
+      firstFieldRef.current?.querySelector("input")?.focus();
+    }, 0);
+  }
+
   function reset() {
     setOpen(false);
     setPassword("");
     setConfirm("");
+    // Return focus to the trigger
+    setTimeout(() => {
+      triggerRef.current?.focus();
+    }, 0);
   }
 
   async function changePassword() {
@@ -371,21 +486,28 @@ function SecurityTab() {
   }
 
   return (
-    <div className="space-y-4 text-sm">
-      {!open ? (
-        <button onClick={() => setOpen(true)} className="btn-ghost-light">
+    <div className="space-y-5 text-sm">
+      {isGoogleOnly ? (
+        <div className="rounded-md bg-[var(--bg-secondary)] border border-[var(--border-warm)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+          Your account uses Google Sign-In. Password management is handled by
+          Google — you cannot set a separate ExitEcom password.
+        </div>
+      ) : !open ? (
+        <button ref={triggerRef} onClick={openForm} className="btn-ghost-light">
           Change Password
         </button>
       ) : (
         <div className="space-y-4">
-          <Field
-            label="New Password"
-            type="password"
-            value={password}
-            onChange={setPassword}
-            disabled={saving}
-            required={false}
-          />
+          <div ref={firstFieldRef}>
+            <Field
+              label="New Password"
+              type="password"
+              value={password}
+              onChange={setPassword}
+              disabled={saving}
+              required={false}
+            />
+          </div>
           <Field
             label="Confirm New Password"
             type="password"
@@ -394,6 +516,9 @@ function SecurityTab() {
             disabled={saving}
             required={false}
           />
+          <p className="text-xs text-[var(--text-muted)]">
+            Must be at least 8 characters.
+          </p>
           <div className="flex gap-3">
             <button
               onClick={changePassword}
@@ -408,9 +533,6 @@ function SecurityTab() {
           </div>
         </div>
       )}
-      <div className="text-[var(--text-muted)] text-xs">
-        No active sessions other than this device.
-      </div>
     </div>
   );
 }
@@ -422,23 +544,24 @@ function SelectField({
   label,
   value,
   onChange,
+  disabled,
   children,
 }: {
   label: string;
   value: string;
   onChange: (val: string) => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="label-caps" style={{ fontSize: 10 }}>
-        {label}
-      </span>
+      <span className="label-caps">{label}</span>
       <div className="relative mt-2">
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-transparent border rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors border-[var(--border-warm)] focus:border-[var(--accent)]"
+          disabled={disabled}
+          className="w-full bg-transparent border rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors border-[var(--border-warm)] focus:border-[var(--accent)] disabled:opacity-50"
         >
           {children}
         </select>
