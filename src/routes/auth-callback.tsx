@@ -7,8 +7,10 @@ import { useEffect, useRef } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { isSafeRedirect } from "@/components/auth/RouteGuards";
+import {
+  isSafeRedirect,
+  resolvePostAuthDestination,
+} from "@/components/auth/RouteGuards";
 
 // Google (via Supabase OAuth) redirects here after the user approves or denies
 // the "Continue with Google" consent. This is a PUBLIC route — the visitor is
@@ -74,35 +76,15 @@ function AuthCallback() {
     handled.current = true;
 
     (async () => {
-      const target =
+      const preferred =
         isSafeRedirect(search.redirect) && search.redirect
           ? search.redirect
           : "/dashboard";
-
-      // Demo mode (no Supabase) has no profile table — just go to the app.
-      if (!isSupabaseConfigured) {
-        navigate({ to: target as string, replace: true });
-        return;
-      }
-
-      // First-time Google users have no business profile yet → onboarding.
-      // Returning users go to their intended destination (or the dashboard).
-      try {
-        const { data } = await supabase
-          .from("businesses")
-          .select("id")
-          .eq("owner_id", user.id)
-          .limit(1)
-          .maybeSingle();
-        navigate({
-          to: (data ? target : "/onboarding") as string,
-          replace: true,
-        });
-      } catch {
-        // If the profile lookup fails, don't trap the user — send them into the
-        // app, where the empty/gated states handle a missing profile.
-        navigate({ to: target as string, replace: true });
-      }
+      // New Google users (no business profile) → onboarding; returning users →
+      // their intended destination. Shared with RequireGuest so both entry
+      // points agree.
+      const target = await resolvePostAuthDestination(user.id, preferred);
+      navigate({ to: target as string, replace: true });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, search.error, search.redirect]);

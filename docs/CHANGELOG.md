@@ -2,6 +2,21 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-19 — Google sign-in: onboarding routing + display name
+
+Fixes two issues seen after a first "Continue with Google" sign-up: onboarding
+was skipped (straight to the dashboard) and the owner's name was blank.
+
+- **New users now reach onboarding wherever the OAuth round-trip lands.** The
+  onboarding-vs-app decision moved into a shared `resolvePostAuthDestination()`
+  (`src/components/auth/RouteGuards.tsx`), used by both `/auth-callback` and
+  `RequireGuest`. So even if Supabase falls back to its Site URL (landing on a
+  guest page instead of the callback), a profile-less user is still sent to
+  `/onboarding` rather than bounced to `/dashboard`.
+- **Display name now resolves for Google users.** `ownerName`
+  (`useBusinessData`) falls back to `user_metadata.name` (Google's claim) when
+  `full_name` is absent, so the dashboard greeting and sidebar show the name.
+
 ## 2026-06-19 — "Continue with Google" sign-in completed
 
 The Google sign-in button on `/login` and `/signup` now drives a full OAuth

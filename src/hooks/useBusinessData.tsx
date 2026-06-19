@@ -669,7 +669,9 @@ const mapSnapchatMonthlyRow = (r: SnapchatMonthlyRow): RawSnapchatMonthly => ({
   roas: Number(r.roas ?? 0),
 });
 
-const mapSnapchatCampaignRow = (r: SnapchatCampaignRow): RawSnapchatCampaign => ({
+const mapSnapchatCampaignRow = (
+  r: SnapchatCampaignRow,
+): RawSnapchatCampaign => ({
   snapchatCampaignId: r.snapchat_campaign_id,
   name: r.name ?? "",
   objective: r.objective ?? null,
@@ -834,7 +836,6 @@ const mapPLFileRow = (r: PLFileRow): PLFile => ({
   syncedAt: r.synced_at,
 });
 
-
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
 // that called this (the Sidebar + each page + useReport) would spin up its own
@@ -949,18 +950,19 @@ function useBusinessDataImpl() {
   } | null>(null);
 
   // Raw Snapchat Ads data — same cache-first seeding as TikTok/Meta/Google.
-  const [snapchatAccount, setSnapchatAccount] = useState<RawSnapchatAccount | null>(
-    () => readSnapchatCache()?.account ?? null,
-  );
+  const [snapchatAccount, setSnapchatAccount] =
+    useState<RawSnapchatAccount | null>(
+      () => readSnapchatCache()?.account ?? null,
+    );
   const [snapchatMonthly, setSnapchatMonthly] = useState<RawSnapchatMonthly[]>(
     () => readSnapchatCache()?.monthly ?? [],
   );
-  const [snapchatCampaigns, setSnapchatCampaigns] = useState<RawSnapchatCampaign[]>(
-    () => readSnapchatCache()?.campaigns ?? [],
-  );
-  const [snapchatLastSyncedAt, setSnapchatLastSyncedAt] = useState<string | null>(
-    () => readSnapchatCache()?.lastSyncedAt ?? null,
-  );
+  const [snapchatCampaigns, setSnapchatCampaigns] = useState<
+    RawSnapchatCampaign[]
+  >(() => readSnapchatCache()?.campaigns ?? []);
+  const [snapchatLastSyncedAt, setSnapchatLastSyncedAt] = useState<
+    string | null
+  >(() => readSnapchatCache()?.lastSyncedAt ?? null);
   // Stored Snapchat credentials. access_token expires in 1 h; refresh_token is durable.
   const [snapchatCreds, setSnapchatCreds] = useState<{
     source: "oauth" | "direct";
@@ -991,8 +993,12 @@ function useBusinessDataImpl() {
   } | null>(null);
 
   // Bank statement aggregates — loaded from DB on mount, no localStorage cache.
-  const [bankStatementMonthly, setBankStatementMonthly] = useState<BankStatementMonth[]>([]);
-  const [bankStatementFiles, setBankStatementFiles] = useState<BankStatementFile[]>([]);
+  const [bankStatementMonthly, setBankStatementMonthly] = useState<
+    BankStatementMonth[]
+  >([]);
+  const [bankStatementFiles, setBankStatementFiles] = useState<
+    BankStatementFile[]
+  >([]);
   const [bankLastSyncedAt, setBankLastSyncedAt] = useState<string | null>(null);
 
   // P&L file uploads — loaded from DB on mount, no localStorage cache.
@@ -1080,7 +1086,10 @@ function useBusinessDataImpl() {
         ...EMPTY_BUSINESS,
         id: bizData.id,
         name: bizData.name ?? "",
-        ownerName: user.user_metadata?.full_name ?? "",
+        // Google OAuth stores the display name under `name` (and sometimes
+        // `full_name`); email signups set `full_name`. Try both.
+        ownerName:
+          user.user_metadata?.full_name ?? user.user_metadata?.name ?? "",
         industry: bizData.industry ?? "",
         channel: bizData.primary_channel ?? "",
         age: bizData.age ?? "",
@@ -1479,8 +1488,12 @@ function useBusinessDataImpl() {
     const err = mErr || cErr;
     if (err) throw err;
     return {
-      monthly: ((monthlyRows ?? []) as TikTokMonthlyRow[]).map(mapTikTokMonthlyRow),
-      campaigns: ((campaignRows ?? []) as TikTokCampaignRow[]).map(mapTikTokCampaignRow),
+      monthly: ((monthlyRows ?? []) as TikTokMonthlyRow[]).map(
+        mapTikTokMonthlyRow,
+      ),
+      campaigns: ((campaignRows ?? []) as TikTokCampaignRow[]).map(
+        mapTikTokCampaignRow,
+      ),
     };
   };
 
@@ -1689,7 +1702,9 @@ function useBusinessDataImpl() {
     accessToken: string,
     sandboxEnv = false,
   ) => {
-    const result = await syncTikTokAdsFn({ data: { advertiserId, accessToken, sandboxEnv } });
+    const result = await syncTikTokAdsFn({
+      data: { advertiserId, accessToken, sandboxEnv },
+    });
     return commitTikTokSync(result, {
       source,
       advertiserId: result.account.advertiserId,
@@ -1697,8 +1712,11 @@ function useBusinessDataImpl() {
     });
   };
 
-  const syncTikTok = (advertiserId: string, accessToken: string, sandboxEnv = false) =>
-    syncTikTokWithSource("direct", advertiserId, accessToken, sandboxEnv);
+  const syncTikTok = (
+    advertiserId: string,
+    accessToken: string,
+    sandboxEnv = false,
+  ) => syncTikTokWithSource("direct", advertiserId, accessToken, sandboxEnv);
 
   const syncTikTokViaOAuth = (advertiserId: string, accessToken: string) =>
     syncTikTokWithSource("oauth", advertiserId, accessToken);
@@ -1716,7 +1734,9 @@ function useBusinessDataImpl() {
         .maybeSingle();
       if (error) throw describeDbError(error, "TikTok");
       if (!data?.access_token) {
-        throw new Error("No stored TikTok credentials — reconnect the account.");
+        throw new Error(
+          "No stored TikTok credentials — reconnect the account.",
+        );
       }
       creds = {
         source: (data.source as "oauth" | "direct") ?? "oauth",
@@ -1802,8 +1822,12 @@ function useBusinessDataImpl() {
     const err = mErr || cErr;
     if (err) throw err;
     return {
-      monthly: ((monthlyRows ?? []) as SnapchatMonthlyRow[]).map(mapSnapchatMonthlyRow),
-      campaigns: ((campaignRows ?? []) as SnapchatCampaignRow[]).map(mapSnapchatCampaignRow),
+      monthly: ((monthlyRows ?? []) as SnapchatMonthlyRow[]).map(
+        mapSnapchatMonthlyRow,
+      ),
+      campaigns: ((campaignRows ?? []) as SnapchatCampaignRow[]).map(
+        mapSnapchatCampaignRow,
+      ),
     };
   };
 
@@ -1887,7 +1911,9 @@ function useBusinessDataImpl() {
     setSnapchatCampaigns(result.campaigns);
     setBusiness((b) => ({
       ...b,
-      connectedSources: Array.from(new Set([...b.connectedSources, "snapchat"])),
+      connectedSources: Array.from(
+        new Set([...b.connectedSources, "snapchat"]),
+      ),
       missingSources: b.missingSources.filter(
         (s) => s.toLowerCase() !== "snapchat",
       ),
@@ -1902,22 +1928,24 @@ function useBusinessDataImpl() {
     const nowISO = new Date().toISOString();
 
     try {
-      const { error: acctErr } = await supabase.from("snapchat_accounts").upsert(
-        {
-          business_id: businessId,
-          ad_account_id: result.account.adAccountId,
-          access_token: creds.accessToken,
-          refresh_token: creds.refreshToken,
-          source: creds.source,
-          name: result.account.name,
-          currency: result.account.currency,
-          timezone: result.account.timezone,
-          account_status: result.account.accountStatus,
-          last_synced_at: nowISO,
-          synced_at: nowISO,
-        },
-        { onConflict: "business_id" },
-      );
+      const { error: acctErr } = await supabase
+        .from("snapchat_accounts")
+        .upsert(
+          {
+            business_id: businessId,
+            ad_account_id: result.account.adAccountId,
+            access_token: creds.accessToken,
+            refresh_token: creds.refreshToken,
+            source: creds.source,
+            name: result.account.name,
+            currency: result.account.currency,
+            timezone: result.account.timezone,
+            account_status: result.account.accountStatus,
+            last_synced_at: nowISO,
+            synced_at: nowISO,
+          },
+          { onConflict: "business_id" },
+        );
       if (acctErr) throw acctErr;
 
       await supabase
@@ -2049,9 +2077,15 @@ function useBusinessDataImpl() {
       setSnapchatCreds(creds);
     }
     if (!creds.accessToken) {
-      throw new Error("No stored Snapchat credentials — reconnect the account.");
+      throw new Error(
+        "No stored Snapchat credentials — reconnect the account.",
+      );
     }
-    return syncSnapchat(creds.adAccountId, creds.accessToken, creds.refreshToken);
+    return syncSnapchat(
+      creds.adAccountId,
+      creds.accessToken,
+      creds.refreshToken,
+    );
   };
 
   const disconnectSnapchat = async () => {
@@ -2116,7 +2150,9 @@ function useBusinessDataImpl() {
           .order("synced_at", { ascending: false }),
       ]);
       if (monthlyRows && monthlyRows.length > 0) {
-        const monthly = (monthlyRows as BankMonthlyRow[]).map(mapBankMonthlyRow);
+        const monthly = (monthlyRows as BankMonthlyRow[]).map(
+          mapBankMonthlyRow,
+        );
         setBankStatementMonthly(monthly);
         const fileList = (fileRows ?? []) as BankFileRow[];
         setBankStatementFiles(fileList.map(mapBankFileRow));
@@ -2136,7 +2172,9 @@ function useBusinessDataImpl() {
     setBankLastSyncedAt(nowISO);
     setBusiness((b) => ({
       ...b,
-      connectedSources: Array.from(new Set([...b.connectedSources, "bank_statements"])),
+      connectedSources: Array.from(
+        new Set([...b.connectedSources, "bank_statements"]),
+      ),
     }));
 
     if (!isSupabaseConfigured || !user) return;
@@ -2148,8 +2186,12 @@ function useBusinessDataImpl() {
       const storagePath = `${user.id}/${fileId}.pdf`;
       const { error: uploadErr } = await supabase.storage
         .from("bank-statements")
-        .upload(storagePath, fileInfo.blob, { contentType: "application/pdf", upsert: false });
-      if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+        .upload(storagePath, fileInfo.blob, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+      if (uploadErr)
+        throw new Error(`Storage upload failed: ${uploadErr.message}`);
       filePath = storagePath;
     }
 
@@ -2166,12 +2208,20 @@ function useBusinessDataImpl() {
       .select()
       .single();
     if (fileErr) throw describeDbError(fileErr, "Bank Statements");
-    setBankStatementFiles((prev) => [mapBankFileRow(fileRow as BankFileRow), ...prev]);
+    setBankStatementFiles((prev) => [
+      mapBankFileRow(fileRow as BankFileRow),
+      ...prev,
+    ]);
 
-    const sources = Array.from(new Set([...business.connectedSources, "bank_statements"]));
+    const sources = Array.from(
+      new Set([...business.connectedSources, "bank_statements"]),
+    );
     const { error: valErr } = await supabase
       .from("valuation_data")
-      .upsert({ business_id: businessId, connected_sources: sources }, { onConflict: "business_id" });
+      .upsert(
+        { business_id: businessId, connected_sources: sources },
+        { onConflict: "business_id" },
+      );
     if (valErr) throw describeDbError(valErr, "Bank Statements");
 
     await supabase
@@ -2182,11 +2232,17 @@ function useBusinessDataImpl() {
   };
 
   const uploadBankStatements = async (files: File[]) => {
-    if (!business.id) throw new Error("No business found. Complete your profile first.");
+    if (!business.id)
+      throw new Error("No business found. Complete your profile first.");
     for (const file of files) {
-      await commitBankFile({ name: file.name, size: file.size, blob: file }, business.id);
+      await commitBankFile(
+        { name: file.name, size: file.size, blob: file },
+        business.id,
+      );
     }
-    toast.success(`${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`);
+    toast.success(
+      `${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`,
+    );
   };
 
   const disconnectBankStatements = async () => {
@@ -2204,11 +2260,20 @@ function useBusinessDataImpl() {
     }
     const businessId = business.id;
     try {
-      await supabase.from("bank_statement_monthly").delete().eq("business_id", businessId);
-      await supabase.from("bank_statement_files").delete().eq("business_id", businessId);
+      await supabase
+        .from("bank_statement_monthly")
+        .delete()
+        .eq("business_id", businessId);
+      await supabase
+        .from("bank_statement_files")
+        .delete()
+        .eq("business_id", businessId);
       const { error: valErr } = await supabase
         .from("valuation_data")
-        .upsert({ business_id: businessId, connected_sources: remaining }, { onConflict: "business_id" });
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
       if (valErr) throw valErr;
       await supabase
         .from("documents")
@@ -2247,7 +2312,9 @@ function useBusinessDataImpl() {
     setPLLastSyncedAt(nowISO);
     setBusiness((b) => ({
       ...b,
-      connectedSources: Array.from(new Set([...b.connectedSources, "pl_upload"])),
+      connectedSources: Array.from(
+        new Set([...b.connectedSources, "pl_upload"]),
+      ),
     }));
 
     if (!isSupabaseConfigured || !user) return;
@@ -2258,8 +2325,12 @@ function useBusinessDataImpl() {
       const storagePath = `${user.id}/${fileId}.pdf`;
       const { error: uploadErr } = await supabase.storage
         .from("pl-uploads")
-        .upload(storagePath, fileInfo.blob, { contentType: "application/pdf", upsert: false });
-      if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+        .upload(storagePath, fileInfo.blob, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+      if (uploadErr)
+        throw new Error(`Storage upload failed: ${uploadErr.message}`);
       filePath = storagePath;
     }
 
@@ -2277,10 +2348,15 @@ function useBusinessDataImpl() {
     if (fileErr) throw describeDbError(fileErr, "P&L Upload");
     setPLFiles((prev) => [mapPLFileRow(fileRow as PLFileRow), ...prev]);
 
-    const sources = Array.from(new Set([...business.connectedSources, "pl_upload"]));
+    const sources = Array.from(
+      new Set([...business.connectedSources, "pl_upload"]),
+    );
     const { error: valErr } = await supabase
       .from("valuation_data")
-      .upsert({ business_id: businessId, connected_sources: sources }, { onConflict: "business_id" });
+      .upsert(
+        { business_id: businessId, connected_sources: sources },
+        { onConflict: "business_id" },
+      );
     if (valErr) throw describeDbError(valErr, "P&L Upload");
 
     await supabase
@@ -2291,11 +2367,17 @@ function useBusinessDataImpl() {
   };
 
   const uploadPL = async (files: File[]) => {
-    if (!business.id) throw new Error("No business found. Complete your profile first.");
+    if (!business.id)
+      throw new Error("No business found. Complete your profile first.");
     for (const file of files) {
-      await commitPLFile({ name: file.name, size: file.size, blob: file }, business.id);
+      await commitPLFile(
+        { name: file.name, size: file.size, blob: file },
+        business.id,
+      );
     }
-    toast.success(`${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`);
+    toast.success(
+      `${files.length} file${files.length !== 1 ? "s" : ""} uploaded.`,
+    );
   };
 
   const disconnectPL = async () => {
@@ -2315,7 +2397,10 @@ function useBusinessDataImpl() {
       await supabase.from("pl_files").delete().eq("business_id", businessId);
       const { error: valErr } = await supabase
         .from("valuation_data")
-        .upsert({ business_id: businessId, connected_sources: remaining }, { onConflict: "business_id" });
+        .upsert(
+          { business_id: businessId, connected_sources: remaining },
+          { onConflict: "business_id" },
+        );
       if (valErr) throw valErr;
       await supabase
         .from("documents")
@@ -3365,7 +3450,8 @@ function useBusinessDataImpl() {
     customerId: string,
     refreshToken: string,
     loginCustomerId?: string | null,
-  ) => syncGoogleWithSource("manual", customerId, refreshToken, loginCustomerId);
+  ) =>
+    syncGoogleWithSource("manual", customerId, refreshToken, loginCustomerId);
 
   // Commit a dataset pulled via the in-app OAuth flow.
   const syncGoogleViaOAuth = (

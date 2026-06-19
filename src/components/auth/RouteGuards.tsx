@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useRouter, useSearch } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 /**
  * Full-screen loading state shown while auth is being resolved or a redirect is
@@ -32,6 +33,36 @@ export function isSafeRedirect(path: unknown): path is string {
     !path.startsWith("//") &&
     !path.startsWith("/\\")
   );
+}
+
+/**
+ * Decides where a freshly-authenticated user should land:
+ * - a returning user (already has a business profile) → `preferred` (their saved
+ *   redirect target or the dashboard);
+ * - a brand-new user (no profile yet — e.g. a first-time "Continue with Google"
+ *   sign-up) → `/onboarding`.
+ *
+ * Shared by every entry point a session can appear at (the OAuth callback and
+ * the guest-page guard) so the choice is consistent no matter where the OAuth
+ * round-trip happens to drop the user. Falls back to `preferred` if the profile
+ * lookup can't run, so a transient error never traps the user on a loader.
+ */
+export async function resolvePostAuthDestination(
+  userId: string,
+  preferred: string,
+): Promise<string> {
+  if (!isSupabaseConfigured) return preferred;
+  try {
+    const { data } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(1)
+      .maybeSingle();
+    return data ? preferred : "/onboarding";
+  } catch {
+    return preferred;
+  }
 }
 
 /**
@@ -98,10 +129,15 @@ export function RequireGuest({ children }: { children: ReactNode }) {
 
     if (user) {
       setRedirecting(true);
-      const target = isSafeRedirect(search.redirect)
+      const preferred = isSafeRedirect(search.redirect)
         ? search.redirect
         : "/dashboard";
-      router.history.replace(target);
+      // Route new users (no profile) to onboarding, returning users to the app.
+      // This is the fallback for OAuth round-trips that land on a guest page
+      // (e.g. the index → /signup bounce) rather than the dedicated callback.
+      resolvePostAuthDestination(user.id, preferred).then((target) => {
+        router.history.replace(target);
+      });
     }
   }, [loading, user, search.redirect, router]);
 
