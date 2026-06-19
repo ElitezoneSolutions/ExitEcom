@@ -316,8 +316,8 @@ function IntegrationsTab() {
   return (
     <div className="space-y-4 text-sm text-[var(--text-secondary)]">
       <p>
-        Connect, refresh and disconnect your data sources (Shopify, Meta, Google,
-        TikTok, Snapchat, GA4) from the Data Sources page.
+        Connect, refresh and disconnect your data sources (Shopify, Meta,
+        Google, TikTok, Snapchat, GA4) from the Data Sources page.
       </p>
       <Link to="/data-sources" className="btn-ghost-light inline-flex">
         Manage Data Sources
