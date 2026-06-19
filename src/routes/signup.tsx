@@ -29,8 +29,14 @@ function Signup() {
 }
 
 export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
-  const { signUp, signIn, signInWithGoogle, verifyEmailOtp, resendSignupOtp } =
-    useAuth();
+  const {
+    signUp,
+    signIn,
+    signInWithGoogle,
+    verifyEmailOtp,
+    resendSignupOtp,
+    isDemoMode,
+  } = useAuth();
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ strict: false }) as {
@@ -169,9 +175,24 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
-      const { error } = await signInWithGoogle();
+      // Carry the user's intended destination through Google → our callback,
+      // which decides onboarding vs. app on return.
+      const redirectParam =
+        isSafeRedirect(search.redirect) && search.redirect
+          ? `?redirect=${encodeURIComponent(search.redirect)}`
+          : "";
+      const callbackUrl = `${window.location.origin}/auth-callback${redirectParam}`;
+      const { error } = await signInWithGoogle(callbackUrl);
       if (error) {
         toast.error(error.message || "Google Sign-in failed");
+      } else if (isDemoMode) {
+        // Real Supabase OAuth full-page-redirects to Google here; demo mode
+        // signs in synchronously instead, so route through the callback
+        // ourselves to land on onboarding/dashboard.
+        navigate({
+          to: "/auth-callback",
+          search: { redirect: search.redirect },
+        });
       }
     } catch (err: unknown) {
       const errorMessage =

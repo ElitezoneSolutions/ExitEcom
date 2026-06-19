@@ -29,7 +29,9 @@ interface AuthContextType {
     password: string,
   ) => Promise<{ error: Error | null; data: unknown }>;
   signOut: () => Promise<{ error: Error | null }>;
-  signInWithGoogle: () => Promise<{ error: Error | null; data: unknown }>;
+  signInWithGoogle: (
+    redirectTo?: string,
+  ) => Promise<{ error: Error | null; data: unknown }>;
   verifyEmailOtp: (
     email: string,
     token: string,
@@ -229,11 +231,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (redirectTo?: string) => {
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: "google",
+          // Send Google back to our own callback route (rather than relying on
+          // the project's default Site URL) so we control where the user lands
+          // and can carry their intended post-login destination through.
+          options: redirectTo ? { redirectTo } : undefined,
         });
         return { error: error ? new Error(error.message) : null, data };
       } catch (err: unknown) {

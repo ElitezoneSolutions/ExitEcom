@@ -2,6 +2,24 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-19 — "Continue with Google" sign-in completed
+
+The Google sign-in button on `/login` and `/signup` now drives a full OAuth
+round-trip with proper landing logic.
+
+- `signInWithGoogle(redirectTo?)` (`src/hooks/useAuth.tsx`) now passes an
+  explicit `redirectTo` so Google returns to our own callback rather than the
+  project's default Site URL.
+- New public route `src/routes/auth-callback.tsx` resolves the Supabase session
+  from the redirect, then routes: **new** Google users (no business profile) →
+  `/onboarding`, **returning** users → their saved `redirect` target or
+  `/dashboard`; denied/failed consent → `/login` with a toast.
+- The user's intended destination (`?redirect=`) is carried through Google and
+  honoured on return.
+- **Supabase config required** (not code): enable the Google provider in
+  Auth → Providers, and add `<app-origin>/auth-callback` (prod + localhost) to
+  Auth → URL Configuration → Redirect URLs, or the `redirectTo` is rejected.
+
 ## 2026-06 — Ad-platform & analytics connectors
 
 Real marketing data now feeds the Exit Score, beyond Shopify. Each connector
