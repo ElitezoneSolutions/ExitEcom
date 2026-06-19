@@ -5,7 +5,7 @@ import {
   useRouter,
   useSearch,
 } from "@tanstack/react-router";
-import { Check, Eye, EyeOff } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Logo } from "@/components/ex/Logo";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import {
@@ -44,6 +44,9 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
     reason?: string;
   };
   const [loading, setLoading] = useState(false);
+  // Dedicated to the Google button so it shows its own connecting state without
+  // being conflated with the email form's submit.
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -173,8 +176,9 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
   };
 
   const handleGoogleSignIn = async () => {
+    if (loading || googleLoading) return;
     try {
-      setLoading(true);
+      setGoogleLoading(true);
       // Carry the user's intended destination through Google → our callback,
       // which decides onboarding vs. app on return.
       const redirectParam =
@@ -199,7 +203,7 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
         err instanceof Error ? err.message : "An unexpected error occurred";
       toast.error(errorMessage);
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
@@ -332,7 +336,7 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
                 )}
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                   className="btn-primary w-full justify-center mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading
@@ -350,11 +354,23 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
                 <span className="flex-1 h-px bg-[var(--border-warm)]" />
               </div>
               <button
+                type="button"
                 onClick={handleGoogleSignIn}
-                disabled={loading}
-                className="btn-ghost-light w-full justify-center disabled:opacity-50"
+                disabled={loading || googleLoading}
+                aria-busy={googleLoading}
+                className="btn-ghost-light w-full justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Continue with Google
+                {googleLoading ? (
+                  <>
+                    <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                    Connecting to Google…
+                  </>
+                ) : (
+                  <>
+                    <GoogleIcon className="w-[18px] h-[18px]" />
+                    Continue with Google
+                  </>
+                )}
               </button>
 
               <p className="mt-8 text-sm text-[var(--text-secondary)] text-center">
@@ -469,13 +485,44 @@ function OtpStep({
   );
 }
 
-function Field({
+/** The official multi-colour Google "G" mark, for the OAuth button. */
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 18 18"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.997 8.997 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z"
+      />
+    </svg>
+  );
+}
+
+export function Field({
   label,
   type,
   value,
   onChange,
   disabled,
   invalid,
+  required = true,
+  placeholder,
 }: {
   label: string;
   type: string;
@@ -483,6 +530,8 @@ function Field({
   onChange: (val: string) => void;
   disabled?: boolean;
   invalid?: boolean;
+  required?: boolean;
+  placeholder?: string;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
@@ -496,7 +545,8 @@ function Field({
       <div className="relative mt-2">
         <input
           type={inputType}
-          required
+          required={required}
+          placeholder={placeholder}
           aria-invalid={invalid || undefined}
           value={value}
           onChange={(e) => onChange(e.target.value)}

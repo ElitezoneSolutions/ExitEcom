@@ -2,6 +2,39 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-19 — "Continue with Google" button polish
+
+Visual + UX upgrade to the OAuth button on `/login` and `/signup`
+(`src/routes/signup.tsx`).
+
+- Added the official multi-colour Google "G" logo (inline SVG).
+- Dedicated `googleLoading` state: the button shows a spinner +
+  "Connecting to Google…" while the redirect kicks off, independent of the
+  email form's submit state; both buttons disable during either action.
+- Added a real hover state to `btn-ghost-light` (`src/styles.css`) and a
+  `not-allowed` cursor when disabled.
+
+## 2026-06-19 — Settings page made functional
+
+The Settings page (`src/routes/_app.settings.tsx`) was entirely non-functional —
+every field was a static placeholder with no state, no save handler and no
+backing store. It now reads and persists real data.
+
+- **Profile tab** loads the current full name/email from the auth user and the
+  timezone/currency from `profiles`. Save writes `full_name` to both the auth
+  `user_metadata` (what the app reads for the owner's name) and the `profiles`
+  row, persists timezone/currency, and triggers Supabase's email-change
+  confirmation when the email is edited.
+- **Notifications tab** binds the four toggles to `profiles.notification_prefs`
+  (jsonb) and persists them.
+- **Integrations tab** now links to the Data Sources page.
+- **Security tab** — Change Password opens an inline form that calls
+  `supabase.auth.updateUser({ password })`. **Two-factor authentication was
+  removed.**
+- Demo Mode (no Supabase) degrades gracefully with a non-persisting toast.
+- Migration `20260619000000_profile_settings.sql` adds `timezone`, `currency`
+  and `notification_prefs` to `profiles` (applied to the hosted project).
+
 ## 2026-06-19 — Google sign-in: onboarding routing + display name
 
 Fixes two issues seen after a first "Continue with Google" sign-up: onboarding

@@ -233,6 +233,10 @@
   align-items: center;
   gap: 0.5rem;
 }
+.btn-ghost-light:hover:not(:disabled) {
+  border-color: var(--text-primary);
+  background-color: rgba(0, 0, 0, 0.03);
+}
 
 @utility card-light {
   background-color: #ffffff;
