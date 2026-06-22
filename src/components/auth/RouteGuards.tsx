@@ -53,6 +53,15 @@ export async function resolvePostAuthDestination(
 ): Promise<string> {
   if (!isSupabaseConfigured) return preferred;
   try {
+    // Superadmins use an admin-only console — send them straight to /admin,
+    // bypassing onboarding and the user dashboard entirely.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profile?.role === "superadmin") return "/admin";
+
     const { data } = await supabase
       .from("businesses")
       .select("id")
@@ -142,5 +151,37 @@ export function RequireGuest({ children }: { children: ReactNode }) {
   }, [loading, user, search.redirect, router]);
 
   if (loading || redirecting) return <AuthLoading />;
+  return <>{children}</>;
+}
+
+/**
+ * Guards the Super Admin dashboard. Sits INSIDE `RequireAuth` (so a session is
+ * already guaranteed), and additionally requires the resolved role to be
+ * `superadmin`.
+ *
+ * - While auth or the role is still resolving (`loading` or `role === null`) →
+ *   loader, never the page.
+ * - A signed-in non-superadmin is bounced to `/dashboard` (not `/login` — they
+ *   are authenticated, just not authorized).
+ */
+export function RequireSuperAdmin({ children }: { children: ReactNode }) {
+  const { user, role, loading } = useAuth();
+  const router = useRouter();
+  const redirectingRef = useRef(false);
+
+  const unauthorized =
+    !loading && role !== null && (!user || role !== "superadmin");
+
+  useEffect(() => {
+    if (!unauthorized) {
+      redirectingRef.current = false;
+      return;
+    }
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
+    router.navigate({ to: "/dashboard", replace: true });
+  }, [unauthorized, router]);
+
+  if (loading || role === null || role !== "superadmin") return <AuthLoading />;
   return <>{children}</>;
 }

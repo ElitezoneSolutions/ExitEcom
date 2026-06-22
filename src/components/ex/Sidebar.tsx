@@ -15,6 +15,10 @@ import {
   Settings,
   CreditCard,
   LogOut,
+  ShieldCheck,
+  Users,
+  FileCheck,
+  ScrollText,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { useBusinessData } from "@/hooks/useBusinessData";
@@ -69,14 +73,31 @@ const groups = [
   },
 ] as const;
 
+// Only rendered for superadmin accounts (appended to `groups` below). Kept
+// separate so the role gate is explicit and the public nav is untouched.
+const adminGroup = {
+  label: "Admin",
+  items: [
+    { to: "/admin", label: "Overview", icon: ShieldCheck },
+    { to: "/admin/users", label: "Users", icon: Users },
+    { to: "/admin/documents", label: "Documents", icon: FileCheck },
+    { to: "/admin/audit", label: "Audit Log", icon: ScrollText },
+  ],
+} as const;
+
 export function Sidebar() {
   const { pathname } = useLocation();
   const { business } = useBusinessData();
-  const { signOut } = useAuth();
+  const { signOut, role } = useAuth();
+  const isSuperadmin = role === "superadmin";
+  // Superadmins get an admin-only console — none of the user-facing nav.
+  const navGroups = isSuperadmin ? [adminGroup] : groups;
   const navigate = useNavigate();
-  const businessName = business.name || "Your business";
-  const ownerInitial = business.ownerName?.[0] ?? "?";
-  const ownerName = business.ownerName || "Owner";
+  const businessName = isSuperadmin
+    ? "Super Admin"
+    : business.name || "Your business";
+  const ownerInitial = isSuperadmin ? "A" : (business.ownerName?.[0] ?? "?");
+  const ownerName = isSuperadmin ? "Administrator" : business.ownerName || "Owner";
 
   const handleLogout = async () => {
     try {
@@ -104,7 +125,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-5 space-y-6">
-        {groups.map((g) => (
+        {navGroups.map((g) => (
           <div key={g.label}>
             <div className="px-3 mb-2 text-[10px] tracking-[0.08em] uppercase text-[var(--text-muted)] font-semibold">
               {g.label}
@@ -199,15 +220,17 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-4 py-4">
-        <Link
-          to="/buyer-matching"
-          className="flex items-center justify-between w-full px-4 py-3 bg-[var(--accent)] hover:bg-[var(--accent-muted)] text-white rounded-md text-sm font-medium transition-colors"
-        >
-          <span>Find a Buyer</span>
-          <span>→</span>
-        </Link>
-      </div>
+      {!isSuperadmin && (
+        <div className="px-4 py-4">
+          <Link
+            to="/buyer-matching"
+            className="flex items-center justify-between w-full px-4 py-3 bg-[var(--accent)] hover:bg-[var(--accent-muted)] text-white rounded-md text-sm font-medium transition-colors"
+          >
+            <span>Find a Buyer</span>
+            <span>→</span>
+          </Link>
+        </div>
+      )}
 
       <div className="border-t border-[var(--border-warm)] px-4 py-4 flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-[var(--sidebar-active)] flex items-center justify-center text-[var(--accent)] font-display text-sm">

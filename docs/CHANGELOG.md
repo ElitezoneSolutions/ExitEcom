@@ -2,6 +2,31 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-22 — Super Admin Dashboard
+
+Added a role-gated admin control panel at `/admin`, the first role concept in the
+app.
+
+- **Roles & access.** New `profiles.role` column (`'user' | 'superadmin'`, default
+  `user`) + `public.is_superadmin()` helper. New migration
+  `20260622000000_admin_roles.sql` (must be pushed live), which also seeds
+  `iam@exitecom.com` as the first superadmin once that account exists. `useAuth`
+  now exposes `role`; new `RequireSuperAdmin` guard bounces non-admins to
+  `/dashboard`; the sidebar shows an **Admin** group only for superadmins.
+- **Server-only cross-user reads.** All admin data goes through `createServerFn`
+  handlers in `src/lib/admin/*` that call `requireSuperadmin()` first, then use a
+  **service-role** Supabase client (`src/lib/admin/server.ts`) to bypass RLS. The
+  service-role key is server-only (`SUPABASE_SERVICE_ROLE_KEY`, never `VITE_`).
+  Connector access/refresh tokens are never returned to the client.
+- **Modules.** Overview (deterministic platform analytics: users, signups,
+  connector adoption, exit-score distribution), Users (search/sort/CSV, role
+  change, password-reset email, delete), Documents (all bank-statement & P&L PDFs,
+  signed-URL inline preview, verify/reject/pending status via new
+  `document_reviews` table), and an Audit Log (every admin mutation → new
+  `admin_audit_log` table, filterable + CSV export).
+- **New env vars:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (see
+  `docs/env-vars.md`).
+
 ## 2026-06-19 — Data pages design consistency
 
 Unified the UI across all eight data pages (`store-data`,

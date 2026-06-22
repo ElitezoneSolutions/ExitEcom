@@ -13,6 +13,21 @@ All variables prefixed `VITE_` are exposed to the browser bundle. Everything els
 
 ---
 
+## Supabase admin (Super Admin Dashboard)
+
+Required **only** to run the Super Admin Dashboard (`/admin`). The service-role
+key bypasses Row Level Security, so it is read **only inside server functions**
+(`src/lib/admin/*`) and must **never** be `VITE_`-prefixed (that would inline it
+into the browser bundle). Without these set the admin pages render an
+"admin access is not configured" message; all other features are unaffected.
+
+| Variable | Description |
+|---|---|
+| `SUPABASE_URL` | Same project URL as `VITE_SUPABASE_URL`, exposed to the server without the `VITE_` prefix |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key — Project Settings → API → `service_role`. Secret; bypasses RLS |
+
+---
+
 ## Meta (Facebook) Ads
 
 Required for the in-app OAuth flow. Without these the OAuth tab shows a fallback message and users must use the Access token tab.

@@ -10,11 +10,19 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
 
+type UserRole = "user" | "superadmin";
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   isDemoMode: boolean;
+  /**
+   * The signed-in user's platform role. `null` while it is still being resolved
+   * (treat as "not yet known", not "no access"); `"user"` for everyone in demo
+   * mode. Used to gate the Super Admin dashboard.
+   */
+  role: UserRole | null;
   /** True when the previous session was invalidated/expired (not a manual logout). */
   sessionExpired: boolean;
   /** Clear the expired flag once the "session expired" message has been shown. */
@@ -45,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   // Distinguishes a user-initiated sign-out from an involuntary one (expired or
   // revoked token). Both surface as a SIGNED_OUT event from Supabase.
@@ -127,6 +136,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  // Resolve the user's platform role once a session is known. RLS already lets a
+  // user read their own profile row, so the anon client is sufficient here — no
+  // service role needed for the caller's own role. Demo mode is always "user".
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setRole(user ? "user" : null);
+      return;
+    }
+    if (!user) {
+      setRole(null);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setRole(data?.role === "superadmin" ? "superadmin" : "user");
+      })
+      // Never leave role unresolved on a query failure — the app holds rendering
+      // until role is known, so default to the least-privileged "user".
+      .catch(() => {
+        if (!cancelled) setRole("user");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
     if (isSupabaseConfigured) {
@@ -308,6 +349,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         loading,
         isDemoMode: !isSupabaseConfigured,
+        role,
         sessionExpired,
         acknowledgeExpiry,
         signUp,

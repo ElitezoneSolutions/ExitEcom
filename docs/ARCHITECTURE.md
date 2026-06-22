@@ -73,8 +73,9 @@ regenerates on dev/build.
 
 ## 3. Authentication (`src/hooks/useAuth.tsx`)
 
-A single `AuthProvider` exposes `{ user, session, loading, isDemoMode, signUp,
-signIn, signOut, signInWithGoogle }` via context.
+A single `AuthProvider` exposes `{ user, session, loading, isDemoMode, role,
+signUp, signIn, signOut, signInWithGoogle }` via context. `role`
+(`'user' | 'superadmin' | null`) gates the Super Admin Dashboard (see §6a).
 
 It has **two implementations behind one interface**, switched by
 `isSupabaseConfigured`:
@@ -338,6 +339,34 @@ path policies on `storage.objects`.
 > `shopify_raw_data` migration also extended `valuation_data` with the new columns
 > above (all via `add column if not exists`). **Migrations must be applied to the
 > live hosted project** — see the standing note in memory.
+
+---
+
+## 6a. Super Admin Dashboard (`/admin`, `src/lib/admin/*`)
+
+The admin panel is the one place that deliberately reads **across** users, so it
+sits outside the per-owner RLS model rather than poking holes in it.
+
+- **Role.** `profiles.role` (`'user' | 'superadmin'`, default `user`) is the only
+  role concept in the app. `useAuth` resolves the caller's own role via the anon
+  client (RLS already lets a user read their own profile). `RequireSuperAdmin`
+  (in `RouteGuards.tsx`) gates the `_app.admin.*` routes; the sidebar's **Admin**
+  group renders only for superadmins.
+- **Service-role path.** Every admin read/write is a `createServerFn` in
+  `src/lib/admin/{users,documents,analytics}.ts`. Each handler calls
+  `requireSuperadmin(accessToken)` (verifies the JWT → checks `profiles.role`)
+  **first**, then uses the service-role client from `src/lib/admin/server.ts` to
+  bypass RLS. The service-role key is read from `process.env` only
+  (`SUPABASE_SERVICE_ROLE_KEY`) — never `VITE_`-prefixed, never imported into
+  client code. Connector tokens are never selected/returned; only status fields.
+- **Document preview.** Bank-statement/P&L PDFs live in the private
+  `bank-statements`/`pl-uploads` buckets, so the admin viewer mints a 1-hour
+  signed URL via the service client (`getDocumentUrlFn`).
+- **Determinism & audit.** Platform analytics are plain SQL aggregations (no LLM).
+  Every mutation writes to `admin_audit_log` via `logAdminAction`. Review
+  decisions persist in `document_reviews`. Both tables + the `role` column ship in
+  `20260622000000_admin_roles.sql`, which also seeds the first superadmin —
+  **must be pushed to the live project.**
 
 ---
 

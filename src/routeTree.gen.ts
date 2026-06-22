@@ -54,6 +54,11 @@ import { Route as AppBuyerMatchingRouteImport } from './routes/_app.buyer-matchi
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
 import { Route as AppBankStatementsUploadRouteImport } from './routes/_app.bank-statements-upload'
 import { Route as AppBankStatementsDataRouteImport } from './routes/_app.bank-statements-data'
+import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as AppAdminIndexRouteImport } from './routes/_app.admin.index'
+import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
+import { Route as AppAdminDocumentsRouteImport } from './routes/_app.admin.documents'
+import { Route as AppAdminAuditRouteImport } from './routes/_app.admin.audit'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -280,6 +285,31 @@ const AppBankStatementsDataRoute = AppBankStatementsDataRouteImport.update({
   path: '/bank-statements-data',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminIndexRoute = AppAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminDocumentsRoute = AppAdminDocumentsRouteImport.update({
+  id: '/documents',
+  path: '/documents',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -291,6 +321,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/admin': typeof AppAdminRouteWithChildren
   '/bank-statements-data': typeof AppBankStatementsDataRoute
   '/bank-statements-upload': typeof AppBankStatementsUploadRoute
   '/billing': typeof AppBillingRoute
@@ -326,6 +357,10 @@ export interface FileRoutesByFullPath {
   '/tiktok-data': typeof AppTiktokDataRoute
   '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/valuation': typeof AppValuationRoute
+  '/admin/audit': typeof AppAdminAuditRoute
+  '/admin/documents': typeof AppAdminDocumentsRoute
+  '/admin/users': typeof AppAdminUsersRoute
+  '/admin/': typeof AppAdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -372,6 +407,10 @@ export interface FileRoutesByTo {
   '/tiktok-data': typeof AppTiktokDataRoute
   '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/valuation': typeof AppValuationRoute
+  '/admin/audit': typeof AppAdminAuditRoute
+  '/admin/documents': typeof AppAdminDocumentsRoute
+  '/admin/users': typeof AppAdminUsersRoute
+  '/admin': typeof AppAdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -385,6 +424,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/_app/admin': typeof AppAdminRouteWithChildren
   '/_app/bank-statements-data': typeof AppBankStatementsDataRoute
   '/_app/bank-statements-upload': typeof AppBankStatementsUploadRoute
   '/_app/billing': typeof AppBillingRoute
@@ -420,6 +460,10 @@ export interface FileRoutesById {
   '/_app/tiktok-data': typeof AppTiktokDataRoute
   '/_app/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/_app/valuation': typeof AppValuationRoute
+  '/_app/admin/audit': typeof AppAdminAuditRoute
+  '/_app/admin/documents': typeof AppAdminDocumentsRoute
+  '/_app/admin/users': typeof AppAdminUsersRoute
+  '/_app/admin/': typeof AppAdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -433,6 +477,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/admin'
     | '/bank-statements-data'
     | '/bank-statements-upload'
     | '/billing'
@@ -468,6 +513,10 @@ export interface FileRouteTypes {
     | '/tiktok-data'
     | '/tiktok-oauth-callback'
     | '/valuation'
+    | '/admin/audit'
+    | '/admin/documents'
+    | '/admin/users'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -514,6 +563,10 @@ export interface FileRouteTypes {
     | '/tiktok-data'
     | '/tiktok-oauth-callback'
     | '/valuation'
+    | '/admin/audit'
+    | '/admin/documents'
+    | '/admin/users'
+    | '/admin'
   id:
     | '__root__'
     | '/'
@@ -526,6 +579,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/signup'
     | '/terms'
+    | '/_app/admin'
     | '/_app/bank-statements-data'
     | '/_app/bank-statements-upload'
     | '/_app/billing'
@@ -561,6 +615,10 @@ export interface FileRouteTypes {
     | '/_app/tiktok-data'
     | '/_app/tiktok-oauth-callback'
     | '/_app/valuation'
+    | '/_app/admin/audit'
+    | '/_app/admin/documents'
+    | '/_app/admin/users'
+    | '/_app/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -893,10 +951,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBankStatementsDataRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/': {
+      id: '/_app/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AppAdminIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/users': {
+      id: '/_app/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AppAdminUsersRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/documents': {
+      id: '/_app/admin/documents'
+      path: '/documents'
+      fullPath: '/admin/documents'
+      preLoaderRoute: typeof AppAdminDocumentsRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/audit': {
+      id: '/_app/admin/audit'
+      path: '/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AppAdminAuditRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
 
+interface AppAdminRouteChildren {
+  AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminDocumentsRoute: typeof AppAdminDocumentsRoute
+  AppAdminUsersRoute: typeof AppAdminUsersRoute
+  AppAdminIndexRoute: typeof AppAdminIndexRoute
+}
+
+const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminDocumentsRoute: AppAdminDocumentsRoute,
+  AppAdminUsersRoute: AppAdminUsersRoute,
+  AppAdminIndexRoute: AppAdminIndexRoute,
+}
+
+const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
+  AppAdminRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRouteWithChildren
   AppBankStatementsDataRoute: typeof AppBankStatementsDataRoute
   AppBankStatementsUploadRoute: typeof AppBankStatementsUploadRoute
   AppBillingRoute: typeof AppBillingRoute
@@ -935,6 +1047,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRouteWithChildren,
   AppBankStatementsDataRoute: AppBankStatementsDataRoute,
   AppBankStatementsUploadRoute: AppBankStatementsUploadRoute,
   AppBillingRoute: AppBillingRoute,
