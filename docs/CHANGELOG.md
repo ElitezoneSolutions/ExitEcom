@@ -2,6 +2,24 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Google Ads: never query a Manager (MCC) account for metrics
+
+Fixed a Google Ads OAuth bug where connecting with a Manager (MCC) account
+auto-selected the manager itself and then failed with a cryptic
+`INVALID_ARGUMENT` (`REQUESTED_METRICS_FOR_MANAGER`) during data pull — a manager
+serves no ads, so it has no metrics. (`src/lib/google.ts`.)
+
+- **OAuth expansion.** `exchangeGoogleOAuthCodeFn` now expands a manager — _or any
+  seed it can't positively confirm as a standalone account_ (introspection
+  returned no usable customer row) — into its non-manager client accounts, so the
+  MCC is never offered or auto-picked directly.
+- **Fail fast on a manager.** `pull()` fetches the account first and throws a
+  clear, actionable error if `customer.manager` is true, instead of letting the
+  metrics queries reject with an opaque 400.
+- **Better error hint.** Added `REQUESTED_METRICS_FOR_MANAGER` /
+  `METRICS_INCOMPATIBLE_WITH_MANAGER` to `hintForCode` so any future occurrence
+  reads "pick one of the ad accounts under this manager."
+
 ## 2026-06-22 — Super Admin Dashboard
 
 Added a role-gated admin control panel at `/admin`, the first role concept in the
