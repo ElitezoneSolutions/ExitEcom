@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowRight, RefreshCw, ChevronDown } from "lucide-react";
 import { Logo } from "@/components/ex/Logo";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,6 +16,206 @@ export const Route = createFileRoute("/onboarding")({
     </RequireAuth>
   ),
 });
+
+// Full list of countries for the "Country of Operation" dropdown.
+const COUNTRIES = [
+  "Afghanistan",
+  "Albania",
+  "Algeria",
+  "Andorra",
+  "Angola",
+  "Antigua and Barbuda",
+  "Argentina",
+  "Armenia",
+  "Australia",
+  "Austria",
+  "Azerbaijan",
+  "Bahamas",
+  "Bahrain",
+  "Bangladesh",
+  "Barbados",
+  "Belarus",
+  "Belgium",
+  "Belize",
+  "Benin",
+  "Bhutan",
+  "Bolivia",
+  "Bosnia and Herzegovina",
+  "Botswana",
+  "Brazil",
+  "Brunei",
+  "Bulgaria",
+  "Burkina Faso",
+  "Burundi",
+  "Cabo Verde",
+  "Cambodia",
+  "Cameroon",
+  "Canada",
+  "Central African Republic",
+  "Chad",
+  "Chile",
+  "China",
+  "Colombia",
+  "Comoros",
+  "Congo (Brazzaville)",
+  "Congo (Kinshasa)",
+  "Costa Rica",
+  "Côte d'Ivoire",
+  "Croatia",
+  "Cuba",
+  "Cyprus",
+  "Czechia",
+  "Denmark",
+  "Djibouti",
+  "Dominica",
+  "Dominican Republic",
+  "Ecuador",
+  "Egypt",
+  "El Salvador",
+  "Equatorial Guinea",
+  "Eritrea",
+  "Estonia",
+  "Eswatini",
+  "Ethiopia",
+  "Fiji",
+  "Finland",
+  "France",
+  "Gabon",
+  "Gambia",
+  "Georgia",
+  "Germany",
+  "Ghana",
+  "Greece",
+  "Grenada",
+  "Guatemala",
+  "Guinea",
+  "Guinea-Bissau",
+  "Guyana",
+  "Haiti",
+  "Honduras",
+  "Hungary",
+  "Iceland",
+  "India",
+  "Indonesia",
+  "Iran",
+  "Iraq",
+  "Ireland",
+  "Israel",
+  "Italy",
+  "Jamaica",
+  "Japan",
+  "Jordan",
+  "Kazakhstan",
+  "Kenya",
+  "Kiribati",
+  "Kuwait",
+  "Kyrgyzstan",
+  "Laos",
+  "Latvia",
+  "Lebanon",
+  "Lesotho",
+  "Liberia",
+  "Libya",
+  "Liechtenstein",
+  "Lithuania",
+  "Luxembourg",
+  "Madagascar",
+  "Malawi",
+  "Malaysia",
+  "Maldives",
+  "Mali",
+  "Malta",
+  "Marshall Islands",
+  "Mauritania",
+  "Mauritius",
+  "Mexico",
+  "Micronesia",
+  "Moldova",
+  "Monaco",
+  "Mongolia",
+  "Montenegro",
+  "Morocco",
+  "Mozambique",
+  "Myanmar",
+  "Namibia",
+  "Nauru",
+  "Nepal",
+  "Netherlands",
+  "New Zealand",
+  "Nicaragua",
+  "Niger",
+  "Nigeria",
+  "North Korea",
+  "North Macedonia",
+  "Norway",
+  "Oman",
+  "Pakistan",
+  "Palau",
+  "Palestine",
+  "Panama",
+  "Papua New Guinea",
+  "Paraguay",
+  "Peru",
+  "Philippines",
+  "Poland",
+  "Portugal",
+  "Qatar",
+  "Romania",
+  "Russia",
+  "Rwanda",
+  "Saint Kitts and Nevis",
+  "Saint Lucia",
+  "Saint Vincent and the Grenadines",
+  "Samoa",
+  "San Marino",
+  "Sao Tome and Principe",
+  "Saudi Arabia",
+  "Senegal",
+  "Serbia",
+  "Seychelles",
+  "Sierra Leone",
+  "Singapore",
+  "Slovakia",
+  "Slovenia",
+  "Solomon Islands",
+  "Somalia",
+  "South Africa",
+  "South Korea",
+  "South Sudan",
+  "Spain",
+  "Sri Lanka",
+  "Sudan",
+  "Suriname",
+  "Sweden",
+  "Switzerland",
+  "Syria",
+  "Taiwan",
+  "Tajikistan",
+  "Tanzania",
+  "Thailand",
+  "Timor-Leste",
+  "Togo",
+  "Tonga",
+  "Trinidad and Tobago",
+  "Tunisia",
+  "Turkey",
+  "Turkmenistan",
+  "Tuvalu",
+  "Uganda",
+  "Ukraine",
+  "United Arab Emirates",
+  "United Kingdom",
+  "United States",
+  "Uruguay",
+  "Uzbekistan",
+  "Vanuatu",
+  "Vatican City",
+  "Venezuela",
+  "Vietnam",
+  "Yemen",
+  "Zambia",
+  "Zimbabwe",
+];
 
 interface OnboardingData {
   businessName: string;
@@ -32,14 +232,14 @@ interface OnboardingData {
 
 function Onboarding() {
   const [step, setStep] = useState(1);
-  const total = 4;
+  const total = 3;
 
   const [formData, setFormData] = useState<OnboardingData>({
     businessName: "",
     industry: "Beauty & Skincare",
     primaryChannel: "Shopify",
     country: "",
-    monthlyRevenue: "< £10k",
+    monthlyRevenue: "< $10k",
     businessAge: "Under 12 months",
     paidAdManager: "Me",
     supplierRelationshipManager: "Me",
@@ -75,32 +275,20 @@ function Onboarding() {
           />
         )}
         {step === 2 && (
-          <Step2
+          <Step3
             data={formData}
             onChange={updateFields}
             onNext={() => setStep(3)}
           />
         )}
-        {step === 3 && (
-          <Step3
-            data={formData}
-            onChange={updateFields}
-            onNext={() => setStep(4)}
-          />
-        )}
-        {step === 4 && <Step4 data={formData} />}
+        {step === 3 && <Step4 data={formData} />}
       </main>
     </div>
   );
 }
 
 function Stepper({ step, total }: { step: number; total: number }) {
-  const labels = [
-    "Business Basics",
-    "Connect Data",
-    "Founder Context",
-    "Generate Score",
-  ];
+  const labels = ["Business Basics", "Founder Context", "Finish Setup"];
   return (
     <div className="flex items-center gap-3">
       {Array.from({ length: total }).map((_, i) => {
@@ -154,7 +342,22 @@ interface StepProps {
   onNext: () => void;
 }
 
+const REVENUE_BRACKETS = [
+  "< $10k",
+  "$10k–$25k",
+  "$25k–$50k",
+  "$50k–$100k",
+  "$100k+",
+];
+const REVENUE_CUSTOM = "Type a custom amount";
+
 function Step1({ data, onChange, onNext }: StepProps) {
+  // The Monthly Revenue field is either one of the preset brackets or a custom
+  // typed amount. We're in "type" mode when the stored value isn't a bracket.
+  const [revenueMode, setRevenueMode] = useState<"select" | "type">(
+    REVENUE_BRACKETS.includes(data.monthlyRevenue) ? "select" : "type",
+  );
+
   return (
     <StepCard>
       <SectionLabel>Step 01</SectionLabel>
@@ -197,24 +400,58 @@ function Step1({ data, onChange, onNext }: StepProps) {
           value={data.primaryChannel}
           onChange={(val) => onChange({ primaryChannel: val })}
           options={[
-            "Shopify",
-            "Amazon",
-            "WooCommerce",
-            "Etsy",
-            "Multi-channel",
+            { value: "Shopify", label: "Shopify" },
+            { value: "Amazon", label: "Amazon (Coming soon)", disabled: true },
+            {
+              value: "WooCommerce",
+              label: "WooCommerce (Coming soon)",
+              disabled: true,
+            },
+            { value: "Etsy", label: "Etsy (Coming soon)", disabled: true },
+            {
+              value: "Multi-channel",
+              label: "Multi-channel (Coming soon)",
+              disabled: true,
+            },
           ]}
         />
-        <Input
+        <Select
           label="Country of Operation"
           value={data.country}
           onChange={(val) => onChange({ country: val })}
+          placeholder="Select a country"
+          options={COUNTRIES}
         />
-        <Select
-          label="Monthly Revenue"
-          value={data.monthlyRevenue}
-          onChange={(val) => onChange({ monthlyRevenue: val })}
-          options={["< £10k", "£10k–£25k", "£25k–£50k", "£50k–£100k", "£100k+"]}
-        />
+        <div>
+          <Select
+            label="Monthly Revenue (USD)"
+            value={
+              revenueMode === "type" ? REVENUE_CUSTOM : data.monthlyRevenue
+            }
+            onChange={(val) => {
+              if (val === REVENUE_CUSTOM) {
+                setRevenueMode("type");
+                onChange({ monthlyRevenue: "" });
+              } else {
+                setRevenueMode("select");
+                onChange({ monthlyRevenue: val });
+              }
+            }}
+            options={[...REVENUE_BRACKETS, REVENUE_CUSTOM]}
+          />
+          {revenueMode === "type" && (
+            <div className="mt-3">
+              <Input
+                type="number"
+                min={0}
+                prefix="$"
+                placeholder="Enter exact monthly revenue, e.g. 42000"
+                value={data.monthlyRevenue}
+                onChange={(val) => onChange({ monthlyRevenue: val })}
+              />
+            </div>
+          )}
+        </div>
         <Select
           label="Business Age"
           value={data.businessAge}
@@ -237,76 +474,10 @@ function Step1({ data, onChange, onNext }: StepProps) {
   );
 }
 
-function Step2({ onNext }: StepProps) {
-  const comingSoon = [
-    "Meta Ads",
-    "Google Ads",
-    "TikTok Ads",
-    "Snapchat Ads",
-    "P&L Upload",
-    "Google Analytics 4",
-  ];
-
-  return (
-    <StepCard>
-      <SectionLabel>Step 02</SectionLabel>
-      <h2 className="font-display mt-3 text-3xl">Connect your store</h2>
-      <p className="text-sm text-[var(--text-secondary)] mt-2">
-        ExitEcom builds your Exit Score directly from your Shopify store. You'll
-        connect it right after setup — nothing is analysed until you do.
-      </p>
-
-      <div className="mt-8 space-y-6">
-        <div>
-          <SectionLabel>Store Platform</SectionLabel>
-          <div className="mt-3 flex items-center justify-between border border-[var(--border-warm)] rounded-lg px-5 py-4">
-            <div>
-              <div className="font-medium text-[var(--text-primary)]">
-                Shopify
-              </div>
-              <div className="text-xs text-[var(--text-muted)] mt-1">
-                Pulls revenue, orders, products and customers
-              </div>
-            </div>
-            <span className="text-xs px-2.5 py-1 rounded-sm bg-[var(--sidebar-active)] text-[var(--accent)] font-medium">
-              Connect after setup
-            </span>
-          </div>
-        </div>
-
-        <div>
-          <SectionLabel>More integrations — Coming soon</SectionLabel>
-          <div className="mt-3 grid sm:grid-cols-2 gap-3">
-            {comingSoon.map((label) => (
-              <div
-                key={label}
-                className="flex items-center justify-between border border-[var(--border-warm)] rounded-lg px-4 py-3 opacity-60"
-              >
-                <span className="text-sm text-[var(--text-primary)]">
-                  {label}
-                </span>
-                <span className="text-xs text-[var(--text-muted)]">
-                  Coming soon
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-10 flex justify-end">
-        <button onClick={onNext} className="btn-primary">
-          Continue <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
-    </StepCard>
-  );
-}
-
 function Step3({ data, onChange, onNext }: StepProps) {
   return (
     <StepCard>
-      <SectionLabel>Step 03</SectionLabel>
+      <SectionLabel>Step 02</SectionLabel>
       <h2 className="font-display mt-3 text-3xl">A few final questions</h2>
       <p className="text-sm text-[var(--text-secondary)] mt-2">
         These help our AI assess founder dependency — a key buyer concern.
@@ -345,7 +516,7 @@ function Step3({ data, onChange, onNext }: StepProps) {
         />
         <div className="flex justify-end pt-2">
           <button className="btn-primary" type="submit">
-            Generate My Exit Score <ArrowRight className="w-4 h-4" />
+            Continue <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </form>
@@ -476,14 +647,15 @@ function Step4({ data }: { data: OnboardingData }) {
             You're all set.
           </h3>
           <p className="mt-3 text-sm text-[var(--text-on-dark-secondary)]">
-            Connect your Shopify store to generate your Exit Score, valuation
-            and risk report.
+            Connect your data sources to generate your Exit Score, valuation and
+            risk report. We can't calculate anything until your real store data
+            is connected.
           </p>
           <button
             onClick={() => navigate({ to: "/data-sources" })}
             className="btn-primary mt-8"
           >
-            Connect Shopify <ArrowRight className="w-4 h-4" />
+            Connect Data Sources <ArrowRight className="w-4 h-4" />
           </button>
         </>
       )}
@@ -496,55 +668,97 @@ function Input({
   value,
   onChange,
   type = "text",
+  prefix,
+  placeholder,
+  min,
 }: {
-  label: string;
+  label?: string;
   value: string;
   onChange: (val: string) => void;
   type?: string;
+  prefix?: string;
+  placeholder?: string;
+  min?: number;
 }) {
   return (
     <label className="block">
-      <span className="label-caps" style={{ fontSize: 10 }}>
-        {label}
-      </span>
-      <input
-        type={type}
-        required
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-2 w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3.5 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)] text-[var(--text-primary)]"
-      />
+      {label && (
+        <span className="label-caps" style={{ fontSize: 10 }}>
+          {label}
+        </span>
+      )}
+      <div
+        className={`${label ? "mt-2 " : ""}flex items-center w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3.5 focus-within:border-[var(--accent)]`}
+      >
+        {prefix && (
+          <span className="text-sm text-[var(--text-muted)] mr-1.5 select-none">
+            {prefix}
+          </span>
+        )}
+        <input
+          type={type}
+          required
+          min={min}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full !border-0 !bg-transparent !px-0 !py-2.5 !shadow-none text-sm focus:outline-none text-[var(--text-primary)]"
+        />
+      </div>
     </label>
   );
 }
+
+type SelectOption =
+  | string
+  | { value: string; label?: string; disabled?: boolean };
 
 function Select({
   label,
   value,
   onChange,
   options,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (val: string) => void;
-  options: string[];
+  options: SelectOption[];
+  placeholder?: string;
 }) {
+  const normalized = options.map((o) =>
+    typeof o === "string" ? { value: o, label: o, disabled: false } : o,
+  );
   return (
     <label className="block">
       <span className="label-caps" style={{ fontSize: 10 }}>
         {label}
       </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-2 w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3.5 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)] text-[var(--text-primary)]"
-      >
-        {options.map((o) => (
-          <option key={o} value={o} className="bg-[var(--bg-primary)]">
-            {o}
-          </option>
-        ))}
-      </select>
+      <div className="relative mt-2">
+        <select
+          value={value}
+          required={!!placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none !bg-transparent border border-[var(--border-warm)] rounded-md pl-3.5 pr-10 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)] text-[var(--text-primary)]"
+        >
+          {placeholder && (
+            <option value="" disabled className="bg-[var(--bg-primary)]">
+              {placeholder}
+            </option>
+          )}
+          {normalized.map((o) => (
+            <option
+              key={o.value}
+              value={o.value}
+              disabled={o.disabled}
+              className="bg-[var(--bg-primary)]"
+            >
+              {o.label ?? o.value}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+      </div>
     </label>
   );
 }
