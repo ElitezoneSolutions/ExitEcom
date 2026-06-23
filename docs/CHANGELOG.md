@@ -2,6 +2,21 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Document verification status shown to founders
+
+The team's review decision on each uploaded financial document
+(`document_reviews`) is now surfaced to the founder who uploaded it, not just on
+the admin dashboard. A shared `DocumentStatusBadge`
+(`src/components/ex/DocumentStatusBadge.tsx`) renders the three states with
+founder-facing labels — **Pending Verification** (default on upload),
+**Approved**, **Rejected** — and is used on both the founder Bank Statements /
+P&L pages (`_app.bank-statements-data`, `_app.pl-data`) and the admin documents
+table. `useBusinessData` now joins `document_reviews` onto each loaded
+bank-statement / P&L file (`reviewStatus`, defaulting to `pending`). A new
+migration adds an
+owner-scoped select policy so a founder can read reviews for files they own
+(`20260624110000_document_reviews_owner_read.sql`).
+
 ## 2026-06-24 — Admin: fix document preview (downloaded instead of rendering)
 
 Opening a document for verification (`/admin/documents`) showed a loading state

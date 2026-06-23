@@ -9,6 +9,7 @@ import {
 import { useAuth } from "./useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
+import type { DocumentReviewStatus } from "@/components/ex/DocumentStatusBadge";
 import {
   syncShopifyStoreFn,
   type RawShopifyStore,
@@ -793,6 +794,7 @@ export interface BankStatementFile {
   rowCount: number | null;
   filePath: string | null;
   syncedAt: string;
+  reviewStatus: DocumentReviewStatus;
 }
 
 const mapBankMonthlyRow = (r: BankMonthlyRow): BankStatementMonth => ({
@@ -802,13 +804,17 @@ const mapBankMonthlyRow = (r: BankMonthlyRow): BankStatementMonth => ({
   netFlow: Number(r.net_flow ?? 0),
   transactionCount: Number(r.transaction_count ?? 0),
 });
-const mapBankFileRow = (r: BankFileRow): BankStatementFile => ({
+const mapBankFileRow = (
+  r: BankFileRow,
+  reviewStatus: DocumentReviewStatus = "pending",
+): BankStatementFile => ({
   id: r.id,
   fileName: r.file_name,
   fileSize: r.file_size,
   rowCount: r.row_count,
   filePath: r.file_path,
   syncedAt: r.synced_at,
+  reviewStatus,
 });
 
 interface PLFileRow {
@@ -825,15 +831,45 @@ export interface PLFile {
   fileSize: number | null;
   filePath: string | null;
   syncedAt: string;
+  reviewStatus: DocumentReviewStatus;
 }
 
-const mapPLFileRow = (r: PLFileRow): PLFile => ({
+const mapPLFileRow = (
+  r: PLFileRow,
+  reviewStatus: DocumentReviewStatus = "pending",
+): PLFile => ({
   id: r.id,
   fileName: r.file_name,
   fileSize: r.file_size,
   filePath: r.file_path,
   syncedAt: r.synced_at,
+  reviewStatus,
 });
+
+// The team's verification status for a set of uploaded files, keyed by file id.
+// A founder can only read reviews for files they own (RLS); a file with no
+// review row yet is treated as "pending". Degrades silently on older deploys
+// where the document_reviews table isn't present.
+const fetchReviewStatuses = async (
+  fileType: "bank_statement" | "pl",
+  fileIds: string[],
+): Promise<Map<string, DocumentReviewStatus>> => {
+  const byId = new Map<string, DocumentReviewStatus>();
+  if (fileIds.length === 0) return byId;
+  try {
+    const { data } = await supabase
+      .from("document_reviews")
+      .select("file_id, status")
+      .eq("file_type", fileType)
+      .in("file_id", fileIds);
+    for (const r of data ?? []) {
+      byId.set(r.file_id as string, r.status as DocumentReviewStatus);
+    }
+  } catch {
+    // Table may not exist yet — callers fall back to "pending".
+  }
+  return byId;
+};
 
 // The actual data-layer implementation. Mounted ONCE by BusinessDataProvider so
 // the whole authenticated app subtree shares a single instance — otherwise every component
@@ -2148,7 +2184,13 @@ function useBusinessDataImpl() {
         );
         setBankStatementMonthly(monthly);
         const fileList = (fileRows ?? []) as BankFileRow[];
-        setBankStatementFiles(fileList.map(mapBankFileRow));
+        const statusById = await fetchReviewStatuses(
+          "bank_statement",
+          fileList.map((f) => f.id),
+        );
+        setBankStatementFiles(
+          fileList.map((f) => mapBankFileRow(f, statusById.get(f.id))),
+        );
         const latest = fileList[0];
         if (latest) setBankLastSyncedAt(latest.synced_at);
       }
@@ -2289,8 +2331,13 @@ function useBusinessDataImpl() {
         .eq("business_id", businessId)
         .order("synced_at", { ascending: false });
       if (rows && rows.length > 0) {
-        setPLFiles((rows as PLFileRow[]).map(mapPLFileRow));
-        setPLLastSyncedAt((rows as PLFileRow[])[0].synced_at);
+        const fileList = rows as PLFileRow[];
+        const statusById = await fetchReviewStatuses(
+          "pl",
+          fileList.map((f) => f.id),
+        );
+        setPLFiles(fileList.map((f) => mapPLFileRow(f, statusById.get(f.id))));
+        setPLLastSyncedAt(fileList[0].synced_at);
       }
     } catch {
       // Silently degrade — table may not exist on older deploys

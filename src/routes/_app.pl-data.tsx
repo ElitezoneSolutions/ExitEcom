@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Upload, FileText, AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { DisconnectButton } from "@/components/ex/DisconnectButton";
+import { DocumentStatusBadge } from "@/components/ex/DocumentStatusBadge";
 import { useBusinessData } from "@/hooks/useBusinessData";
 
 export const Route = createFileRoute("/_app/pl-data")({
@@ -107,6 +108,7 @@ function PLData() {
                   {new Date(f.syncedAt).toLocaleDateString("en-GB")}
                 </div>
               </div>
+              <DocumentStatusBadge status={f.reviewStatus} />
             </div>
           ))}
         </div>

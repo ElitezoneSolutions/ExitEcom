@@ -4,7 +4,10 @@ import { RefreshCw, FileText, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { AdminTable, type AdminColumn } from "@/components/admin/AdminTable";
-import { StatusBadge } from "@/components/ex/StatusBadge";
+import {
+  DocumentStatusBadge,
+  DOCUMENT_STATUS_LABEL,
+} from "@/components/ex/DocumentStatusBadge";
 import {
   Dialog,
   DialogContent,
@@ -39,15 +42,6 @@ const fmtSize = (bytes: number | null) =>
     : bytes >= 1_048_576
       ? `${(bytes / 1_048_576).toFixed(1)} MB`
       : `${Math.round(bytes / 1024)} KB`;
-
-const STATUS_BADGE: Record<
-  AdminDocumentRow["reviewStatus"],
-  "ready" | "high" | "pending"
-> = {
-  verified: "ready",
-  rejected: "high",
-  pending: "pending",
-};
 
 type TypeFilter = "all" | "bank_statement" | "pl";
 
@@ -140,12 +134,8 @@ function AdminDocuments() {
       key: "status",
       header: "Review",
       sortValue: (r) => r.reviewStatus,
-      csv: (r) => r.reviewStatus,
-      render: (r) => (
-        <StatusBadge status={STATUS_BADGE[r.reviewStatus]}>
-          {r.reviewStatus}
-        </StatusBadge>
-      ),
+      csv: (r) => DOCUMENT_STATUS_LABEL[r.reviewStatus],
+      render: (r) => <DocumentStatusBadge status={r.reviewStatus} />,
     },
   ];
 
@@ -278,7 +268,7 @@ function DocumentDialog({
           note,
         },
       });
-      toast.success(`Marked as ${status}.`);
+      toast.success(`Marked as ${DOCUMENT_STATUS_LABEL[status]}.`);
       onChanged();
       onClose();
     } catch (e) {
@@ -370,7 +360,7 @@ function DocumentDialog({
               onClick={() => setStatus("verified")}
               className="flex-1 px-3 py-2 rounded-md bg-[var(--positive,#16A34A)] text-white text-sm disabled:opacity-50"
             >
-              Verify
+              Approve
             </button>
             <button
               type="button"
@@ -386,7 +376,7 @@ function DocumentDialog({
               onClick={() => setStatus("pending")}
               className="px-3 py-2 rounded-md border border-[var(--border-warm)] text-sm disabled:opacity-50"
             >
-              Mark pending
+              Mark pending verification
             </button>
           </div>
         </div>
