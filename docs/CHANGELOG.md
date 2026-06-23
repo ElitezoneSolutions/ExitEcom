@@ -2,6 +2,47 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Admin: fix document preview (downloaded instead of rendering)
+
+Opening a document for verification (`/admin/documents`) showed a loading state
+then prompted to download the PDF instead of rendering it inline. The dialog now
+fetches the signed URL, re-wraps the bytes as an `application/pdf` blob, and
+points the `<iframe>` at that object URL — which forces an inline preview
+regardless of the stored object's content-type/disposition. The object URL is
+revoked on close (`src/routes/_app.admin.documents.tsx`).
+
+## 2026-06-24 — Admin: polish the user detail page
+
+Refined the full-page user view (`src/routes/_app.admin-user.$userId.tsx`) to use
+the product's real visual language: a dashboard-style hero (Exit Readiness with
+`ScoreRing` + tier badge, Estimated Value Range on a `card-dark`, and a
+`surface-accent` "Value Left on the Table" card), a formatted "Key metrics"
+snapshot grid (money as £, ratios as %, multiples as ×) replacing the raw column
+dump, and connector rows with a live-status dot + `connected` badge plus
+"Not connected" badges for the engine's missing sources.
+
+## 2026-06-24 — Admin: user detail is now a full page
+
+The per-user drill-down moved from a popup dialog to a dedicated full-bleed page
+at `/admin-user/$userId` (`src/routes/_app.admin-user.$userId.tsx`). Clicking a row
+in `/admin/users` now navigates there. On that page the admin sidebar is **replaced
+by a user-context sidebar** — the selected user's avatar/name/email, a role badge,
+their business-name chip, quick facts (exit score, risk score, connectors, docs
+uploaded, joined, last seen), in-page section links, and the admin actions
+(promote/demote, send password reset, delete).
+
+The main area renders **everything using the app's real components** instead of a
+generic key/value dump: an Overview hero with `ScoreRing` + valuation range + risk
+score, account/preferences, business profile, the full valuation row, connectors,
+risks via `RiskCard`, optimization actions via `ActionCard`, the due-diligence
+checklist, and uploaded-file metadata.
+
+- `src/routes/_app.tsx` suppresses the global sidebar + centered container on
+  `/admin-user/*` (the page owns the whole viewport) and treats it as an admin
+  route so superadmins aren't bounced to `/admin`.
+- `src/routes/_app.admin.users.tsx` dropped the dialog; the row click navigates.
+- No server/DB changes — `getUserDetailFn` already returns the full payload.
+
 ## 2026-06-24 — Billing: Stripe subscription paywall
 
 The whole app is now gated behind an active **Stripe** subscription

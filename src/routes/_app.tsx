@@ -58,7 +58,12 @@ function AppBody() {
   const router = useRouter();
   const { hasAccess, configured, loading: subLoading } = useSubscription();
 
-  const onAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  // The user-detail page (/admin-user/$id) owns the whole viewport — it renders
+  // its own user-context sidebar in place of the app sidebar — so it's treated
+  // as an admin route (no bounce) but rendered full-bleed below.
+  const onUserDetail = pathname.startsWith("/admin-user/");
+  const onAdminRoute =
+    pathname === "/admin" || pathname.startsWith("/admin/") || onUserDetail;
   const redirectAdmin = role === "superadmin" && !onAdminRoute;
 
   const onBillingPage = pathname === "/subscribe" || pathname === "/billing";
@@ -80,6 +85,9 @@ function AppBody() {
   if (role === null || redirectAdmin) return <AppLoading />;
   if (role === "user" && subLoading) return <AppLoading />;
   if (needsSubscription) return <AppLoading />;
+
+  // Full-bleed: the detail page draws its own sidebar + layout.
+  if (onUserDetail) return <Outlet />;
 
   return (
     <div className="min-h-screen flex bg-[var(--bg-primary)]">

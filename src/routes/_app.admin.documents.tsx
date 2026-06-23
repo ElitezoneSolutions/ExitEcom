@@ -232,13 +232,36 @@ function DocumentDialog({
       setUrlError("This file is not stored — only its metadata was recorded.");
       return;
     }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
     getDocumentUrlFn({
       data: { accessToken, bucket: doc.bucket, filePath: doc.filePath },
     })
-      .then(({ url }) => setUrl(url))
-      .catch(() =>
-        setUrlError("Could not generate a preview link for this file."),
-      );
+      .then(async ({ url: signedUrl }) => {
+        // Fetch the bytes and re-wrap them as an application/pdf blob. Stored
+        // objects can carry a content-type/disposition that makes the browser
+        // download the file inside the iframe instead of rendering it; serving
+        // a fresh application/pdf blob URL forces an inline preview every time.
+        const res = await fetch(signedUrl);
+        if (!res.ok) throw new Error("Could not fetch the file.");
+        const buf = await res.arrayBuffer();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(
+          new Blob([buf], { type: "application/pdf" }),
+        );
+        setUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setUrlError("Could not generate a preview link for this file.");
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [doc, accessToken]);
 
   if (!doc) return null;

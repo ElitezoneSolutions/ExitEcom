@@ -60,6 +60,7 @@ import { Route as AppAdminIndexRouteImport } from './routes/_app.admin.index'
 import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
 import { Route as AppAdminDocumentsRouteImport } from './routes/_app.admin.documents'
 import { Route as AppAdminAuditRouteImport } from './routes/_app.admin.audit'
+import { Route as AppAdminUserUserIdRouteImport } from './routes/_app.admin-user.$userId'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -316,6 +317,11 @@ const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => AppAdminRoute,
 } as any)
+const AppAdminUserUserIdRoute = AppAdminUserUserIdRouteImport.update({
+  id: '/admin-user/$userId',
+  path: '/admin-user/$userId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -364,6 +370,7 @@ export interface FileRoutesByFullPath {
   '/tiktok-data': typeof AppTiktokDataRoute
   '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/valuation': typeof AppValuationRoute
+  '/admin-user/$userId': typeof AppAdminUserUserIdRoute
   '/admin/audit': typeof AppAdminAuditRoute
   '/admin/documents': typeof AppAdminDocumentsRoute
   '/admin/users': typeof AppAdminUsersRoute
@@ -415,6 +422,7 @@ export interface FileRoutesByTo {
   '/tiktok-data': typeof AppTiktokDataRoute
   '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/valuation': typeof AppValuationRoute
+  '/admin-user/$userId': typeof AppAdminUserUserIdRoute
   '/admin/audit': typeof AppAdminAuditRoute
   '/admin/documents': typeof AppAdminDocumentsRoute
   '/admin/users': typeof AppAdminUsersRoute
@@ -469,6 +477,7 @@ export interface FileRoutesById {
   '/_app/tiktok-data': typeof AppTiktokDataRoute
   '/_app/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
   '/_app/valuation': typeof AppValuationRoute
+  '/_app/admin-user/$userId': typeof AppAdminUserUserIdRoute
   '/_app/admin/audit': typeof AppAdminAuditRoute
   '/_app/admin/documents': typeof AppAdminDocumentsRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
@@ -523,6 +532,7 @@ export interface FileRouteTypes {
     | '/tiktok-data'
     | '/tiktok-oauth-callback'
     | '/valuation'
+    | '/admin-user/$userId'
     | '/admin/audit'
     | '/admin/documents'
     | '/admin/users'
@@ -574,6 +584,7 @@ export interface FileRouteTypes {
     | '/tiktok-data'
     | '/tiktok-oauth-callback'
     | '/valuation'
+    | '/admin-user/$userId'
     | '/admin/audit'
     | '/admin/documents'
     | '/admin/users'
@@ -627,6 +638,7 @@ export interface FileRouteTypes {
     | '/_app/tiktok-data'
     | '/_app/tiktok-oauth-callback'
     | '/_app/valuation'
+    | '/_app/admin-user/$userId'
     | '/_app/admin/audit'
     | '/_app/admin/documents'
     | '/_app/admin/users'
@@ -1005,6 +1017,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminAuditRouteImport
       parentRoute: typeof AppAdminRoute
     }
+    '/_app/admin-user/$userId': {
+      id: '/_app/admin-user/$userId'
+      path: '/admin-user/$userId'
+      fullPath: '/admin-user/$userId'
+      preLoaderRoute: typeof AppAdminUserUserIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -1064,6 +1083,7 @@ interface AppRouteChildren {
   AppTiktokDataRoute: typeof AppTiktokDataRoute
   AppTiktokOauthCallbackRoute: typeof AppTiktokOauthCallbackRoute
   AppValuationRoute: typeof AppValuationRoute
+  AppAdminUserUserIdRoute: typeof AppAdminUserUserIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -1104,6 +1124,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTiktokDataRoute: AppTiktokDataRoute,
   AppTiktokOauthCallbackRoute: AppTiktokOauthCallbackRoute,
   AppValuationRoute: AppValuationRoute,
+  AppAdminUserUserIdRoute: AppAdminUserUserIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
