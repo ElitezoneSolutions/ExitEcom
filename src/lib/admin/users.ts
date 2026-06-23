@@ -90,26 +90,107 @@ export const listUsersFn = createServerFn({ method: "POST" })
     });
   });
 
-// --- One user's detail -----------------------------------------------------
-export interface AdminUserDetail {
-  business: JsonObject | null;
-  valuation: JsonObject | null;
-  connectors: {
-    source: string;
-    lastSyncedAt: string | null;
-    status: string | null;
-  }[];
+// --- One user's full detail ------------------------------------------------
+// Everything we hold about a single account: auth record, profile settings,
+// business profile, the full deterministic valuation row, risks, actions, the
+// due-diligence document checklist, uploaded files, and every connector's
+// status. Secrets (access/refresh tokens, connection keys) are NEVER returned.
+export interface AdminConnectorDetail {
+  source: string;
+  connected: boolean;
+  /** The connection path the user took ('direct' | 'oauth' | 'manual' | 'custom_app'). */
+  platform: string | null;
+  /** A human-readable account identifier (store domain, ad-account id, etc.). */
+  label: string | null;
+  currency: string | null;
+  status: string | null;
+  lastSyncedAt: string | null;
+  /** Months of persisted insight rows; null for sources without a monthly series (Shopify). */
+  monthsOfData: number | null;
 }
 
-// Connector account tables, mapped to a human label. Token columns are never
-// selected — only status + last_synced_at.
-const CONNECTOR_TABLES: { table: string; source: string }[] = [
-  { table: "shopify_stores", source: "Shopify" },
-  { table: "meta_accounts", source: "Meta Ads" },
-  { table: "google_accounts", source: "Google Ads" },
-  { table: "tiktok_accounts", source: "TikTok Ads" },
-  { table: "snapchat_accounts", source: "Snapchat Ads" },
-  { table: "ga4_accounts", source: "Google Analytics 4" },
+export interface AdminUploadedFile {
+  id: string;
+  fileName: string;
+  fileSize: number | null;
+  uploadedAt: string | null;
+  /** Whether the raw PDF is actually persisted in storage (P&L only). */
+  stored: boolean;
+}
+
+export interface AdminUserDetail {
+  account: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    role: "user" | "superadmin";
+    createdAt: string | null;
+    lastSignInAt: string | null;
+    emailConfirmedAt: string | null;
+    phone: string | null;
+    providers: string[];
+  };
+  settings: {
+    timezone: string | null;
+    currency: string | null;
+    notificationPrefs: JsonObject;
+  };
+  business: JsonObject | null;
+  valuation: JsonObject | null;
+  risks: JsonObject[];
+  actions: JsonObject[];
+  documents: { category: string; name: string; uploaded: boolean }[];
+  bankFiles: AdminUploadedFile[];
+  plFiles: AdminUploadedFile[];
+  connectors: AdminConnectorDetail[];
+}
+
+// Connector account tables. `monthly` is the matching insight series (counted to
+// show how much data was pulled); `labelKeys` are tried in order for a display
+// label. We select `*` and strip secret columns rather than naming every column,
+// because the account tables differ (e.g. shopify_stores has no account_status).
+const CONNECTOR_TABLES: {
+  table: string;
+  source: string;
+  monthly: string | null;
+  labelKeys: string[];
+}[] = [
+  {
+    table: "shopify_stores",
+    source: "Shopify",
+    monthly: null,
+    labelKeys: ["shop_domain", "name"],
+  },
+  {
+    table: "meta_accounts",
+    source: "Meta Ads",
+    monthly: "meta_monthly_insights",
+    labelKeys: ["name", "ad_account_id"],
+  },
+  {
+    table: "google_accounts",
+    source: "Google Ads",
+    monthly: "google_monthly_insights",
+    labelKeys: ["name", "customer_id"],
+  },
+  {
+    table: "tiktok_accounts",
+    source: "TikTok Ads",
+    monthly: "tiktok_monthly_insights",
+    labelKeys: ["name", "advertiser_id"],
+  },
+  {
+    table: "snapchat_accounts",
+    source: "Snapchat Ads",
+    monthly: "snapchat_monthly_insights",
+    labelKeys: ["name", "ad_account_id"],
+  },
+  {
+    table: "ga4_accounts",
+    source: "Google Analytics 4",
+    monthly: "ga4_monthly_insights",
+    labelKeys: ["name", "property_id"],
+  },
 ];
 
 export const getUserDetailFn = createServerFn({ method: "POST" })
@@ -117,6 +198,58 @@ export const getUserDetailFn = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<AdminUserDetail> => {
     await requireSuperadmin(data.accessToken);
     const db = getServiceClient();
+
+    // Account (auth) + profile/settings.
+    const [{ data: authData }, { data: profile }] = await Promise.all([
+      db.auth.admin.getUserById(data.userId),
+      db
+        .from("profiles")
+        .select("full_name, role, timezone, currency, notification_prefs")
+        .eq("id", data.userId)
+        .maybeSingle(),
+    ]);
+
+    const u = authData?.user;
+    const appMeta = (u?.app_metadata ?? {}) as {
+      provider?: string;
+      providers?: string[];
+    };
+    const providers = Array.isArray(appMeta.providers)
+      ? appMeta.providers
+      : appMeta.provider
+        ? [appMeta.provider]
+        : [];
+
+    const account: AdminUserDetail["account"] = {
+      id: data.userId,
+      email: u?.email ?? "",
+      fullName: (profile?.full_name as string) ?? null,
+      role: profile?.role === "superadmin" ? "superadmin" : "user",
+      createdAt: u?.created_at ?? null,
+      lastSignInAt: u?.last_sign_in_at ?? null,
+      emailConfirmedAt: u?.email_confirmed_at ?? null,
+      phone: u?.phone ?? null,
+      providers,
+    };
+
+    const settings: AdminUserDetail["settings"] = {
+      timezone: (profile?.timezone as string) ?? null,
+      currency: (profile?.currency as string) ?? null,
+      notificationPrefs: (profile?.notification_prefs as JsonObject) ?? {},
+    };
+
+    const empty: AdminUserDetail = {
+      account,
+      settings,
+      business: null,
+      valuation: null,
+      risks: [],
+      actions: [],
+      documents: [],
+      bankFiles: [],
+      plFiles: [],
+      connectors: [],
+    };
 
     const { data: biz } = await db
       .from("businesses")
@@ -126,38 +259,123 @@ export const getUserDetailFn = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
-    if (!biz) {
-      return { business: null, valuation: null, connectors: [] };
-    }
+    if (!biz) return empty;
+    const businessId = biz.id as string;
 
-    const { data: valuation } = await db
-      .from("valuation_data")
-      .select("*")
-      .eq("business_id", biz.id)
-      .maybeSingle();
+    const [
+      { data: valuation },
+      { data: risks },
+      { data: actions },
+      { data: documents },
+      { data: bankFiles },
+      { data: plFiles },
+    ] = await Promise.all([
+      db
+        .from("valuation_data")
+        .select("*")
+        .eq("business_id", businessId)
+        .maybeSingle(),
+      db
+        .from("risks")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("impact", { ascending: true }),
+      db
+        .from("actions")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("uplift", { ascending: false }),
+      db
+        .from("documents")
+        .select("category, name, uploaded")
+        .eq("business_id", businessId)
+        .order("category", { ascending: true }),
+      db
+        .from("bank_statement_files")
+        .select("id, file_name, file_size, synced_at")
+        .eq("business_id", businessId)
+        .order("synced_at", { ascending: false }),
+      db
+        .from("pl_files")
+        .select("id, file_name, file_size, file_path, synced_at")
+        .eq("business_id", businessId)
+        .order("synced_at", { ascending: false }),
+    ]);
 
     const connectors = await Promise.all(
-      CONNECTOR_TABLES.map(async ({ table, source }) => {
-        const { data: row } = await db
-          .from(table)
-          .select("account_status, last_synced_at, synced_at")
-          .eq("business_id", biz.id)
-          .maybeSingle();
-        if (!row) return null;
-        return {
+      CONNECTOR_TABLES.map(
+        async ({
+          table,
           source,
-          lastSyncedAt:
-            (row.last_synced_at as string) ?? (row.synced_at as string) ?? null,
-          status: (row.account_status as string) ?? "connected",
-        };
-      }),
+          monthly,
+          labelKeys,
+        }): Promise<AdminConnectorDetail | null> => {
+          const { data: row } = await db
+            .from(table)
+            .select("*")
+            .eq("business_id", businessId)
+            .maybeSingle();
+          if (!row) return null;
+          const r = row as Record<string, unknown>;
+          const label =
+            (labelKeys
+              .map((k) => r[k])
+              .find((v) => typeof v === "string" && v) as string) ?? null;
+          let monthsOfData: number | null = null;
+          if (monthly) {
+            const { count } = await db
+              .from(monthly)
+              .select("id", { count: "exact", head: true })
+              .eq("business_id", businessId);
+            monthsOfData = count ?? 0;
+          }
+          return {
+            source,
+            connected: true,
+            platform: (r.source as string) ?? null,
+            label,
+            currency: (r.currency as string) ?? null,
+            status: (r.account_status as string) ?? "connected",
+            lastSyncedAt:
+              (r.last_synced_at as string) ?? (r.synced_at as string) ?? null,
+            monthsOfData,
+          };
+        },
+      ),
     );
 
+    type FileRow = {
+      id: string;
+      file_name: string;
+      file_size: number | null;
+      file_path?: string | null;
+      synced_at: string | null;
+    };
+    const mapFile = (f: FileRow): AdminUploadedFile => ({
+      id: f.id,
+      fileName: f.file_name,
+      fileSize: f.file_size ?? null,
+      uploadedAt: f.synced_at ?? null,
+      stored: Boolean(f.file_path),
+    });
+
     return {
+      account,
+      settings,
       business: biz as JsonObject,
       valuation: (valuation as JsonObject) ?? null,
+      risks: (risks as JsonObject[]) ?? [],
+      actions: (actions as JsonObject[]) ?? [],
+      documents:
+        (documents as {
+          category: string;
+          name: string;
+          uploaded: boolean;
+        }[]) ?? [],
+      bankFiles: ((bankFiles as FileRow[]) ?? []).map(mapFile),
+      plFiles: ((plFiles as FileRow[]) ?? []).map(mapFile),
       connectors: connectors.filter(
-        (c): c is NonNullable<typeof c> => c !== null,
+        (c): c is AdminConnectorDetail => c !== null,
       ),
     };
   });
