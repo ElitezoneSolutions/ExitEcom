@@ -11,15 +11,11 @@ import {
   Package,
   Users,
   Store,
-  KeyRound,
-  ExternalLink,
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import type { ShopifySyncResult } from "@/lib/shopify";
 import { toast } from "sonner";
-
-type ConnectMethod = "key" | "custom";
 
 export const Route = createFileRoute("/_app/shopify-connect")({
   component: ShopifyConnect,
@@ -27,46 +23,13 @@ export const Route = createFileRoute("/_app/shopify-connect")({
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Base URL of the ExitEcom Analytic connector service. `/auth/begin?shop=…`
-// kicks off the Shopify OAuth install for a given store.
-const ANALYTIC_BASE = "https://shopify.exitecom.com";
-
-// Normalize "store", "store.myshopify.com" or a full URL to a bare myshopify
-// domain the connector's /auth/begin endpoint accepts.
-const normalizeShop = (raw: string) => {
-  let d = raw
-    .trim()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "");
-  if (d && !d.includes(".")) d = `${d}.myshopify.com`;
-  return d;
-};
-
 function ShopifyConnect() {
   const navigate = useNavigate();
-  const { syncStore, syncStoreViaKey } = useBusinessData();
-
-  const [method, setMethod] = useState<ConnectMethod>("custom");
+  const { syncStore } = useBusinessData();
 
   // Custom-app credentials (Shopify Admin API access token + store domain).
   const [shopDomain, setShopDomain] = useState("");
   const [accessToken, setAccessToken] = useState("");
-
-  // ExitEcom Analytic connector — store domain (to start the install) and the
-  // connection key shown after OAuth install completes.
-  const [keyShopDomain, setKeyShopDomain] = useState("");
-  const [connectionKey, setConnectionKey] = useState("");
-
-  // Hitting Connect for a fresh store sends the merchant to the connector's
-  // OAuth install flow for their domain.
-  const handleInstallRedirect = () => {
-    const shop = normalizeShop(keyShopDomain);
-    if (!shop) {
-      toast.error("Enter your store domain first.");
-      return;
-    }
-    window.location.href = `${ANALYTIC_BASE}/auth/begin?shop=${encodeURIComponent(shop)}`;
-  };
 
   const [syncStatus, setSyncStatus] = useState<
     "idle" | "connecting" | "fetching" | "saving" | "success" | "error"
@@ -75,7 +38,7 @@ function ShopifyConnect() {
   const [summary, setSummary] = useState<ShopifySyncResult | null>(null);
 
   // Drive the shared connecting → fetching → saving → success/error flow around
-  // whichever connector's pull function is passed in.
+  // the Shopify custom-app pull.
   const runSync = async (
     pull: () => ReturnType<typeof syncStore>,
     fallbackError: string,
@@ -114,18 +77,6 @@ function ShopifyConnect() {
     );
   };
 
-  const handleKeySync = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!connectionKey.trim()) {
-      toast.error("Paste the ExitEcom Analytic connection key.");
-      return;
-    }
-    await runSync(
-      () => syncStoreViaKey(connectionKey.trim()),
-      "Could not connect using that key. Re-install ExitEcom and try again.",
-    );
-  };
-
   return (
     <>
       <div className="flex items-center gap-2 mb-4">
@@ -143,358 +94,160 @@ function ShopifyConnect() {
       />
 
       {syncStatus === "idle" && (
-        <>
-          {/* Method selector */}
-          <div className="inline-flex p-1 mb-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-warm)] gap-1">
-            <button
-              type="button"
-              onClick={() => setMethod("custom")}
-              className={`px-4 py-2 text-xs font-semibold rounded-md transition-colors ${
-                method === "custom"
-                  ? "bg-white text-[var(--accent)] shadow-sm"
-                  : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              Shopify custom app
-            </button>
-            <button
-              type="button"
-              onClick={() => setMethod("key")}
-              className={`px-4 py-2 text-xs font-semibold rounded-md transition-colors ${
-                method === "key"
-                  ? "bg-white text-[var(--accent)] shadow-sm"
-                  : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-              }`}
-            >
-              ExitEcom Analytic key
-            </button>
+        <div className="grid lg:grid-cols-12 gap-8 items-start">
+          {/* Form */}
+          <div className="lg:col-span-5 card-light p-6 md:p-8 flex flex-col gap-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-warm)]">
+              <div className="w-10 h-10 rounded-lg bg-[var(--blue-100)] flex items-center justify-center text-[var(--accent)] font-semibold text-lg">
+                S
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold leading-tight">
+                  Custom App Credentials
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Use an Admin API token from your own Shopify app
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleCustomSync} className="flex flex-col gap-5">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                  Store Domain
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  placeholder="your-store.myshopify.com"
+                  value={shopDomain}
+                  onChange={(e) => setShopDomain(e.target.value)}
+                  className="w-full font-mono"
+                />
+                <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                  Your <code>.myshopify.com</code> domain (Settings &rarr;
+                  Domains).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2 flex items-center justify-between">
+                  Admin API Access Token
+                  <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
+                    starts with shpat_
+                  </span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  className="w-full font-mono"
+                />
+                <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                  Generated when you install your custom app (see the guide on
+                  the right).
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
+              >
+                <Sparkles className="w-4 h-4 text-white" /> Connect & Pull Data
+              </button>
+            </form>
+
+            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-2 text-center">
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              Read-only. We only request order, product, and customer read
+              scopes.
+            </div>
           </div>
 
-          {method === "custom" && (
-            <div className="grid lg:grid-cols-12 gap-8 items-start">
-              {/* Form */}
-              <div className="lg:col-span-5 card-light p-6 md:p-8 flex flex-col gap-6">
-                <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-warm)]">
-                  <div className="w-10 h-10 rounded-lg bg-[var(--blue-100)] flex items-center justify-center text-[var(--accent)] font-semibold text-lg">
-                    S
+          {/* Guide */}
+          <div className="lg:col-span-7 card-light p-6 md:p-8 flex flex-col gap-6">
+            <h3 className="text-xl font-semibold border-b border-[var(--border-warm)] pb-3">
+              How to create a Shopify custom app
+            </h3>
+
+            <div className="flex flex-col gap-5">
+              {[
+                {
+                  n: 1,
+                  h: "Open app development",
+                  b: (
+                    <>
+                      In your Shopify admin, go to <strong>Settings</strong>{" "}
+                      &rarr; <strong>Apps and sales channels</strong> &rarr;{" "}
+                      <strong>Develop apps</strong>, then{" "}
+                      <strong>Create an app</strong>.
+                    </>
+                  ),
+                },
+                {
+                  n: 2,
+                  h: "Grant read-only scopes",
+                  b: (
+                    <>
+                      Under <strong>Configuration</strong> &rarr;{" "}
+                      <strong>Admin API integration</strong>, enable{" "}
+                      <code>read_orders</code>, <code>read_products</code> and{" "}
+                      <code>read_customers</code>.
+                    </>
+                  ),
+                },
+                {
+                  n: 3,
+                  h: "Install & reveal the token",
+                  b: (
+                    <>
+                      Click <strong>Install app</strong>, then on the{" "}
+                      <strong>API credentials</strong> tab reveal the{" "}
+                      <strong>Admin API access token</strong> (starts with{" "}
+                      <code>shpat_</code>).
+                    </>
+                  ),
+                },
+                {
+                  n: 4,
+                  h: "Paste it here",
+                  b: (
+                    <>
+                      Enter your <strong>store domain</strong> and the{" "}
+                      <strong>access token</strong>, then click{" "}
+                      <strong>Connect &amp; Pull Data</strong>.
+                    </>
+                  ),
+                },
+              ].map((s) => (
+                <div key={s.n} className="flex items-start gap-4">
+                  <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
+                    {s.n}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold leading-tight">
-                      Custom App Credentials
-                    </h3>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Use an Admin API token from your own Shopify app
+                    <h4 className="font-semibold text-sm">{s.h}</h4>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                      {s.b}
                     </p>
                   </div>
                 </div>
+              ))}
 
-                <form
-                  onSubmit={handleCustomSync}
-                  className="flex flex-col gap-5"
-                >
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-                      Store Domain
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      autoComplete="off"
-                      placeholder="your-store.myshopify.com"
-                      value={shopDomain}
-                      onChange={(e) => setShopDomain(e.target.value)}
-                      className="w-full font-mono"
-                    />
-                    <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                      Your <code>.myshopify.com</code> domain (Settings &rarr;
-                      Domains).
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2 flex items-center justify-between">
-                      Admin API Access Token
-                      <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
-                        starts with shpat_
-                      </span>
-                    </label>
-                    <input
-                      type="password"
-                      required
-                      autoComplete="new-password"
-                      placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      value={accessToken}
-                      onChange={(e) => setAccessToken(e.target.value)}
-                      className="w-full font-mono"
-                    />
-                    <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                      Generated when you install your custom app (see the guide
-                      on the right).
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
-                  >
-                    <Sparkles className="w-4 h-4 text-white" /> Connect & Pull
-                    Data
-                  </button>
-                </form>
-
-                <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-2 text-center">
-                  <Lock className="w-3.5 h-3.5 shrink-0" />
-                  Read-only. We only request order, product, and customer read
-                  scopes.
-                </div>
-              </div>
-
-              {/* Guide */}
-              <div className="lg:col-span-7 card-light p-6 md:p-8 flex flex-col gap-6">
-                <h3 className="text-xl font-semibold border-b border-[var(--border-warm)] pb-3">
-                  How to create a Shopify custom app
-                </h3>
-
-                <div className="flex flex-col gap-5">
-                  {[
-                    {
-                      n: 1,
-                      h: "Open app development",
-                      b: (
-                        <>
-                          In your Shopify admin, go to <strong>Settings</strong>{" "}
-                          &rarr; <strong>Apps and sales channels</strong> &rarr;{" "}
-                          <strong>Develop apps</strong>, then{" "}
-                          <strong>Create an app</strong>.
-                        </>
-                      ),
-                    },
-                    {
-                      n: 2,
-                      h: "Grant read-only scopes",
-                      b: (
-                        <>
-                          Under <strong>Configuration</strong> &rarr;{" "}
-                          <strong>Admin API integration</strong>, enable{" "}
-                          <code>read_orders</code>, <code>read_products</code>{" "}
-                          and <code>read_customers</code>.
-                        </>
-                      ),
-                    },
-                    {
-                      n: 3,
-                      h: "Install & reveal the token",
-                      b: (
-                        <>
-                          Click <strong>Install app</strong>, then on the{" "}
-                          <strong>API credentials</strong> tab reveal the{" "}
-                          <strong>Admin API access token</strong> (starts with{" "}
-                          <code>shpat_</code>).
-                        </>
-                      ),
-                    },
-                    {
-                      n: 4,
-                      h: "Paste it here",
-                      b: (
-                        <>
-                          Enter your <strong>store domain</strong> and the{" "}
-                          <strong>access token</strong>, then click{" "}
-                          <strong>Connect &amp; Pull Data</strong>.
-                        </>
-                      ),
-                    },
-                  ].map((s) => (
-                    <div key={s.n} className="flex items-start gap-4">
-                      <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                        {s.n}
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm">{s.h}</h4>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                          {s.b}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Tip:</strong> The Admin API token is shown only
-                      once. Copy it immediately — if you lose it, uninstall and
-                      recreate the app to get a new one.
-                    </div>
-                  </div>
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Tip:</strong> The Admin API token is shown only once.
+                  Copy it immediately — if you lose it, uninstall and recreate
+                  the app to get a new one.
                 </div>
               </div>
             </div>
-          )}
-
-          {method === "key" && (
-            <div className="grid lg:grid-cols-12 gap-8 items-start">
-              {/* Key form */}
-              <div className="lg:col-span-5 card-light p-6 md:p-8 flex flex-col gap-6">
-                <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-warm)]">
-                  <div className="w-10 h-10 rounded-lg bg-[var(--blue-100)] flex items-center justify-center text-[var(--accent)]">
-                    <KeyRound className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold leading-tight">
-                      ExitEcom Analytic Key
-                    </h3>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Install the ExitEcom app — no token to manage yourself
-                    </p>
-                  </div>
-                </div>
-
-                {/* Step 1 — enter the store and install the app via OAuth. */}
-                <div className="flex flex-col gap-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-                    Store URL
-                  </label>
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    placeholder="your-store.myshopify.com"
-                    value={keyShopDomain}
-                    onChange={(e) => setKeyShopDomain(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleInstallRedirect();
-                      }
-                    }}
-                    className="w-full font-mono"
-                  />
-                  <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                    Your <code>.myshopify.com</code> domain (Settings &rarr;
-                    Domains).
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleInstallRedirect}
-                    className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md"
-                  >
-                    <ExternalLink className="w-4 h-4 text-white" /> Connect &
-                    Install on Shopify
-                  </button>
-                </div>
-
-                {/* Step 2 — after installing, paste the key to pull data. */}
-                <form
-                  onSubmit={handleKeySync}
-                  className="flex flex-col gap-3 pt-5 border-t border-[var(--border-warm)]"
-                >
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center justify-between">
-                    Already installed? Paste your key
-                    <span className="text-[10px] text-[var(--text-muted)] normal-case font-normal">
-                      starts with eea_
-                    </span>
-                  </label>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="eea_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    value={connectionKey}
-                    onChange={(e) => setConnectionKey(e.target.value)}
-                    className="w-full font-mono"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full btn-ghost-dark justify-center py-3 text-sm rounded-md"
-                  >
-                    <Sparkles className="w-4 h-4" /> Connect & Pull Data
-                  </button>
-                </form>
-
-                <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] justify-center pt-1 text-center">
-                  <Lock className="w-3.5 h-3.5 shrink-0" />
-                  Read-only. Your store token stays with ExitEcom — never in
-                  your browser.
-                </div>
-              </div>
-
-              {/* Guide */}
-              <div className="lg:col-span-7 card-light p-6 md:p-8 flex flex-col gap-6">
-                <h3 className="text-xl font-semibold border-b border-[var(--border-warm)] pb-3">
-                  How to get your connection key
-                </h3>
-
-                <div className="flex flex-col gap-5">
-                  {[
-                    {
-                      n: 1,
-                      h: "Enter your store & install",
-                      b: (
-                        <>
-                          Type your <code>.myshopify.com</code> URL and click{" "}
-                          <strong>Connect &amp; Install on Shopify</strong> —
-                          you go straight to Shopify to approve the read-only
-                          scopes.
-                        </>
-                      ),
-                    },
-                    {
-                      n: 2,
-                      h: "Copy your connection key",
-                      b: (
-                        <>
-                          After installing, the confirmation screen shows your{" "}
-                          <strong>ExitEcom connection key</strong> (starts with{" "}
-                          <code>eea_</code>).
-                        </>
-                      ),
-                    },
-                    {
-                      n: 3,
-                      h: "Paste it here",
-                      b: (
-                        <>
-                          Paste the key into the field on the left and click{" "}
-                          <strong>Connect &amp; Pull Data</strong>.
-                        </>
-                      ),
-                    },
-                    {
-                      n: 4,
-                      h: "That's it",
-                      b: (
-                        <>
-                          We pull your full order, product and customer history
-                          using the token ExitEcom already holds — you never
-                          touch an Admin API token.
-                        </>
-                      ),
-                    },
-                  ].map((s) => (
-                    <div key={s.n} className="flex items-start gap-4">
-                      <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                        {s.n}
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm">{s.h}</h4>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
-                          {s.b}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Tip:</strong> Treat your connection key like a
-                      password — anyone with it can read your store data. You
-                      can re-open the app any time to view it again.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
 
       {/* Syncing progress */}

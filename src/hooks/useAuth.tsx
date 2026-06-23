@@ -150,20 +150,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let cancelled = false;
-    supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return;
-        setRole(data?.role === "superadmin" ? "superadmin" : "user");
-      })
-      // Never leave role unresolved on a query failure — the app holds rendering
-      // until role is known, so default to the least-privileged "user".
-      .catch(() => {
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (!cancelled) {
+          setRole(data?.role === "superadmin" ? "superadmin" : "user");
+        }
+      } catch {
+        // Never leave role unresolved on a query failure — the app holds
+        // rendering until role is known, so default to least-privileged "user".
         if (!cancelled) setRole("user");
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };

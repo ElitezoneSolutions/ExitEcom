@@ -11,7 +11,6 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
   syncShopifyStoreFn,
-  syncViaConnectionKeyFn,
   type RawShopifyStore,
   type RawShopifyOrder,
   type RawShopifyProduct,
@@ -874,14 +873,11 @@ function useBusinessDataImpl() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(
     () => readShopifyCache()?.lastSyncedAt ?? null,
   );
-  // Stored credentials, used only to refresh (never rendered). `source`
-  // distinguishes the two connectors: a custom app refreshes with its Admin
-  // token, the ExitEcom Analytic connector refreshes with its connection key.
+  // Stored Shopify custom-app credentials, used only to refresh (never
+  // rendered): the store domain + its Admin API access token.
   const [storeCreds, setStoreCreds] = useState<{
-    source: "custom_app" | "analytic";
     shopDomain: string;
-    accessToken: string | null;
-    connectionKey: string | null;
+    accessToken: string;
   } | null>(null);
 
   // Raw Meta Ads data — same cache-first seeding as Shopify above.
@@ -1250,13 +1246,10 @@ function useBusinessDataImpl() {
       setStore(storeMeta);
       setLastSyncedAt(storeRow.last_synced_at ?? null);
       setStoreCreds(
-        storeRow.access_token || storeRow.connection_key
+        storeRow.access_token
           ? {
-              source:
-                (storeRow.source as "custom_app" | "analytic") ?? "custom_app",
               shopDomain: storeRow.shop_domain,
-              accessToken: storeRow.access_token ?? null,
-              connectionKey: storeRow.connection_key ?? null,
+              accessToken: storeRow.access_token,
             }
           : null,
       );
@@ -2454,17 +2447,15 @@ function useBusinessDataImpl() {
     }
   };
 
-  // Persist a freshly pulled dataset to Supabase + local cache/state. Shared by
-  // both connectors. `creds` records how to refresh later (custom-app Admin
-  // token vs ExitEcom Analytic connection key). `incremental` means only new
-  // rows were pulled, so the canonical set is re-read from Supabase afterwards.
+  // Persist a freshly pulled dataset to Supabase + local cache/state. `creds`
+  // records how to refresh later (the custom-app Admin token). `incremental`
+  // means only new rows were pulled, so the canonical set is re-read from
+  // Supabase afterwards.
   const commitSync = async (
     result: ShopifySyncResult,
     creds: {
-      source: "custom_app" | "analytic";
       shopDomain: string;
-      accessToken: string | null;
-      connectionKey: string | null;
+      accessToken: string;
     },
     incremental: boolean,
   ) => {
@@ -2497,8 +2488,7 @@ function useBusinessDataImpl() {
           business_id: businessId,
           shop_domain: result.shop.shopDomain,
           access_token: creds.accessToken,
-          connection_key: creds.connectionKey,
-          source: creds.source,
+          source: "custom_app",
           name: result.shop.name,
           currency: result.shop.currency,
           country: result.shop.country,
@@ -2628,30 +2618,10 @@ function useBusinessDataImpl() {
     return commitSync(
       result,
       {
-        source: "custom_app",
         shopDomain: result.shop.shopDomain,
         accessToken,
-        connectionKey: null,
       },
       !!sinceISO,
-    );
-  };
-
-  // Connect / refresh via the ExitEcom Analytic connector. The connection key
-  // is exchanged for the full dataset server-side; this connector always does a
-  // full pull (the backend returns the complete dataset each time).
-  const syncStoreViaKey = async (connectionKey: string) => {
-    const result = await syncViaConnectionKeyFn({ data: { connectionKey } });
-
-    return commitSync(
-      result,
-      {
-        source: "analytic",
-        shopDomain: result.shop.shopDomain,
-        accessToken: null,
-        connectionKey,
-      },
-      false,
     );
   };
 
@@ -2666,34 +2636,20 @@ function useBusinessDataImpl() {
       }
       const { data, error } = await supabase
         .from("shopify_stores")
-        .select("shop_domain, access_token, connection_key, source")
+        .select("shop_domain, access_token")
         .eq("business_id", business.id)
         .maybeSingle();
       if (error) throw describeDbError(error);
-      if (!data?.access_token && !data?.connection_key) {
+      if (!data?.access_token) {
         throw new Error("No stored Shopify credentials — reconnect the store.");
       }
       creds = {
-        source: (data.source as "custom_app" | "analytic") ?? "custom_app",
         shopDomain: data.shop_domain,
-        accessToken: data.access_token ?? null,
-        connectionKey: data.connection_key ?? null,
+        accessToken: data.access_token,
       };
       setStoreCreds(creds);
     }
 
-    if (creds.source === "analytic") {
-      if (!creds.connectionKey) {
-        throw new Error(
-          "No stored connection key — reconnect via your ExitEcom Analytic key.",
-        );
-      }
-      return syncStoreViaKey(creds.connectionKey);
-    }
-
-    if (!creds.accessToken) {
-      throw new Error("No stored Shopify credentials — reconnect the store.");
-    }
     return syncStore(creds.shopDomain, creds.accessToken, { incremental });
   };
 
@@ -3738,7 +3694,6 @@ function useBusinessDataImpl() {
     refetch: fetchData,
     updateBusiness,
     syncStore,
-    syncStoreViaKey,
     resyncStore,
     disconnectShopify,
     syncMeta,
