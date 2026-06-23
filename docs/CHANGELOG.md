@@ -2,6 +2,17 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Google Ads: report the account's whole history
+
+The connector pulled a fixed last-365-days window. It now reports the account's
+**entire history** — from the earliest date with any campaign data through today
+(`src/lib/google.ts`). Google Ads has no account-creation field, so the first
+dated row is used as the window start, discovered via a cheap
+`SELECT segments.date FROM campaign ORDER BY segments.date ASC LIMIT 1`. Falls
+back to the 365-day window if the account has no data yet or discovery fails, so a
+sync always succeeds. The returned `range` and the monthly series now span the
+full window, which also widens the ad-spend-stability basis in `analytics.ts`.
+
 ## 2026-06-24 — Google Ads: fix invalid LAST_365_DAYS date literal
 
 The monthly + per-campaign GAQL queries filtered on `segments.date DURING

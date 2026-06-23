@@ -21,6 +21,9 @@ import { createServerFn } from "@tanstack/react-start";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const OAUTH_SCOPE = "https://www.googleapis.com/auth/adwords";
 const CAMPAIGN_CAP = 500;
+// Fallback lookback only — the live pull reports the account's whole history
+// (earliest dated row → today). This window is used when that earliest date can't
+// be determined (e.g. the account has no data yet) and for the demo sandbox.
 const LOOKBACK_DAYS = 365;
 
 // Google Ads API versions sunset ~monthly. Default to a current major and let it
@@ -119,7 +122,7 @@ interface GaqlRow {
     status?: string;
     advertisingChannelType?: string;
   };
-  segments?: { month?: string };
+  segments?: { month?: string; date?: string };
   metrics?: {
     costMicros?: string | number;
     impressions?: string | number;
@@ -395,6 +398,11 @@ function monthlyQuery(since: string, until: string): string {
 function campaignQuery(since: string, until: string): string {
   return `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date BETWEEN '${since}' AND '${until}'`;
 }
+// Find the earliest date the account has any campaign data — used as the start of
+// the reporting window so we cover the account's whole history. Selects no
+// metrics, so it's safe (and simply empty) on a manager account.
+const EARLIEST_DATE_QUERY =
+  "SELECT segments.date FROM campaign ORDER BY segments.date ASC LIMIT 1";
 
 // Core pull shared by both connection paths. Takes a live access token and the
 // login-customer-id (the manager the account is reached through, if any).
@@ -419,11 +427,29 @@ async function pull(
     );
   }
 
-  // One-year lookback as an explicit date range (DURING has no LAST_365_DAYS).
+  // Report the account's whole history: from its earliest dated row through today.
+  // Google Ads exposes no account-creation field, so the first date with any data
+  // is the best proxy. Fall back to a one-year window if it can't be determined
+  // (no data yet, or the discovery query fails) so a sync still succeeds.
+  // DURING has no LAST_365_DAYS literal, so the window is always an explicit range.
   const until = new Date();
-  const since = new Date(until.getTime() - LOOKBACK_DAYS * 86400000);
-  const sinceISO = toISODate(since);
   const untilISO = toISODate(until);
+  let sinceISO: string | null = null;
+  try {
+    const earliestRows = await searchStream(
+      customerId,
+      accessToken,
+      EARLIEST_DATE_QUERY,
+      loginCustomerId,
+    );
+    const earliest = earliestRows[0]?.segments?.date;
+    if (earliest && /^\d{4}-\d{2}-\d{2}$/.test(earliest)) sinceISO = earliest;
+  } catch {
+    /* fall back to the fixed lookback below */
+  }
+  if (!sinceISO) {
+    sinceISO = toISODate(new Date(until.getTime() - LOOKBACK_DAYS * 86400000));
+  }
 
   // The two metric datasets are independent — fetch them in parallel.
   const [monthlyRows, campaignRows] = await Promise.all([
