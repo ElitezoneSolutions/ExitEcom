@@ -255,7 +255,10 @@ Per-platform key quirks (full details in each `docs/*-setup.md`):
   [`docs/google-ads-setup.md`](./google-ads-setup.md)) — spend comes back as
   `cost_micros`, so divide by **1,000,000**; needs three server secrets and an
   approved developer token, plus a per-connection `login_customer_id` for MCC
-  hierarchies.
+  hierarchies (never a global id — the connecting user's own manager is discovered
+  at OAuth time). Reports the account's **whole history** (earliest dated row →
+  today; GAQL date ranges use an explicit `BETWEEN`, as `DURING` has no
+  `LAST_365_DAYS` literal).
 - **TikTok** (`src/lib/tiktok.ts`,
   [`docs/tiktok-ads-setup.md`](./tiktok-ads-setup.md)) — auth is an
   **`Access-Token:` header** (not Bearer) and the response is a **`{ code: 0, data }`

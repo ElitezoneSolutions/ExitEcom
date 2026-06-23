@@ -161,6 +161,11 @@ one monthly row; `adSpendVerified` is true if **any** feed is connected.
   `spendStability = clamp(1 − stdev(monthlySpend) / mean(monthlySpend))`.
   `marketingEfficiencyRatio` = the mean of those per-platform scores, and it
   drives **Marketing Efficiency & Stability** (§2.1, dim 3).
+- The `monthlySpend` series length varies by platform: **Google Ads** reports the
+  account's **whole history** (earliest dated row → today), while Meta/TikTok/
+  Snapchat use their own fixed lookbacks. `spendStability` is computed over
+  whatever months a feed returns, so a longer Google history reflects steadiness
+  across the account's full life, not just a recent window.
 - `adSpend` = summed real spend across feeds; `roas` = total conversion value ÷
   total spend (real blended ROAS); `blendedCac = adSpend ÷ max(1, newCustomers)`.
 - Conversion value per platform prefers an account-level

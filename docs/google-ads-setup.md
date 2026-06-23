@@ -88,6 +88,22 @@ syncGoogleViaOAuth(customerId, refreshToken)  → syncGoogleAdsFn pull (GAQL) + 
 → /google-data
 ```
 
+> **Multi-tenant by design.** Every user connects **their own** account. The
+> developer token only identifies the app — it does *not* require users' accounts
+> to live in your MCC. Access comes from each user's OAuth, and the
+> `login-customer-id` for an account reached through a manager is **always the
+> connecting user's own** manager (discovered during OAuth, stored per connection);
+> there is no global manager id. See `docs/google-ads-checklist.md` for the
+> two Google approval gates (developer-token Basic access + OAuth consent-screen
+> publishing) that gate public self-serve connections.
+
+> **Reporting window.** The pull reports the account's **whole history** — from the
+> earliest date with any campaign data through today (Google Ads has no
+> account-creation field, so the first dated row is the proxy). It falls back to a
+> 365-day window only if the account has no data yet. GAQL date filters use an
+> explicit `BETWEEN '<since>' AND '<until>'`, because `DURING` has no
+> `LAST_365_DAYS` literal.
+
 ### Verify end-to-end
 1. Set the env vars; run `npm run dev` (note the port).
 2. `/google-connect` → **OAuth** → **Continue with Google** → approve → pick a
@@ -108,7 +124,9 @@ syncGoogleViaOAuth(customerId, refreshToken)  → syncGoogleAdsFn pull (GAQL) + 
 | `DEVELOPER_TOKEN_NOT_APPROVED` / works only on test accounts | Apply for **Basic access** for your developer token in the Manager account's API Center. |
 | 404 / "API version may be retired" | Google Ads API majors sunset ~monthly. The code defaults to a current major; if it lags, set `GOOGLE_ADS_API_VERSION` (e.g. `v23`) — see the [sunset dates](https://developers.google.com/google-ads/api/docs/sunset-dates). |
 | 400 / "Metrics cannot be requested for a manager account" | You picked a Manager (MCC) account, which has no campaigns. The OAuth picker now expands managers into their client accounts automatically — pick a client account from the list. |
-| 403 / `USER_PERMISSION_DENIED` | The signed-in Google account has no access to that Ads account. Add that exact account as a user on the Ads account (or its manager), then reconnect. |
+| 403 / `USER_PERMISSION_DENIED` | The signed-in Google account has no access to that Ads account. Add that exact account as a user on the Ads account (or its manager), then reconnect. Often it means you consented with a different Google login than the one with Ads access — disconnect and pick the right account on the consent screen. |
+| 400 / `INVALID_VALUE_WITH_DURING_OPERATOR` | Fixed: queries no longer use a `DURING LAST_365_DAYS` literal (which doesn't exist) — they pass an explicit `BETWEEN` date range. If you see this, you're on a build predating that fix; redeploy `main`. |
+| Only test users can connect (others get an "access blocked"/unverified screen) | The OAuth consent screen is still in **Testing**. For public self-serve, publish it and complete Google's verification for the sensitive `adwords` scope — see `docs/google-ads-checklist.md` (Gate 2). |
 | 403 / `DEVELOPER_TOKEN_NOT_APPROVED` | The developer token still has **Test** access. Apply for **Basic access** in the Manager account's API Center; until then only test accounts (and the `demo` sandbox) work. |
 | "Google didn't return a refresh token" | Remove the app from your Google account's third-party access and reconnect, so Google re-prompts for offline consent. |
 | No accounts found | The Google login has no Google Ads account access — grant it in the account/MCC. |
