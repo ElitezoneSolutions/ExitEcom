@@ -2,6 +2,15 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Google Ads: fix invalid LAST_365_DAYS date literal
+
+The monthly + per-campaign GAQL queries filtered on `segments.date DURING
+LAST_365_DAYS`, but `DURING` accepts only a fixed set of literals (LAST_7_DAYS,
+LAST_30_DAYS, THIS_MONTH, …) — there is no `LAST_365_DAYS` — so every live pull
+failed with `400 INVALID_VALUE_WITH_DURING_OPERATOR`. Replaced both with an
+explicit `BETWEEN '<since>' AND '<until>'` one-year range computed in `pull()`
+(`src/lib/google.ts`), and reused those dates for the returned `range`.
+
 ## 2026-06-24 — Google Ads connector is now truly multi-tenant
 
 Removed the global `GOOGLE_LOGIN_CUSTOMER_ID` env var and its fallback in

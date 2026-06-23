@@ -386,10 +386,15 @@ const ACCOUNT_QUERY =
 // user logs in through into the real, queryable accounts to pick from.
 const CUSTOMER_CLIENT_QUERY =
   "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.time_zone, customer_client.status, customer_client.manager FROM customer_client WHERE customer_client.manager = false LIMIT 51";
-const MONTHLY_QUERY =
-  "SELECT segments.month, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_365_DAYS";
-const CAMPAIGN_QUERY =
-  "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_365_DAYS";
+// GAQL's DURING operator only accepts a fixed set of date literals (LAST_7_DAYS,
+// LAST_30_DAYS, THIS_MONTH, …) — there is no LAST_365_DAYS. For a one-year window
+// we must pass an explicit BETWEEN range of 'YYYY-MM-DD' dates.
+function monthlyQuery(since: string, until: string): string {
+  return `SELECT segments.month, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date BETWEEN '${since}' AND '${until}'`;
+}
+function campaignQuery(since: string, until: string): string {
+  return `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date BETWEEN '${since}' AND '${until}'`;
+}
 
 // Core pull shared by both connection paths. Takes a live access token and the
 // login-customer-id (the manager the account is reached through, if any).
@@ -414,10 +419,26 @@ async function pull(
     );
   }
 
+  // One-year lookback as an explicit date range (DURING has no LAST_365_DAYS).
+  const until = new Date();
+  const since = new Date(until.getTime() - LOOKBACK_DAYS * 86400000);
+  const sinceISO = toISODate(since);
+  const untilISO = toISODate(until);
+
   // The two metric datasets are independent — fetch them in parallel.
   const [monthlyRows, campaignRows] = await Promise.all([
-    searchStream(customerId, accessToken, MONTHLY_QUERY, loginCustomerId),
-    searchStream(customerId, accessToken, CAMPAIGN_QUERY, loginCustomerId),
+    searchStream(
+      customerId,
+      accessToken,
+      monthlyQuery(sinceISO, untilISO),
+      loginCustomerId,
+    ),
+    searchStream(
+      customerId,
+      accessToken,
+      campaignQuery(sinceISO, untilISO),
+      loginCustomerId,
+    ),
   ]);
 
   // 2. Monthly series — sum campaign rows by month.
@@ -483,9 +504,6 @@ async function pull(
   allCampaigns.sort((a, b) => b.spend - a.spend);
   const campaigns = allCampaigns.slice(0, CAMPAIGN_CAP);
 
-  const until = new Date();
-  const since = new Date(until.getTime() - LOOKBACK_DAYS * 86400000);
-
   return {
     account: {
       customerId,
@@ -497,7 +515,7 @@ async function pull(
     monthly,
     campaigns,
     totals: computeTotals(monthly),
-    range: { since: toISODate(since), until: toISODate(until) },
+    range: { since: sinceISO, until: untilISO },
     capped: { campaigns: allCampaigns.length > CAMPAIGN_CAP },
     sandbox: false,
   };
