@@ -48,10 +48,17 @@ All three are required to call the Google Ads API. The OAuth flow also needs the
 |---|---|
 | `GOOGLE_ADS_CLIENT_ID` | OAuth 2.0 Client ID from Google Cloud Console |
 | `GOOGLE_ADS_CLIENT_SECRET` | OAuth 2.0 Client Secret — server-side only |
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | Developer token from your Google Ads Manager account → Tools → API Center. Must have **Basic access** to read live (non-test) accounts |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | The **app's** developer token (from your Manager account → Tools → API Center). It identifies the app to Google; it does **not** restrict which accounts users can connect. Must have **Basic access** to read live (non-test) accounts. Each user's own account is authorised by their OAuth login, not by being in your MCC |
 | `GOOGLE_OAUTH_REDIRECT_URI` | Full callback URL, e.g. `https://yourdomain.com/google-oauth-callback` |
 | `GOOGLE_ADS_API_VERSION` | *(optional)* Override the API version, e.g. `v23`. Defaults to the current stable major if unset |
-| `GOOGLE_LOGIN_CUSTOMER_ID` | *(optional)* Global fallback Manager (MCC) ID. Prefer leaving this unset — the per-connection `loginCustomerId` discovered during OAuth is used instead |
+
+> **No global `login-customer-id`.** This is a multi-tenant app. The Manager (MCC)
+> id needed to query an account through a manager is **always the connecting
+> user's own**, discovered during OAuth and stored per connection
+> (`google_accounts.login_customer_id`); directly-owned accounts need none. There is
+> intentionally no `GOOGLE_LOGIN_CUSTOMER_ID` — a single global id would force every
+> tenant's queries through one MCC and fail (`USER_PERMISSION_DENIED`) for any
+> account that MCC doesn't manage.
 
 ---
 
@@ -86,16 +93,6 @@ GA4 **reuses the Google Ads OAuth client** (`GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS
 | Variable | Description |
 |---|---|
 | `GA4_OAUTH_REDIRECT_URI` | Full callback URL, e.g. `https://yourdomain.com/ga4-oauth-callback` — must be registered on the shared Google OAuth client |
-
----
-
-## Shopify Analytic Connector
-
-Only needed if you use the ExitEcom-hosted Shopify connection key flow.
-
-| Variable | Description |
-|---|---|
-| `SHOPIFY_ANALYTIC_APP_URL` | Base URL of the ExitEcom analytic connector service |
 
 ---
 
@@ -138,9 +135,6 @@ SNAPCHAT_REDIRECT_URI=https://yourdomain.com/snapchat-oauth-callback
 
 # GA4 (reuses the Google Ads OAuth client above)
 GA4_OAUTH_REDIRECT_URI=https://yourdomain.com/ga4-oauth-callback
-
-# Shopify Analytic Connector (optional)
-# SHOPIFY_ANALYTIC_APP_URL=
 
 # AI copy polish (optional)
 # GEMINI_API_KEY=

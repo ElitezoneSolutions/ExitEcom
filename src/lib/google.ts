@@ -276,12 +276,6 @@ function readOAuthEnv() {
     clientSecret: (process.env.GOOGLE_ADS_CLIENT_SECRET ?? "").trim(),
     developerToken: (process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "").trim(),
     redirectUri: (process.env.GOOGLE_OAUTH_REDIRECT_URI ?? "").trim(),
-    // Optional: the Manager (MCC) customer id to send as login-customer-id when
-    // the analysed account is accessed through a manager. Digits only.
-    loginCustomerId: (process.env.GOOGLE_LOGIN_CUSTOMER_ID ?? "").replace(
-      /[^\d]/g,
-      "",
-    ),
   };
 }
 
@@ -358,10 +352,12 @@ async function searchStream(
     Accept: "application/json",
   };
   // When the analysed account is reached through a Manager, Google requires that
-  // manager's id as login-customer-id. Prefer the per-connection value discovered
-  // during OAuth; fall back to the optional global env default if one is set.
-  const lcid =
-    normalizeCustomerId(loginCustomerId ?? "") || env.loginCustomerId;
+  // manager's id as login-customer-id. This is ALWAYS the connecting user's own
+  // manager, discovered per-connection during OAuth — never a global/app-owned id.
+  // A directly-owned standalone account needs no header at all. (A single global
+  // login-customer-id would force every tenant's query through one MCC, which only
+  // works for accounts that MCC manages — the cause of USER_PERMISSION_DENIED.)
+  const lcid = normalizeCustomerId(loginCustomerId ?? "");
   if (lcid) headers["login-customer-id"] = lcid;
   const res = await fetch(
     `${adsBase()}/customers/${customerId}/googleAds:searchStream`,

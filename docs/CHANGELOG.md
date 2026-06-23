@@ -2,6 +2,40 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Google Ads connector is now truly multi-tenant
+
+Removed the global `GOOGLE_LOGIN_CUSTOMER_ID` env var and its fallback in
+`searchStream` (`src/lib/google.ts`). It forced **every** tenant's queries through
+one Manager (MCC) `login-customer-id`, so any user connecting an account that MCC
+didn't manage failed with `403 USER_PERMISSION_DENIED`.
+
+- **Per-connection only.** The `login-customer-id` is now always the connecting
+  user's own manager, discovered during OAuth and stored per connection
+  (`google_accounts.login_customer_id`); directly-owned accounts send no header.
+  No app-owned/global id is ever imposed on a tenant's query.
+- **Docs.** Clarified in `docs/env-vars.md` / `docs/google-ads-setup.md` that the
+  developer token only identifies the app (it does **not** require users' accounts
+  to live in your MCC — access comes from each user's OAuth), and removed the var
+  from `.env.example`.
+
+## 2026-06-24 — Removed the ExitEcom Analytic Shopify connector
+
+Shopify now connects **only** via a merchant's own custom-app Admin API token. The
+ExitEcom Analytic connection-key path (which exchanged a key with a separate
+ExitEcom-hosted OAuth service) has been removed end-to-end.
+
+- **Server fn gone.** Deleted `syncViaConnectionKeyFn` + `AnalyticSyncInput` and the
+  `SHOPIFY_ANALYTIC_APP_URL` usage from `src/lib/shopify.ts`.
+- **Hook simplified.** `useBusinessData` dropped `syncStoreViaKey`, the
+  `connectionKey`/`source: 'analytic'` Shopify creds, and the analytic refresh
+  branch; `storeCreds` is now just `{ shopDomain, accessToken }`.
+- **Connect UI.** `shopify-connect` no longer has the method selector / "ExitEcom
+  Analytic key" tab — it shows the custom-app form directly.
+- **Env.** Removed `SHOPIFY_ANALYTIC_APP_URL` from `.env.example` and `docs/env-vars.md`.
+- **DB.** Migration `20260624000000_remove_shopify_analytic_connector.sql` drops the
+  now-unused `shopify_stores.connection_key` column (must be pushed live). Stores
+  previously connected via the analytic key must reconnect with a custom-app token.
+
 ## 2026-06-24 — Google Ads: never query a Manager (MCC) account for metrics
 
 Fixed a Google Ads OAuth bug where connecting with a Manager (MCC) account
