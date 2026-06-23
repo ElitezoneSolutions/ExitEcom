@@ -215,6 +215,9 @@ function hintForCode(code: string): string {
     case "CUSTOMER_NOT_FOUND":
     case "INVALID_CUSTOMER_ID":
       return "That customer id couldn't be found. Reconnect and pick an account from the list.";
+    case "REQUESTED_METRICS_FOR_MANAGER":
+    case "METRICS_INCOMPATIBLE_WITH_MANAGER":
+      return "This is a Manager (MCC) account, which serves no ads of its own and has no metrics to read. Reconnect and pick one of the individual ad accounts managed underneath it.";
     default:
       return "";
   }
@@ -342,7 +345,8 @@ async function searchStream(
   // When the analysed account is reached through a Manager, Google requires that
   // manager's id as login-customer-id. Prefer the per-connection value discovered
   // during OAuth; fall back to the optional global env default if one is set.
-  const lcid = normalizeCustomerId(loginCustomerId ?? "") || env.loginCustomerId;
+  const lcid =
+    normalizeCustomerId(loginCustomerId ?? "") || env.loginCustomerId;
   if (lcid) headers["login-customer-id"] = lcid;
   const res = await fetch(
     `${adsBase()}/customers/${customerId}/googleAds:searchStream`,
@@ -383,13 +387,27 @@ async function pull(
   accessToken: string,
   loginCustomerId?: string,
 ): Promise<GoogleSyncResult> {
-  // Fetch all three datasets in parallel — independent queries on the same customer.
-  const [acctRows, monthlyRows, campaignRows] = await Promise.all([
-    searchStream(customerId, accessToken, ACCOUNT_QUERY, loginCustomerId),
+  // Fetch the account first so we can fail fast with a clear message on a
+  // Manager (MCC) account — it serves no ads, so the metrics queries below would
+  // otherwise reject with REQUESTED_METRICS_FOR_MANAGER (a cryptic 400).
+  const acctRows = await searchStream(
+    customerId,
+    accessToken,
+    ACCOUNT_QUERY,
+    loginCustomerId,
+  );
+  const c = acctRows[0]?.customer ?? {};
+  if (c.manager) {
+    throw new Error(
+      "This is a Manager (MCC) account, which serves no ads of its own and has no metrics to read. Reconnect and pick one of the individual ad accounts managed underneath it.",
+    );
+  }
+
+  // The two metric datasets are independent — fetch them in parallel.
+  const [monthlyRows, campaignRows] = await Promise.all([
     searchStream(customerId, accessToken, MONTHLY_QUERY, loginCustomerId),
     searchStream(customerId, accessToken, CAMPAIGN_QUERY, loginCustomerId),
   ]);
-  const c = acctRows[0]?.customer ?? {};
 
   // 2. Monthly series — sum campaign rows by month.
   const byMonth = new Map<string, RawGoogleMonthly>();
@@ -562,7 +580,8 @@ export const syncGoogleAdsFn = createServerFn({ method: "POST" })
     }
 
     const accessToken = await refreshToAccessToken(refreshToken);
-    const loginCustomerId = normalizeCustomerId(data.loginCustomerId ?? "") || undefined;
+    const loginCustomerId =
+      normalizeCustomerId(data.loginCustomerId ?? "") || undefined;
     return pull(customerId, accessToken, loginCustomerId);
   });
 
@@ -627,7 +646,8 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
   .inputValidator((input: GoogleOAuthExchangeInput) => input)
   .handler(async ({ data }): Promise<GoogleOAuthExchangeResult> => {
     const code = data.code?.trim();
-    const { clientId, clientSecret, developerToken, redirectUri } = readOAuthEnv();
+    const { clientId, clientSecret, developerToken, redirectUri } =
+      readOAuthEnv();
     if (!clientId || !clientSecret || !developerToken || !redirectUri) {
       throw new Error(
         "Google OAuth isn't configured on this deployment (missing GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET / GOOGLE_ADS_DEVELOPER_TOKEN / GOOGLE_OAUTH_REDIRECT_URI).",
@@ -694,7 +714,12 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
     const customers: GoogleOAuthAccount[] = [];
 
     const addAccount = (acct: GoogleOAuthAccount) => {
-      if (!acct.customerId || seen.has(acct.customerId) || customers.length >= 50) return;
+      if (
+        !acct.customerId ||
+        seen.has(acct.customerId) ||
+        customers.length >= 50
+      )
+        return;
       seen.add(acct.customerId);
       customers.push(acct);
     };
@@ -709,8 +734,12 @@ export const exchangeGoogleOAuthCodeFn = createServerFn({ method: "POST" })
           ACCOUNT_QUERY,
           seedId,
         );
-        const c = rows[0]?.customer ?? {};
-        if (c.manager) {
+        const c = rows[0]?.customer;
+        // Expand a manager — OR any seed we can't positively confirm as a
+        // standalone account (introspection returned no usable row) — into its
+        // non-manager client accounts. A Manager (MCC) serves no ads, so querying
+        // it for metrics fails; it must never be offered/auto-picked directly.
+        if (!c || c.manager) {
           // Manager (MCC): enumerate its non-manager client accounts. Each is
           // queried through this manager, so login-customer-id = seedId.
           const clientRows = await searchStream(
