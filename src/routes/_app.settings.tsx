@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { Field } from "./signup";
@@ -561,10 +562,11 @@ function SelectField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          className="w-full bg-transparent border rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors border-[var(--border-warm)] focus:border-[var(--accent)] disabled:opacity-50"
+          className="w-full appearance-none !bg-transparent border rounded-md pl-3.5 pr-10 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none transition-colors border-[var(--border-warm)] focus:border-[var(--accent)] disabled:opacity-50"
         >
           {children}
         </select>
+        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
       </div>
     </label>
   );
