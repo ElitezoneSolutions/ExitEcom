@@ -23,6 +23,7 @@ import { Route as AppValuationRouteImport } from './routes/_app.valuation'
 import { Route as AppTiktokOauthCallbackRouteImport } from './routes/_app.tiktok-oauth-callback'
 import { Route as AppTiktokDataRouteImport } from './routes/_app.tiktok-data'
 import { Route as AppTiktokConnectRouteImport } from './routes/_app.tiktok-connect'
+import { Route as AppSubscribeRouteImport } from './routes/_app.subscribe'
 import { Route as AppStoreDataRouteImport } from './routes/_app.store-data'
 import { Route as AppSnapchatOauthCallbackRouteImport } from './routes/_app.snapchat-oauth-callback'
 import { Route as AppSnapchatDataRouteImport } from './routes/_app.snapchat-data'
@@ -127,6 +128,11 @@ const AppTiktokDataRoute = AppTiktokDataRouteImport.update({
 const AppTiktokConnectRoute = AppTiktokConnectRouteImport.update({
   id: '/tiktok-connect',
   path: '/tiktok-connect',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSubscribeRoute = AppSubscribeRouteImport.update({
+  id: '/subscribe',
+  path: '/subscribe',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStoreDataRoute = AppStoreDataRouteImport.update({
@@ -353,6 +359,7 @@ export interface FileRoutesByFullPath {
   '/snapchat-data': typeof AppSnapchatDataRoute
   '/snapchat-oauth-callback': typeof AppSnapchatOauthCallbackRoute
   '/store-data': typeof AppStoreDataRoute
+  '/subscribe': typeof AppSubscribeRoute
   '/tiktok-connect': typeof AppTiktokConnectRoute
   '/tiktok-data': typeof AppTiktokDataRoute
   '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/snapchat-data': typeof AppSnapchatDataRoute
   '/snapchat-oauth-callback': typeof AppSnapchatOauthCallbackRoute
   '/store-data': typeof AppStoreDataRoute
+  '/subscribe': typeof AppSubscribeRoute
   '/tiktok-connect': typeof AppTiktokConnectRoute
   '/tiktok-data': typeof AppTiktokDataRoute
   '/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
@@ -456,6 +464,7 @@ export interface FileRoutesById {
   '/_app/snapchat-data': typeof AppSnapchatDataRoute
   '/_app/snapchat-oauth-callback': typeof AppSnapchatOauthCallbackRoute
   '/_app/store-data': typeof AppStoreDataRoute
+  '/_app/subscribe': typeof AppSubscribeRoute
   '/_app/tiktok-connect': typeof AppTiktokConnectRoute
   '/_app/tiktok-data': typeof AppTiktokDataRoute
   '/_app/tiktok-oauth-callback': typeof AppTiktokOauthCallbackRoute
@@ -509,6 +518,7 @@ export interface FileRouteTypes {
     | '/snapchat-data'
     | '/snapchat-oauth-callback'
     | '/store-data'
+    | '/subscribe'
     | '/tiktok-connect'
     | '/tiktok-data'
     | '/tiktok-oauth-callback'
@@ -559,6 +569,7 @@ export interface FileRouteTypes {
     | '/snapchat-data'
     | '/snapchat-oauth-callback'
     | '/store-data'
+    | '/subscribe'
     | '/tiktok-connect'
     | '/tiktok-data'
     | '/tiktok-oauth-callback'
@@ -611,6 +622,7 @@ export interface FileRouteTypes {
     | '/_app/snapchat-data'
     | '/_app/snapchat-oauth-callback'
     | '/_app/store-data'
+    | '/_app/subscribe'
     | '/_app/tiktok-connect'
     | '/_app/tiktok-data'
     | '/_app/tiktok-oauth-callback'
@@ -732,6 +744,13 @@ declare module '@tanstack/react-router' {
       path: '/tiktok-connect'
       fullPath: '/tiktok-connect'
       preLoaderRoute: typeof AppTiktokConnectRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/subscribe': {
+      id: '/_app/subscribe'
+      path: '/subscribe'
+      fullPath: '/subscribe'
+      preLoaderRoute: typeof AppSubscribeRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/store-data': {
@@ -1040,6 +1059,7 @@ interface AppRouteChildren {
   AppSnapchatDataRoute: typeof AppSnapchatDataRoute
   AppSnapchatOauthCallbackRoute: typeof AppSnapchatOauthCallbackRoute
   AppStoreDataRoute: typeof AppStoreDataRoute
+  AppSubscribeRoute: typeof AppSubscribeRoute
   AppTiktokConnectRoute: typeof AppTiktokConnectRoute
   AppTiktokDataRoute: typeof AppTiktokDataRoute
   AppTiktokOauthCallbackRoute: typeof AppTiktokOauthCallbackRoute
@@ -1079,6 +1099,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSnapchatDataRoute: AppSnapchatDataRoute,
   AppSnapchatOauthCallbackRoute: AppSnapchatOauthCallbackRoute,
   AppStoreDataRoute: AppStoreDataRoute,
+  AppSubscribeRoute: AppSubscribeRoute,
   AppTiktokConnectRoute: AppTiktokConnectRoute,
   AppTiktokDataRoute: AppTiktokDataRoute,
   AppTiktokOauthCallbackRoute: AppTiktokOauthCallbackRoute,

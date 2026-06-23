@@ -2,6 +2,10 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import {
+  handleStripeWebhook,
+  isStripeWebhookRequest,
+} from "./lib/stripe-webhook";
 
 type ServerEntry = {
   fetch: (
@@ -82,6 +86,11 @@ async function normalizeCatastrophicSsrResponse(
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // Stripe webhook is a raw POST that needs its exact body for signature
+      // verification — handle it here, before TanStack/h3 can consume the body.
+      if (isStripeWebhookRequest(request)) {
+        return await handleStripeWebhook(request);
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

@@ -66,6 +66,15 @@ if (!isShopifyConnected) return <ConnectShopifyGate title="…" feature="…" />
 `_app.risk-scanner`, `_app.optimization`, `_app.investment-memo`,
 `_app.financial-normalizer`, `_app.data-room`, `_app.buyer-matching`.
 
+> **Subscription paywall (separate gate).** Independently of the Shopify gate,
+> the whole `_app` area requires an active Stripe subscription: a regular user
+> without access is redirected to `_app.subscribe`. `_app.subscribe` and
+> `_app.billing` are exempt (the upsell and the post-checkout return). Superadmins
+> bypass it, and when Stripe is unconfigured the gate is a no-op. `_app.billing`
+> shows **real** subscription data now (status, renewal/cancel date) and links to
+> the Stripe-hosted portal — no more mock plan/card/invoices. See
+> `docs/billing-setup.md`.
+
 **Always reachable:** `_app.profile`, `_app.data-sources`, `_app.settings`,
 `_app.billing`, and every connector's connect + data page — you need these to
 enter data, connect, and inspect the pulled raw data:

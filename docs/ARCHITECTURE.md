@@ -373,6 +373,41 @@ sits outside the per-owner RLS model rather than poking holes in it.
 
 ---
 
+## 6b. Billing & the subscription paywall (`src/lib/billing.ts`, Stripe)
+
+The whole authed app is gated behind an active Stripe subscription. The model
+deliberately mirrors the admin service-role pattern: the browser never holds a
+Stripe key and never writes subscription state.
+
+- **Gate.** `useSubscription` calls `getBillingStatusFn`, which returns whether
+  billing is configured and whether the caller has access. `_app.tsx` (`AppBody`)
+  redirects a regular user without access to `/subscribe`, holding render until
+  status resolves. `/subscribe` and `/billing` are exempt; superadmins bypass.
+  Blank Stripe env ⇒ `configured: false` ⇒ paywall off (Demo-mode parity), and
+  status lookups **fail open** so a transient error never locks paying users out.
+- **Checkout & portal.** `createCheckoutSessionFn` opens Stripe-hosted Checkout
+  (`mode: 'subscription'`, no `payment_method_types` — Stripe picks methods
+  dynamically) and `createPortalSessionFn` opens the hosted Customer Portal. Both
+  are `createServerFn`s that verify the caller's JWT and use the service-role
+  client. The Stripe SDK is **dynamically imported** inside `getStripe()` so it
+  never lands in the client bundle.
+- **Webhook = single writer.** `src/lib/stripe-webhook.ts` is mounted in
+  `src/server.ts` at `POST /api/stripe-webhook`, intercepted **before** TanStack
+  so the raw body survives `constructEventAsync` signature verification. It upserts
+  the `subscriptions` row via the service-role client on
+  `checkout.session.completed` and `customer.subscription.*`. RLS on
+  `subscriptions` is SELECT-only for the owner — there is no client write policy,
+  so a user can never grant themselves a plan.
+- **Schema & grandfathering.** `20260624100000_subscriptions.sql` adds the
+  `subscriptions` table (status, customer/subscription ids, period end,
+  cancel-at-period-end) and seeds every existing user a `comp` (complimentary)
+  row so the new paywall doesn't lock out current accounts. **Must be pushed to
+  the live project.** Access-granting statuses (`active`/`trialing`/`past_due`/
+  `comp`) are defined once in `ACCESS_GRANTING_STATUSES` and mirrored in the hook.
+  Env + setup: `docs/env-vars.md`, `docs/billing-setup.md`.
+
+---
+
 ## 7. Styling & components
 
 - **Tailwind CSS v4** with design tokens declared as CSS variables in

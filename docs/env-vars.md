@@ -96,6 +96,19 @@ GA4 **reuses the Google Ads OAuth client** (`GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS
 
 ---
 
+## Stripe Billing (optional)
+
+Powers the subscription paywall (£199/mo "Professional"). Server-side only —
+**never `VITE_`-prefixed**. Blank = paywall disabled (the app stays fully usable,
+Demo-mode parity). Create the objects with `./scripts/setup-stripe.sh`; full
+guide in `docs/billing-setup.md`.
+
+| Variable | Description |
+|---|---|
+| `STRIPE_SECRET_KEY` | Stripe secret/restricted key (`sk_`/`rk_`). Used only in `src/lib/billing.ts` + the webhook. Use a restricted key in production |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_`) for the `/api/stripe-webhook` endpoint; every event is verified against it |
+| `STRIPE_PRICE_PROFESSIONAL` | The recurring Price id (`price_…`) for the £199/mo plan |
+
 ## AI (optional)
 
 | Variable | Description |
@@ -135,6 +148,11 @@ SNAPCHAT_REDIRECT_URI=https://yourdomain.com/snapchat-oauth-callback
 
 # GA4 (reuses the Google Ads OAuth client above)
 GA4_OAUTH_REDIRECT_URI=https://yourdomain.com/ga4-oauth-callback
+
+# Stripe Billing (optional — blank disables the paywall)
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_PROFESSIONAL=
 
 # AI copy polish (optional)
 # GEMINI_API_KEY=

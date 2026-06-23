@@ -2,6 +2,54 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Billing: Stripe subscription paywall
+
+The whole app is now gated behind an active **Stripe** subscription
+(£199/mo "Professional"). A signed-in user without an active plan is redirected
+to the new `/subscribe` page; `/subscribe` and `/billing` are exempt so the
+upsell and post-checkout return always render. Superadmins bypass the gate.
+
+- **Checkout & portal** — `src/lib/billing.ts` adds `createCheckoutSessionFn`
+  (Stripe-hosted Checkout, `mode: subscription`, no `payment_method_types` so
+  Stripe picks methods dynamically) and `createPortalSessionFn` (Stripe-hosted
+  Customer Portal for card/invoices/cancellation). The Stripe SDK is dynamically
+  imported so it never enters the client bundle.
+- **Webhook is the only writer** — `src/lib/stripe-webhook.ts`, mounted in
+  `src/server.ts` at `POST /api/stripe-webhook` (intercepted before TanStack so
+  the raw body survives signature verification), upserts the `subscriptions`
+  table via the service-role client. The browser can only read its own row (RLS,
+  SELECT-only), so a user can never grant themselves a plan.
+- **Status source of truth** — `getBillingStatusFn` + `useSubscription` report
+  whether billing is configured and whether the caller has access. Blank Stripe
+  env = paywall disabled (Demo-mode parity); status lookups fail open.
+- **Migration** `20260624100000_subscriptions.sql` adds the `subscriptions`
+  table and **grandfathers all existing users** with a `comp` (complimentary)
+  status so the new paywall never locks out current accounts.
+- `/billing` replaced its hardcoded mock (plan, fake card, dummy invoices) with
+  real subscription data + a "Manage billing" button to the Stripe portal.
+
+Setup, env vars, and local testing: `docs/billing-setup.md`. Created the test
+product/price/webhook via `scripts/setup-stripe.sh`.
+
+## 2026-06-24 — Admin: full per-user drill-down
+
+Selecting a user in the Super Admin dashboard (`/admin/users`) now shows
+**everything** ExitEcom holds on that account, not just name/role/exit-score.
+`getUserDetailFn` (`src/lib/admin/users.ts`) now returns: the auth record (email
+confirmed, phone, sign-in providers, joined/last-seen), profile preferences
+(timezone, currency, notifications), the full business profile, the complete
+deterministic valuation row, all risks and optimization actions, the
+due-diligence document checklist, uploaded bank-statement/P&L file metadata, and
+every connector's status (account label, connection path, currency, last sync,
+months of data pulled). The detail dialog (`src/routes/_app.admin.users.tsx`) is
+now a wide, scrollable, sectioned panel rendering all of it.
+
+Secrets are still never returned: connector account rows are read with `select
+*` server-side but only non-secret fields are mapped into the response — access
+tokens, refresh tokens, and connection keys never leave the server. Also fixes a
+latent bug where the old code selected `account_status` from `shopify_stores`
+(which has no such column), so Shopify never appeared as connected.
+
 ## 2026-06-24 — Google Ads: report the account's whole history
 
 The connector pulled a fixed last-365-days window. It now reports the account's
