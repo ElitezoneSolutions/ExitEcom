@@ -164,38 +164,53 @@ function parseGoogleAdsFailure(body: string): {
   code: string;
   message: string;
 } {
-  try {
-    const j = JSON.parse(body) as {
-      error?: {
-        message?: string;
-        details?: {
-          "@type"?: string;
-          errors?: {
-            errorCode?: Record<string, string>;
-            message?: string;
-          }[];
+  type AdsErrorEnvelope = {
+    error?: {
+      message?: string;
+      details?: {
+        "@type"?: string;
+        errors?: {
+          errorCode?: Record<string, string>;
+          message?: string;
         }[];
-      };
+      }[];
     };
-    const topMessage = j.error?.message ?? "";
-    for (const d of j.error?.details ?? []) {
-      for (const e of d.errors ?? []) {
-        // errorCode is an object with a single key, e.g.
-        // { "authorizationError": "USER_PERMISSION_DENIED" }.
-        const enumValue = e.errorCode
-          ? Object.values(e.errorCode).find(Boolean)
-          : undefined;
-        if (enumValue) {
-          return { code: enumValue, message: e.message ?? topMessage };
+  };
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    // searchStream returns errors array-wrapped — [{ error: {...} }] — while the
+    // unary endpoints (e.g. listAccessibleCustomers) return a single
+    // { error: {...} } object. Normalise both to a list of envelopes.
+    const envelopes = (
+      Array.isArray(parsed) ? parsed : [parsed]
+    ) as AdsErrorEnvelope[];
+    let topMessage = "";
+    for (const env of envelopes) {
+      const err = env?.error;
+      if (!err) continue;
+      if (!topMessage) topMessage = err.message ?? "";
+      for (const d of err.details ?? []) {
+        for (const e of d.errors ?? []) {
+          // errorCode is an object with a single key, e.g.
+          // { "authorizationError": "USER_PERMISSION_DENIED" }.
+          const enumValue = e.errorCode
+            ? Object.values(e.errorCode).find(Boolean)
+            : undefined;
+          if (enumValue) {
+            return {
+              code: String(enumValue),
+              message: e.message ?? err.message ?? topMessage,
+            };
+          }
+          if (e.message) return { code: "", message: e.message };
         }
-        if (e.message) return { code: "", message: e.message };
       }
     }
     if (topMessage) return { code: "", message: topMessage };
   } catch {
     /* not JSON */
   }
-  return { code: "", message: body.slice(0, 300) };
+  return { code: "", message: body.slice(0, 500) };
 }
 
 // Map a Google Ads error code to a one-line, actionable hint so the user knows
