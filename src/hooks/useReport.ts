@@ -24,8 +24,14 @@ export function useReport() {
     metaCampaigns,
     googleMonthly,
     googleCampaigns,
+    tikTokMonthly,
+    tikTokCampaigns,
+    snapchatMonthly,
+    snapchatCampaigns,
     ga4Monthly,
     ga4Channels,
+    bankStatementFiles,
+    plFiles,
     saveComputedReport,
   } = bd;
   const [computing, setComputing] = useState(false);
@@ -55,6 +61,25 @@ export function useReport() {
         googleMonthly.length > 0
           ? { monthly: googleMonthly, campaigns: googleCampaigns }
           : null,
+      tiktok:
+        tikTokMonthly.length > 0
+          ? { monthly: tikTokMonthly, campaigns: tikTokCampaigns }
+          : null,
+      // Snapchat exposes conversion value only at campaign level (never per
+      // month), so pass the campaign-summed total as conversionValueTotal —
+      // otherwise the engine's ROAS would read 0 against real spend. Mirrors the
+      // wiring on the Snapchat data page.
+      snapchat:
+        snapchatMonthly.length > 0
+          ? {
+              monthly: snapchatMonthly,
+              campaigns: snapchatCampaigns,
+              conversionValueTotal: snapchatCampaigns.reduce(
+                (s, c) => s + c.conversionValue,
+                0,
+              ),
+            }
+          : null,
       // GA4 is web analytics, not an ad feed — passed in its own field so the
       // traffic signal (session growth + channel concentration) reaches the
       // persisted Exit Score, never the adSpend/ROAS sum.
@@ -62,6 +87,13 @@ export function useReport() {
         ga4Monthly.length > 0
           ? { monthly: ga4Monthly, channels: ga4Channels }
           : null,
+      // Uploaded financial documents raise data confidence (they verify cash
+      // deposits and earnings against the Shopify feed). Only the count matters.
+      bankStatements:
+        bankStatementFiles.length > 0
+          ? { fileCount: bankStatementFiles.length }
+          : null,
+      pl: plFiles.length > 0 ? { fileCount: plFiles.length } : null,
     }),
     [
       store,
@@ -73,8 +105,14 @@ export function useReport() {
       metaCampaigns,
       googleMonthly,
       googleCampaigns,
+      tikTokMonthly,
+      tikTokCampaigns,
+      snapchatMonthly,
+      snapchatCampaigns,
       ga4Monthly,
       ga4Channels,
+      bankStatementFiles,
+      plFiles,
     ],
   );
 

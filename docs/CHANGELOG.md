@@ -2,6 +2,30 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-06-24 — Exit engine: wire missing feeds + guard "no data ≠ perfect"
+
+Three core-engine bug fixes:
+
+- **TikTok, Snapchat, bank statements and P&L now actually reach the report.**
+  `useReport` (the hook that drives the on-demand Exit Score / Valuation / Risk /
+  Optimization pages) was only passing Meta, Google and GA4 into
+  `computeFullReport`. The engine and the per-connector data pages already
+  supported the other four inputs, so connected TikTok/Snapchat feeds and
+  uploaded financial documents were silently dropped from the saved report —
+  Marketing Efficiency, ROAS, blended CAC and Data Confidence were all computed
+  as if those sources didn't exist. They're now wired in (Snapchat passes its
+  campaign-summed `conversionValueTotal`, matching the data-page wiring).
+- **Single-month ad feeds no longer read as perfectly stable.** `spendStability`
+  used the variance of the monthly-spend series; with one row that variance is 0,
+  which awarded full marks and inflated Marketing Efficiency for brand-new
+  accounts. Stability now requires ≥2 months, else stays neutral (0.5).
+- **Missing line-item data no longer scores Product & Supply Risk as perfect.**
+  With no attributable line items `topProductShare` is 0, which made the risk
+  dimension award full marks (and the Risk Scanner report a misleading "0%"). The
+  dimension is now held neutral (0.5) and the risk flagged medium "can't verify"
+  when there are no product-revenue rows — matching the existing GA4
+  channel-concentration guard.
+
 ## 2026-06-24 — Document verification status shown to founders
 
 The team's review decision on each uploaded financial document

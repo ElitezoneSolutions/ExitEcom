@@ -159,6 +159,9 @@ one monthly row; `adSpendVerified` is true if **any** feed is connected.
   channel isn't masked by a strong one. Per platform:
   `score = 0.6 × clamp(ROAS/3) + 0.4 × spendStability`, where
   `spendStability = clamp(1 − stdev(monthlySpend) / mean(monthlySpend))`.
+  Stability needs **≥2 monthly rows** to be meaningful (a single point has zero
+  variance and would otherwise read as _perfect_ stability); with fewer than two
+  months it is held at a neutral **0.5** instead of full marks.
   `marketingEfficiencyRatio` = the mean of those per-platform scores, and it
   drives **Marketing Efficiency & Stability** (§2.1, dim 3).
 - The `monthlySpend` series length varies by platform: **Google Ads** reports the
@@ -207,7 +210,7 @@ clamps it to `[0, 1]`, then awards `score = round(max × ratio)`.
 | 2 | **Revenue Quality** | 10 | `revenueTTM / 500,000` | Absolute scale; full marks at ~£500k TTM. |
 | 3 | **Marketing Efficiency & Stability** | 15 | `adSpendVerified ? marketingEfficiencyRatio : repeatRate / 0.3` | With an ad feed (§1.7): the average of each connected platform's own `0.6·clamp(ROAS/3) + 0.4·spendStability` score. Without one: retention proxy, full marks at 30% repeat. |
 | 4 | **Customer Economics** | 10 | `(repeatRate/0.3 + avgOrderValue/80) / 2` | Repeat rate **and** AOV (target £80). |
-| 5 | **Product & Supply Risk** | 10 | `1 − (topProductShare − 0.2)/0.6` | _Lower_ concentration scores higher. ~20% share ≈ full marks; ~80% ≈ zero. |
+| 5 | **Product & Supply Risk** | 10 | `productRevenue.length > 0 ? 1 − (topProductShare − 0.2)/0.6 : 0.5` | _Lower_ concentration scores higher. ~20% share ≈ full marks; ~80% ≈ zero. **Guarded:** with no attributable line items `topProductShare` is 0, which would otherwise award full marks — so the dimension is held at a neutral 0.5 when concentration is unknown. |
 | 6 | **Operational Maturity** | 10 | `(clamp(productCount/20) + clamp(orderCount/200)) / 2` | Catalogue breadth + order volume. |
 | 7 | **Founder Dependency** | 10 | `0.5` (fixed) | Can't be read from Shopify → **neutral** placeholder. |
 | 8 | **Growth Trajectory & Potential** | 10 | `sessionGrowthAvailable ? ((growthRate + 0.1)/0.4 + (sessionGrowth + 0.1)/0.4)/2 : (growthRate + 0.1)/0.4` | Revenue momentum, **corroborated by GA4 session growth** only when ≥6 months of GA4 history exist (§1.7). Without GA4: revenue growth alone; flat growth ≈ 0.25 ratio. |
@@ -279,7 +282,7 @@ a monetary impact:
 
 | Risk | Severity logic | £ Impact | Always shown |
 | ---- | -------------- | -------- | ------------ |
-| **Product Concentration Risk** | `topProductShare > 0.5` → high · `> 0.35` → medium · else low | `−round(gap × 0.35)` | yes |
+| **Product Concentration Risk** | no line items → **medium** (can't verify) · else `topProductShare > 0.5` → high · `> 0.35` → medium · else low | `−round(gap × 0.35)` | yes |
 | **Customer Retention Profile** | `repeatRate < 0.2` → high · `< 0.3` → medium · else low | `−round(gap × 0.25)` | yes |
 | **Single-Channel Dependency** | fixed **medium** | `−round(gap × 0.2)` | yes |
 

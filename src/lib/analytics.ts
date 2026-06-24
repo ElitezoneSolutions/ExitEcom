@@ -391,8 +391,12 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
         f.conversionValueTotal ??
         f.monthly.reduce((s, m) => s + m.conversionValue, 0);
       const mean = spend / f.monthly.length;
-      let stability = 0;
-      if (mean > 0) {
+      // Spend steadiness needs ≥2 months to mean anything — the variance of a
+      // single data point is 0, which would otherwise read as PERFECT stability
+      // and inflate Marketing Efficiency for a brand-new account. With <2 months
+      // we can't assess it, so stay neutral (0.5) rather than awarding full marks.
+      let stability = f.monthly.length >= 2 ? 0 : 0.5;
+      if (mean > 0 && f.monthly.length >= 2) {
         const variance =
           f.monthly.reduce((s, m) => s + (m.spend - mean) ** 2, 0) /
           f.monthly.length;
@@ -428,9 +432,11 @@ export function computeMetrics(input: AnalyticsInput): StoreMetrics {
   // Business age from store creation date.
   let businessAgeYears = 0;
   if (store?.shopCreatedAt) {
-    businessAgeYears = Math.max(
-      0,
-      (now - new Date(store.shopCreatedAt).getTime()) / YEAR_MS,
+    // Rounded to 2 dp so the figure is stable for a given day — without it the
+    // raw float carries `now`'s sub-millisecond drift, making two computations
+    // of the same store non-identical (the engine guarantees the opposite).
+    businessAgeYears = round2(
+      Math.max(0, (now - new Date(store.shopCreatedAt).getTime()) / YEAR_MS),
     );
   }
   const businessAge =
@@ -567,7 +573,12 @@ export function computeExitScore(m: StoreMetrics): ExitScoreResult {
       "productSupplyRisk",
       "Product & Supply Risk",
       10,
-      1 - (m.topProductShare - 0.2) / 0.6,
+      // Lower single-SKU concentration scores higher. But guard the no-data
+      // case: with no attributable line items topProductShare is 0, which would
+      // otherwise read as perfect diversification and award full marks. When we
+      // have no product-revenue rows, concentration is unknown → neutral 0.5
+      // (same pattern as the GA4 channel-concentration guard below).
+      m.productRevenue.length > 0 ? 1 - (m.topProductShare - 0.2) / 0.6 : 0.5,
     ),
     dim(
       "operationalMaturity",
@@ -720,13 +731,21 @@ export function computeRisks(m: StoreMetrics, v: ValuationResult): RiskItem[] {
   const risks: RiskItem[] = [
     {
       title: "Product Concentration Risk",
+      // With no attributable line items, concentration is unknown (topProductShare
+      // is 0) — flag it as a medium "can't verify" risk rather than reporting a
+      // misleading "0%".
       severity:
-        m.topProductShare > 0.5
-          ? "high"
-          : m.topProductShare > 0.35
-            ? "medium"
-            : "low",
-      description: `Your top product accounts for ${pct(m.topProductShare)} of order-line revenue across ${m.productCount} catalogued products.`,
+        m.productRevenue.length === 0
+          ? "medium"
+          : m.topProductShare > 0.5
+            ? "high"
+            : m.topProductShare > 0.35
+              ? "medium"
+              : "low",
+      description:
+        m.productRevenue.length === 0
+          ? `Order line-item detail isn't available, so per-SKU revenue concentration can't be verified across ${m.productCount} catalogued products.`
+          : `Your top product accounts for ${pct(m.topProductShare)} of order-line revenue across ${m.productCount} catalogued products.`,
       impact: -round(gap * 0.35),
       buyerSees: "Revenue resilience hinges on a single SKU.",
       buyerFears:
