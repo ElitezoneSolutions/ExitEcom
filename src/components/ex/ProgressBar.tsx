@@ -1,6 +1,6 @@
 export function ProgressBar({
   value,
-  color = "var(--accent)",
+  color,
   track = "var(--border-warm)",
   height = 6,
 }: {
@@ -9,6 +9,14 @@ export function ProgressBar({
   track?: string;
   height?: number;
 }) {
+  const pct = Math.max(0, Math.min(value, 100));
+  const defaultColor =
+    pct >= 70
+      ? "var(--positive)"
+      : pct >= 40
+      ? "var(--risk-medium)"
+      : "var(--risk-critical)";
+
   return (
     <div
       className="w-full rounded-full overflow-hidden"
@@ -17,8 +25,8 @@ export function ProgressBar({
       <div
         className="h-full rounded-full transition-all duration-700"
         style={{
-          width: `${Math.max(0, Math.min(value, 100))}%`,
-          backgroundColor: color,
+          width: `${pct}%`,
+          backgroundColor: color ?? defaultColor,
         }}
       />
     </div>
