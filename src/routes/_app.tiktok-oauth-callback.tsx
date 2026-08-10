@@ -3,7 +3,17 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, AlertCircle, CheckCircle2, Megaphone } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
-import { exchangeTikTokOAuthCodeFn, type TikTokOAuthAccount } from "@/lib/tiktok";
+import {
+  exchangeTikTokOAuthCodeFn,
+  type TikTokOAuthAccount,
+} from "@/lib/tiktok";
+import {
+  OAUTH_MESSAGE_TYPE,
+  consumeOAuthState,
+  oauthLog,
+  writeOAuthResult,
+  type OAuthStage,
+} from "@/lib/oauthResult";
 
 // TikTok redirects here after the user approves (or denies) OAuth consent.
 // Callback param is `auth_code` (not `code`) and `state` for CSRF validation.
@@ -19,16 +29,19 @@ interface CallbackSearch {
 
 export const Route = createFileRoute("/_app/tiktok-oauth-callback")({
   validateSearch: (search: Record<string, unknown>): CallbackSearch => ({
-    auth_code: typeof search.auth_code === "string" ? search.auth_code : undefined,
+    auth_code:
+      typeof search.auth_code === "string" ? search.auth_code : undefined,
     state: typeof search.state === "string" ? search.state : undefined,
     error: typeof search.error === "string" ? search.error : undefined,
     error_description:
-      typeof search.error_description === "string" ? search.error_description : undefined,
+      typeof search.error_description === "string"
+        ? search.error_description
+        : undefined,
   }),
   component: TikTokOAuthCallback,
 });
 
-type Phase = "exchanging" | "picking" | "saving" | "error";
+type Phase = "exchanging" | "picking" | "saving" | "error" | "success";
 
 function TikTokOAuthCallback() {
   const navigate = useNavigate();
@@ -40,29 +53,50 @@ function TikTokOAuthCallback() {
   const [accounts, setAccounts] = useState<TikTokOAuthAccount[]>([]);
   const tokenRef = useRef<string>("");
   const ran = useRef(false);
+  const stageRef = useRef<OAuthStage>("exchanging");
 
+  /**
+   * Terminal handler. The localStorage record is written FIRST — it's the only
+   * signal that survives both a severed `window.opener` and the parent's
+   * close-poll racing our postMessage.
+   */
   const done = (status: "success" | "error", message?: string) => {
-    if (window.opener) {
-      window.opener.postMessage(
-        { type: "oauth_done", status, message },
+    const stage = status === "success" ? "done" : stageRef.current;
+    oauthLog("tiktok", `done: ${status}`, {
+      stage,
+      hasOpener: Boolean(window.opener),
+    });
+
+    writeOAuthResult({ provider: "tiktok", status, stage, message });
+
+    try {
+      window.opener?.postMessage(
+        { type: OAUTH_MESSAGE_TYPE, provider: "tiktok", status, message },
         window.location.origin,
       );
-      window.close();
-      return;
+    } catch {
+      // Opener gone — the storage record already covers us.
     }
+
     if (status === "success") {
-      navigate({ to: "/tiktok-data" });
+      setPhase("success");
     } else {
       setErrorMessage(message ?? "");
       setPhase("error");
     }
+    window.close();
   };
 
   const fail = (msg: string) => done("error", msg);
 
   const pickAccount = async (account: TikTokOAuthAccount) => {
     setPhase("saving");
+    stageRef.current = "pulling";
+    oauthLog("tiktok", "account picked", {
+      advertiserId: account.advertiserId,
+    });
     try {
+      stageRef.current = "committing";
       await syncTikTokViaOAuth(account.advertiserId, tokenRef.current);
       done("success");
     } catch (err) {
@@ -78,20 +112,31 @@ function TikTokOAuthCallback() {
     ran.current = true;
 
     if (search.error) {
-      fail(search.error_description || "TikTok authorisation was cancelled or denied.");
+      fail(
+        search.error_description ||
+          "TikTok authorisation was cancelled or denied.",
+      );
       return;
     }
 
-    const expected = localStorage.getItem(OAUTH_STATE_KEY);
-    localStorage.removeItem(OAUTH_STATE_KEY);
-    if (!search.auth_code || !search.state || search.state !== expected) {
-      fail("This authorisation link is invalid or expired. Please start the connection again.");
+    if (
+      !search.auth_code ||
+      !consumeOAuthState(OAUTH_STATE_KEY, search.state)
+    ) {
+      fail(
+        "This authorisation link is invalid or expired. Please start the connection again.",
+      );
       return;
     }
 
+    oauthLog("tiktok", "callback mounted", {
+      hasOpener: Boolean(window.opener),
+    });
     exchangeTikTokOAuthCodeFn({ data: { authCode: search.auth_code } })
       .then(async ({ accessToken, accounts }) => {
         tokenRef.current = accessToken;
+        stageRef.current = "listing";
+        oauthLog("tiktok", "exchange ok", { accounts: accounts.length });
         if (accounts.length === 0) {
           fail("No advertiser accounts were found for this TikTok login.");
           return;
@@ -100,6 +145,7 @@ function TikTokOAuthCallback() {
           await pickAccount(accounts[0]);
           return;
         }
+        stageRef.current = "picking";
         setAccounts(accounts);
         setPhase("picking");
       })
@@ -135,7 +181,9 @@ function TikTokOAuthCallback() {
           </div>
           <div>
             <h3 className="text-xl font-semibold font-display">
-              {phase === "exchanging" ? "Authorising with TikTok…" : "Pulling your ad data…"}
+              {phase === "exchanging"
+                ? "Authorising with TikTok…"
+                : "Pulling your ad data…"}
             </h3>
             <p className="text-xs text-[var(--text-muted)] mt-2.5 max-w-sm mx-auto leading-relaxed">
               {phase === "exchanging"
@@ -149,9 +197,12 @@ function TikTokOAuthCallback() {
       {phase === "picking" && (
         <div className="max-w-xl mx-auto card-light p-6 md:p-8 flex flex-col gap-5 my-8">
           <div>
-            <h3 className="text-lg font-semibold">Choose an advertiser account</h3>
+            <h3 className="text-lg font-semibold">
+              Choose an advertiser account
+            </h3>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              Your TikTok login has access to several advertiser accounts. Pick the one to analyse.
+              Your TikTok login has access to several advertiser accounts. Pick
+              the one to analyse.
             </p>
           </div>
           <div className="flex flex-col gap-2">
@@ -178,15 +229,50 @@ function TikTokOAuthCallback() {
         </div>
       )}
 
+      {phase === "success" && (
+        <div className="card-light max-w-xl mx-auto p-10 text-center flex flex-col items-center gap-5 shadow-lg my-12">
+          <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center border border-green-200">
+            <CheckCircle2 className="w-8 h-8 text-[var(--success,#16a34a)]" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold font-display">
+              TikTok Ads connected
+            </h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1.5">
+              Your ad data has been saved. You can close this window — or
+              continue below.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/tiktok-data" })}
+            className="btn-primary py-3 px-6 rounded-md justify-center font-semibold text-sm"
+          >
+            View TikTok data
+          </button>
+        </div>
+      )}
+
       {phase === "error" && (
         <div className="card-light max-w-xl mx-auto p-8 text-center flex flex-col items-center gap-5 shadow-lg my-12 border-2 border-[var(--risk-critical)]/30">
           <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center border border-red-200">
             <AlertCircle className="w-8 h-8 text-[var(--risk-critical)]" />
           </div>
           <div>
-            <h3 className="text-xl font-bold font-display">Connection failed</h3>
+            <h3 className="text-xl font-bold font-display">
+              Connection failed
+            </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
-              We couldn't complete the TikTok connection.
+              We couldn't complete the TikTok connection
+              {stageRef.current !== "done" ? (
+                <>
+                  {" "}
+                  — it failed at the{" "}
+                  <span className="font-medium">{stageRef.current}</span> step.
+                </>
+              ) : (
+                "."
+              )}
             </p>
           </div>
           <div className="w-full p-4 bg-red-50 border border-red-100 rounded text-left text-xs font-mono text-[var(--risk-critical)] overflow-x-auto max-h-40">

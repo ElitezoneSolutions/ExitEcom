@@ -7,6 +7,13 @@ import {
   exchangeGoogleOAuthCodeFn,
   type GoogleOAuthAccount,
 } from "@/lib/google";
+import {
+  OAUTH_MESSAGE_TYPE,
+  consumeOAuthState,
+  oauthLog,
+  writeOAuthResult,
+  type OAuthStage,
+} from "@/lib/oauthResult";
 
 // Google redirects here after the user approves (or denies) the OAuth consent.
 // Authenticated route under the pathless _app layout — the round-trip preserves
@@ -30,7 +37,7 @@ export const Route = createFileRoute("/_app/google-oauth-callback")({
   component: GoogleOAuthCallback,
 });
 
-type Phase = "exchanging" | "picking" | "saving" | "error";
+type Phase = "exchanging" | "picking" | "saving" | "error" | "success";
 
 function GoogleOAuthCallback() {
   const navigate = useNavigate();
@@ -42,29 +49,56 @@ function GoogleOAuthCallback() {
   const [accounts, setAccounts] = useState<GoogleOAuthAccount[]>([]);
   const tokenRef = useRef<string>("");
   const ran = useRef(false);
+  // Tracks how far the flow got, so a failure names the step that broke rather
+  // than showing one undifferentiated "connection failed" card.
+  const stageRef = useRef<OAuthStage>("exchanging");
 
+  /**
+   * Terminal handler. Order matters: the localStorage record is written FIRST,
+   * because it's the only signal that survives both a severed `window.opener`
+   * (Google's COOP) and the parent's close-poll racing our postMessage.
+   */
   const done = (status: "success" | "error", message?: string) => {
-    if (window.opener) {
-      window.opener.postMessage(
-        { type: "oauth_done", status, message },
+    const stage = status === "success" ? "done" : stageRef.current;
+    oauthLog("google", `done: ${status}`, {
+      stage,
+      hasOpener: Boolean(window.opener),
+    });
+
+    writeOAuthResult({ provider: "google", status, stage, message });
+
+    try {
+      window.opener?.postMessage(
+        { type: OAUTH_MESSAGE_TYPE, provider: "google", status, message },
         window.location.origin,
       );
-      window.close();
-      return;
+    } catch {
+      // Opener gone or cross-origin — the storage record already covers us.
     }
+
+    // Show the outcome in-tab first, so that if the browser refuses to close
+    // this window (no opener, or a user-opened tab) the user isn't stranded on
+    // a spinner with no idea what happened.
     if (status === "success") {
-      navigate({ to: "/google-data" });
+      setPhase("success");
     } else {
       setErrorMessage(message ?? "");
       setPhase("error");
     }
+    window.close();
   };
 
   const fail = (msg: string) => done("error", msg);
 
   const pickAccount = async (account: GoogleOAuthAccount) => {
     setPhase("saving");
+    stageRef.current = "pulling";
+    oauthLog("google", "account picked", {
+      customerId: account.customerId,
+      loginCustomerId: account.loginCustomerId,
+    });
     try {
+      stageRef.current = "committing";
       await syncGoogleViaOAuth(
         account.customerId,
         tokenRef.current,
@@ -88,18 +122,22 @@ function GoogleOAuthCallback() {
       return;
     }
 
-    const expected = localStorage.getItem(OAUTH_STATE_KEY);
-    localStorage.removeItem(OAUTH_STATE_KEY);
-    if (!search.code || !search.state || search.state !== expected) {
+    if (!search.code || !consumeOAuthState(OAUTH_STATE_KEY, search.state)) {
       fail(
         "This authorisation link is invalid or expired. Please start the connection again.",
       );
       return;
     }
 
+    oauthLog("google", "callback mounted", {
+      hasOpener: Boolean(window.opener),
+    });
+    stageRef.current = "exchanging";
     exchangeGoogleOAuthCodeFn({ data: { code: search.code } })
       .then(async ({ refreshToken, customers }) => {
         tokenRef.current = refreshToken;
+        stageRef.current = "listing";
+        oauthLog("google", "exchange ok", { customers: customers.length });
         if (customers.length === 0) {
           fail(
             "No Google Ads accounts were found for this login. Make sure the account has access to a Google Ads account.",
@@ -110,6 +148,7 @@ function GoogleOAuthCallback() {
           await pickAccount(customers[0]);
           return;
         }
+        stageRef.current = "picking";
         setAccounts(customers);
         setPhase("picking");
       })
@@ -192,6 +231,30 @@ function GoogleOAuthCallback() {
         </div>
       )}
 
+      {phase === "success" && (
+        <div className="card-light max-w-xl mx-auto p-10 text-center flex flex-col items-center gap-5 shadow-lg my-12">
+          <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center border border-green-200">
+            <CheckCircle2 className="w-8 h-8 text-[var(--success,#16a34a)]" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold font-display">
+              Google Ads connected
+            </h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1.5">
+              Your ad data has been saved. You can close this window — or
+              continue below.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/google-data" })}
+            className="btn-primary py-3 px-6 rounded-md justify-center font-semibold text-sm"
+          >
+            View Google data
+          </button>
+        </div>
+      )}
+
       {phase === "error" && (
         <div className="card-light max-w-xl mx-auto p-8 text-center flex flex-col items-center gap-5 shadow-lg my-12 border-2 border-[var(--risk-critical)]/30">
           <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center border border-red-200">
@@ -202,7 +265,16 @@ function GoogleOAuthCallback() {
               Connection failed
             </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
-              We couldn't complete the Google connection.
+              We couldn't complete the Google connection
+              {stageRef.current !== "done" ? (
+                <>
+                  {" "}
+                  — it failed at the{" "}
+                  <span className="font-medium">{stageRef.current}</span> step.
+                </>
+              ) : (
+                "."
+              )}
             </p>
           </div>
           <div className="w-full p-4 bg-red-50 border border-red-100 rounded text-left text-xs font-mono text-[var(--risk-critical)] overflow-x-auto max-h-40">

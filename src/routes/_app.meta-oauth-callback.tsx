@@ -4,6 +4,13 @@ import { RefreshCw, AlertCircle, CheckCircle2, Megaphone } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { exchangeMetaOAuthCodeFn, type MetaOAuthAccount } from "@/lib/meta";
+import {
+  OAUTH_MESSAGE_TYPE,
+  consumeOAuthState,
+  oauthLog,
+  writeOAuthResult,
+  type OAuthStage,
+} from "@/lib/oauthResult";
 
 // Facebook redirects here after the user approves (or denies) the OAuth consent.
 // The route lives under the pathless _app layout, so it's authenticated and has
@@ -33,7 +40,7 @@ export const Route = createFileRoute("/_app/meta-oauth-callback")({
   component: MetaOAuthCallback,
 });
 
-type Phase = "exchanging" | "picking" | "saving" | "error";
+type Phase = "exchanging" | "picking" | "saving" | "error" | "success";
 
 function MetaOAuthCallback() {
   const navigate = useNavigate();
@@ -45,22 +52,38 @@ function MetaOAuthCallback() {
   const [accounts, setAccounts] = useState<MetaOAuthAccount[]>([]);
   const tokenRef = useRef<string>("");
   const ran = useRef(false);
+  const stageRef = useRef<OAuthStage>("exchanging");
 
+  /**
+   * Terminal handler. The localStorage record is written FIRST — it's the only
+   * signal that survives both a severed `window.opener` and the parent's
+   * close-poll racing our postMessage.
+   */
   const done = (status: "success" | "error", message?: string) => {
-    if (window.opener) {
-      window.opener.postMessage(
-        { type: "oauth_done", status, message },
+    const stage = status === "success" ? "done" : stageRef.current;
+    oauthLog("meta", `done: ${status}`, {
+      stage,
+      hasOpener: Boolean(window.opener),
+    });
+
+    writeOAuthResult({ provider: "meta", status, stage, message });
+
+    try {
+      window.opener?.postMessage(
+        { type: OAUTH_MESSAGE_TYPE, provider: "meta", status, message },
         window.location.origin,
       );
-      window.close();
-      return;
+    } catch {
+      // Opener gone — the storage record already covers us.
     }
+
     if (status === "success") {
-      navigate({ to: "/meta-data" });
+      setPhase("success");
     } else {
       setErrorMessage(message ?? "");
       setPhase("error");
     }
+    window.close();
   };
 
   const fail = (msg: string) => done("error", msg);
@@ -68,7 +91,10 @@ function MetaOAuthCallback() {
   // Pull + commit for a chosen account, then go to the data view.
   const pickAccount = async (account: MetaOAuthAccount) => {
     setPhase("saving");
+    stageRef.current = "pulling";
+    oauthLog("meta", "account picked", { adAccountId: account.adAccountId });
     try {
+      stageRef.current = "committing";
       await syncMetaViaOAuth(account.adAccountId, tokenRef.current);
       done("success");
     } catch (err) {
@@ -92,19 +118,22 @@ function MetaOAuthCallback() {
       return;
     }
 
-    // CSRF: the returned state must match what we stored before redirecting.
-    const expected = localStorage.getItem(OAUTH_STATE_KEY);
-    localStorage.removeItem(OAUTH_STATE_KEY);
-    if (!search.code || !search.state || search.state !== expected) {
+    // CSRF: the returned state must be one we issued before redirecting.
+    if (!search.code || !consumeOAuthState(OAUTH_STATE_KEY, search.state)) {
       fail(
         "This authorisation link is invalid or expired. Please start the connection again.",
       );
       return;
     }
 
+    oauthLog("meta", "callback mounted", {
+      hasOpener: Boolean(window.opener),
+    });
     exchangeMetaOAuthCodeFn({ data: { code: search.code } })
       .then(async ({ accessToken, accounts }) => {
         tokenRef.current = accessToken;
+        stageRef.current = "listing";
+        oauthLog("meta", "exchange ok", { accounts: accounts.length });
         if (accounts.length === 0) {
           fail(
             "No ad accounts were found for this Facebook login. Make sure the account has access to a Meta ad account.",
@@ -115,6 +144,7 @@ function MetaOAuthCallback() {
           await pickAccount(accounts[0]);
           return;
         }
+        stageRef.current = "picking";
         setAccounts(accounts);
         setPhase("picking");
       })
@@ -197,6 +227,30 @@ function MetaOAuthCallback() {
         </div>
       )}
 
+      {phase === "success" && (
+        <div className="card-light max-w-xl mx-auto p-10 text-center flex flex-col items-center gap-5 shadow-lg my-12">
+          <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center border border-green-200">
+            <CheckCircle2 className="w-8 h-8 text-[var(--success,#16a34a)]" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold font-display">
+              Meta Ads connected
+            </h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1.5">
+              Your ad data has been saved. You can close this window — or
+              continue below.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/meta-data" })}
+            className="btn-primary py-3 px-6 rounded-md justify-center font-semibold text-sm"
+          >
+            View Meta data
+          </button>
+        </div>
+      )}
+
       {phase === "error" && (
         <div className="card-light max-w-xl mx-auto p-8 text-center flex flex-col items-center gap-5 shadow-lg my-12 border-2 border-[var(--risk-critical)]/30">
           <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center border border-red-200">
@@ -207,7 +261,16 @@ function MetaOAuthCallback() {
               Connection failed
             </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
-              We couldn't complete the Facebook connection.
+              We couldn't complete the Facebook connection
+              {stageRef.current !== "done" ? (
+                <>
+                  {" "}
+                  — it failed at the{" "}
+                  <span className="font-medium">{stageRef.current}</span> step.
+                </>
+              ) : (
+                "."
+              )}
             </p>
           </div>
           <div className="w-full p-4 bg-red-50 border border-red-100 rounded text-left text-xs font-mono text-[var(--risk-critical)] overflow-x-auto max-h-40">

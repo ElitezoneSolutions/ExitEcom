@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -14,7 +14,17 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
+import { useAuth } from "@/hooks/useAuth";
+import { useOAuthPopup } from "@/hooks/useOAuthPopup";
 import { getGA4OAuthUrlFn, type GA4SyncResult } from "@/lib/ga4";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { resolveBusinessId } from "@/lib/businessId";
+import {
+  clearLastOAuthError,
+  readLastOAuthError,
+  rememberOAuthState,
+  type OAuthResult,
+} from "@/lib/oauthResult";
 import { toast } from "sonner";
 
 type ConnectMethod = "oauth" | "manual";
@@ -31,7 +41,8 @@ const OAUTH_STATE_KEY = "ga4_oauth_state";
 
 function GA4Connect() {
   const navigate = useNavigate();
-  const { syncGA4 } = useBusinessData();
+  const { syncGA4, refetch } = useBusinessData();
+  const { user } = useAuth();
 
   const [method, setMethod] = useState<ConnectMethod>("oauth");
 
@@ -51,10 +62,17 @@ function GA4Connect() {
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [summary, setSummary] = useState<GA4SyncResult | null>(null);
+  // A failure recorded by the popup — survives the popup closing and this page
+  // reloading, so a lost handshake still leaves the user an explanation.
+  const [lastError, setLastError] = useState<OAuthResult | null>(null);
+
+  useEffect(() => {
+    setLastError(readLastOAuthError("ga4"));
+  }, []);
 
   useEffect(() => {
     const state = crypto.randomUUID();
-    localStorage.setItem(OAUTH_STATE_KEY, state);
+    rememberOAuthState(OAUTH_STATE_KEY, state);
     getGA4OAuthUrlFn({ data: { state } })
       .then((res) =>
         setOauth({ loading: false, configured: res.configured, url: res.url }),
@@ -62,38 +80,53 @@ function GA4Connect() {
       .catch(() => setOauth({ loading: false, configured: false, url: null }));
   }, []);
 
+  // Last-resort check when the popup closed without leaving a result: ask the
+  // database rather than assuming either outcome.
+  const confirmConnected = useCallback(async () => {
+    if (!isSupabaseConfigured) return false;
+    const businessId = await resolveBusinessId(user, "", "GA4").catch(
+      () => null,
+    );
+    if (!businessId) return false;
+    const { data } = await supabase
+      .from("ga4_accounts")
+      .select("property_id")
+      .eq("business_id", businessId)
+      .maybeSingle();
+    return Boolean(data?.property_id);
+  }, [user]);
+
+  const handleOAuthSuccess = useCallback(async () => {
+    // Refetch before navigating: /ga4-data renders from provider state and
+    // would otherwise show "not connected" until a manual refresh.
+    setLastError(null);
+    clearLastOAuthError();
+    await refetch();
+    toast.success("GA4 connected. Data synced.");
+    navigate({ to: "/ga4-data" });
+  }, [refetch, navigate]);
+
+  const handleOAuthError = useCallback((message: string) => {
+    setSyncStatus("error");
+    setErrorMessage(message);
+    setLastError(readLastOAuthError("ga4"));
+  }, []);
+
+  const { connecting: oauthConnecting, open: openOAuthPopup } = useOAuthPopup({
+    provider: "ga4",
+    confirmConnected,
+    onSuccess: handleOAuthSuccess,
+    onError: handleOAuthError,
+  });
+
+  useEffect(() => {
+    setSyncStatus((s) => (oauthConnecting ? "connecting" : s));
+  }, [oauthConnecting]);
+
   const handleOAuthStart = () => {
     if (!oauth.url) return;
-    const popup = window.open(oauth.url, "_blank");
-    if (!popup) {
-      window.location.href = oauth.url;
-      return;
-    }
-    setSyncStatus("connecting");
-
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type !== "oauth_done") return;
-      window.removeEventListener("message", onMessage);
-      clearInterval(closedTimer);
-      if (e.data.status === "success") {
-        navigate({ to: "/ga4-data" });
-      } else {
-        setSyncStatus("error");
-        setErrorMessage(
-          e.data.message || "Authorization failed. Please try again.",
-        );
-      }
-    };
-    window.addEventListener("message", onMessage);
-
-    const closedTimer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(closedTimer);
-        window.removeEventListener("message", onMessage);
-        setSyncStatus("idle");
-      }
-    }, 500);
+    setErrorMessage("");
+    openOAuthPopup(oauth.url);
   };
 
   const runSync = async (
@@ -149,6 +182,30 @@ function GA4Connect() {
         title="Connect Google Analytics 4"
         subtitle="We authenticate, pull your sessions, conversions and traffic-channel mix, and store it securely. This shows buyers your traffic quality and channel diversification for the Exit Score."
       />
+
+      {syncStatus === "idle" && lastError && (
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--risk-critical)]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-[var(--risk-critical)]">
+              Your last attempt failed at the {lastError.stage} step
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">
+              {lastError.message || "No further detail was reported."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              clearLastOAuthError();
+              setLastError(null);
+            }}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {syncStatus === "idle" && (
         <>

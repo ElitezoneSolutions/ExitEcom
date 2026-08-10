@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -14,7 +14,17 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
+import { useAuth } from "@/hooks/useAuth";
+import { useOAuthPopup } from "@/hooks/useOAuthPopup";
 import { getSnapchatOAuthUrlFn, type SnapchatSyncResult } from "@/lib/snapchat";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { resolveBusinessId } from "@/lib/businessId";
+import {
+  clearLastOAuthError,
+  readLastOAuthError,
+  rememberOAuthState,
+  type OAuthResult,
+} from "@/lib/oauthResult";
 import { toast } from "sonner";
 
 type ConnectMethod = "oauth" | "direct";
@@ -28,7 +38,8 @@ const OAUTH_STATE_KEY = "snapchat_oauth_state";
 
 function SnapchatConnect() {
   const navigate = useNavigate();
-  const { syncSnapchat } = useBusinessData();
+  const { syncSnapchat, refetch } = useBusinessData();
+  const { user } = useAuth();
 
   const [method, setMethod] = useState<ConnectMethod>("oauth");
   const [adAccountId, setAdAccountId] = useState("");
@@ -43,10 +54,17 @@ function SnapchatConnect() {
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [summary, setSummary] = useState<SnapchatSyncResult | null>(null);
+  // A failure recorded by the popup — survives the popup closing and this page
+  // reloading, so a lost handshake still leaves the user an explanation.
+  const [lastError, setLastError] = useState<OAuthResult | null>(null);
+
+  useEffect(() => {
+    setLastError(readLastOAuthError("snapchat"));
+  }, []);
 
   useEffect(() => {
     const state = crypto.randomUUID();
-    localStorage.setItem(OAUTH_STATE_KEY, state);
+    rememberOAuthState(OAUTH_STATE_KEY, state);
     getSnapchatOAuthUrlFn({ data: { state } })
       .then((res) =>
         setOauth({ loading: false, configured: res.configured, url: res.url }),
@@ -54,36 +72,53 @@ function SnapchatConnect() {
       .catch(() => setOauth({ loading: false, configured: false, url: null }));
   }, []);
 
+  // Last-resort check when the popup closed without leaving a result: ask the
+  // database rather than assuming either outcome.
+  const confirmConnected = useCallback(async () => {
+    if (!isSupabaseConfigured) return false;
+    const businessId = await resolveBusinessId(user, "", "Snapchat Ads").catch(
+      () => null,
+    );
+    if (!businessId) return false;
+    const { data } = await supabase
+      .from("snapchat_accounts")
+      .select("ad_account_id")
+      .eq("business_id", businessId)
+      .maybeSingle();
+    return Boolean(data?.ad_account_id);
+  }, [user]);
+
+  const handleOAuthSuccess = useCallback(async () => {
+    // Refetch before navigating: /snapchat-data renders from provider state and
+    // would otherwise show "not connected" until a manual refresh.
+    setLastError(null);
+    clearLastOAuthError();
+    await refetch();
+    toast.success("Snapchat Ads connected. Data synced.");
+    navigate({ to: "/snapchat-data" });
+  }, [refetch, navigate]);
+
+  const handleOAuthError = useCallback((message: string) => {
+    setSyncStatus("error");
+    setErrorMessage(message);
+    setLastError(readLastOAuthError("snapchat"));
+  }, []);
+
+  const { connecting: oauthConnecting, open: openOAuthPopup } = useOAuthPopup({
+    provider: "snapchat",
+    confirmConnected,
+    onSuccess: handleOAuthSuccess,
+    onError: handleOAuthError,
+  });
+
+  useEffect(() => {
+    setSyncStatus((s) => (oauthConnecting ? "connecting" : s));
+  }, [oauthConnecting]);
+
   const handleOAuthStart = () => {
     if (!oauth.url) return;
-    const popup = window.open(oauth.url, "_blank");
-    if (!popup) {
-      window.location.href = oauth.url;
-      return;
-    }
-    setSyncStatus("connecting");
-
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type !== "oauth_done") return;
-      window.removeEventListener("message", onMessage);
-      clearInterval(closedTimer);
-      if (e.data.status === "success") {
-        navigate({ to: "/snapchat-data" });
-      } else {
-        setSyncStatus("error");
-        setErrorMessage(e.data.message || "Authorization failed. Please try again.");
-      }
-    };
-    window.addEventListener("message", onMessage);
-
-    const closedTimer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(closedTimer);
-        window.removeEventListener("message", onMessage);
-        setSyncStatus("idle");
-      }
-    }, 500);
+    setErrorMessage("");
+    openOAuthPopup(oauth.url);
   };
 
   const runSync = async (
@@ -137,6 +172,30 @@ function SnapchatConnect() {
         subtitle="We authenticate, pull your spend, ROAS and campaign performance, and store it securely. This verifies your acquisition costs and blended ROAS for the Exit Score."
       />
 
+      {syncStatus === "idle" && lastError && (
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--risk-critical)]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-[var(--risk-critical)]">
+              Your last attempt failed at the {lastError.stage} step
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">
+              {lastError.message || "No further detail was reported."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              clearLastOAuthError();
+              setLastError(null);
+            }}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {syncStatus === "idle" && (
         <>
           <div className="inline-flex p-1 mb-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-warm)] gap-1">
@@ -164,14 +223,20 @@ function SnapchatConnect() {
                     S
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold leading-tight">Snapchat Access Token</h3>
+                    <h3 className="text-lg font-semibold leading-tight">
+                      Snapchat Access Token
+                    </h3>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Use a token generated from the Snapchat Marketing API portal
+                      Use a token generated from the Snapchat Marketing API
+                      portal
                     </p>
                   </div>
                 </div>
 
-                <form onSubmit={handleDirectSync} className="flex flex-col gap-5">
+                <form
+                  onSubmit={handleDirectSync}
+                  className="flex flex-col gap-5"
+                >
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
                       Ad Account ID
@@ -186,7 +251,8 @@ function SnapchatConnect() {
                       className="w-full font-mono"
                     />
                     <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                      Found in Snapchat Ads Manager &rarr; Business Details &rarr; Ad Account ID.
+                      Found in Snapchat Ads Manager &rarr; Business Details
+                      &rarr; Ad Account ID.
                     </p>
                   </div>
                   <div>
@@ -203,14 +269,16 @@ function SnapchatConnect() {
                       className="w-full font-mono"
                     />
                     <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                      Generated in the Snapchat Business API portal. Tokens expire after 1 hour — use OAuth for persistent access.
+                      Generated in the Snapchat Business API portal. Tokens
+                      expire after 1 hour — use OAuth for persistent access.
                     </p>
                   </div>
                   <button
                     type="submit"
                     className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
                   >
-                    <Sparkles className="w-4 h-4 text-white" /> Connect &amp; Pull Data
+                    <Sparkles className="w-4 h-4 text-white" /> Connect &amp;
+                    Pull Data
                   </button>
                 </form>
 
@@ -231,8 +299,8 @@ function SnapchatConnect() {
                       h: "Open Snapchat Business Manager",
                       b: (
                         <>
-                          Go to <strong>business.snapchat.com</strong>, sign in, and open your
-                          ad account.
+                          Go to <strong>business.snapchat.com</strong>, sign in,
+                          and open your ad account.
                         </>
                       ),
                     },
@@ -241,9 +309,9 @@ function SnapchatConnect() {
                       h: "Create a Marketing API app",
                       b: (
                         <>
-                          In the <strong>Business Details</strong> tab, scroll to{" "}
-                          <strong>Marketing API</strong> and create an app with{" "}
-                          <strong>snapchat-marketing-api</strong> scope.
+                          In the <strong>Business Details</strong> tab, scroll
+                          to <strong>Marketing API</strong> and create an app
+                          with <strong>snapchat-marketing-api</strong> scope.
                         </>
                       ),
                     },
@@ -252,8 +320,8 @@ function SnapchatConnect() {
                       h: "Generate an access token",
                       b: (
                         <>
-                          Use the OAuth 2.0 flow or the API console to generate an access token
-                          scoped to your ad account.
+                          Use the OAuth 2.0 flow or the API console to generate
+                          an access token scoped to your ad account.
                         </>
                       ),
                     },
@@ -262,8 +330,9 @@ function SnapchatConnect() {
                       h: "Copy your ad account id",
                       b: (
                         <>
-                          In Snapchat Ads Manager, go to <strong>Business Details</strong> and
-                          copy the <strong>Ad Account ID</strong> (UUID format).
+                          In Snapchat Ads Manager, go to{" "}
+                          <strong>Business Details</strong> and copy the{" "}
+                          <strong>Ad Account ID</strong> (UUID format).
                         </>
                       ),
                     },
@@ -283,8 +352,9 @@ function SnapchatConnect() {
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>Tip:</strong> For the easiest setup use the <strong>OAuth</strong>{" "}
-                      tab — it connects in one click and handles token refresh automatically.
+                      <strong>Tip:</strong> For the easiest setup use the{" "}
+                      <strong>OAuth</strong> tab — it connects in one click and
+                      handles token refresh automatically.
                     </div>
                   </div>
                 </div>
@@ -300,9 +370,12 @@ function SnapchatConnect() {
                     S
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold leading-tight">Connect with Snapchat</h3>
+                    <h3 className="text-lg font-semibold leading-tight">
+                      Connect with Snapchat
+                    </h3>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Authorise in one click — token refresh handled automatically
+                      Authorise in one click — token refresh handled
+                      automatically
                     </p>
                   </div>
                 </div>
@@ -318,21 +391,26 @@ function SnapchatConnect() {
                       onClick={handleOAuthStart}
                       className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md"
                     >
-                      <ExternalLink className="w-4 h-4 text-white" /> Continue with Snapchat
+                      <ExternalLink className="w-4 h-4 text-white" /> Continue
+                      with Snapchat
                     </button>
                     <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      You'll approve read-only access on Snapchat, then come straight back here —
-                      we pull your data automatically.
+                      You'll approve read-only access on Snapchat, then come
+                      straight back here — we pull your data automatically.
                     </p>
                   </div>
                 ) : (
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>OAuth isn't configured on this deployment.</strong>{" "}
+                      <strong>
+                        OAuth isn't configured on this deployment.
+                      </strong>{" "}
                       Use the <strong>Access token</strong> tab instead, or set{" "}
-                      <code>SNAPCHAT_CLIENT_ID</code>, <code>SNAPCHAT_CLIENT_SECRET</code> and{" "}
-                      <code>SNAPCHAT_REDIRECT_URI</code> in the server environment.
+                      <code>SNAPCHAT_CLIENT_ID</code>,{" "}
+                      <code>SNAPCHAT_CLIENT_SECRET</code> and{" "}
+                      <code>SNAPCHAT_REDIRECT_URI</code> in the server
+                      environment.
                     </div>
                   </div>
                 )}
@@ -340,9 +418,14 @@ function SnapchatConnect() {
                 <div className="flex flex-col items-center gap-1.5 text-xs text-[var(--text-muted)] pt-2 text-center">
                   <span className="flex items-center gap-2 justify-center">
                     <Lock className="w-3.5 h-3.5 shrink-0" />
-                    Read-only. Your token is stored securely against your account.
+                    Read-only. Your token is stored securely against your
+                    account.
                   </span>
-                  <Link to="/privacy" target="_blank" className="text-[var(--accent)] hover:underline">
+                  <Link
+                    to="/privacy"
+                    target="_blank"
+                    className="text-[var(--accent)] hover:underline"
+                  >
                     Privacy Policy
                   </Link>
                 </div>
@@ -359,8 +442,9 @@ function SnapchatConnect() {
                       h: "Continue with Snapchat",
                       b: (
                         <>
-                          Click <strong>Continue with Snapchat</strong> — you go straight to
-                          Snapchat to approve read-only reporting access.
+                          Click <strong>Continue with Snapchat</strong> — you go
+                          straight to Snapchat to approve read-only reporting
+                          access.
                         </>
                       ),
                     },
@@ -369,8 +453,8 @@ function SnapchatConnect() {
                       h: "Approve access",
                       b: (
                         <>
-                          Snapchat asks you to grant access to your ad account. Approve and
-                          you're redirected back here automatically.
+                          Snapchat asks you to grant access to your ad account.
+                          Approve and you're redirected back here automatically.
                         </>
                       ),
                     },
@@ -379,8 +463,9 @@ function SnapchatConnect() {
                       h: "Pick your ad account",
                       b: (
                         <>
-                          If your login has access to several ad accounts, choose which one to
-                          analyse. Otherwise we proceed automatically.
+                          If your login has access to several ad accounts,
+                          choose which one to analyse. Otherwise we proceed
+                          automatically.
                         </>
                       ),
                     },
@@ -389,8 +474,9 @@ function SnapchatConnect() {
                       h: "That's it",
                       b: (
                         <>
-                          We pull your spend, ROAS and campaign performance and store it — no
-                          token to copy or paste, and we refresh it automatically.
+                          We pull your spend, ROAS and campaign performance and
+                          store it — no token to copy or paste, and we refresh
+                          it automatically.
                         </>
                       ),
                     },
@@ -456,7 +542,10 @@ function SnapchatConnect() {
               done={syncStatus === "saving"}
               running={syncStatus === "fetching"}
             />
-            <Step label="💾 Persist to your account" running={syncStatus === "saving"} />
+            <Step
+              label="💾 Persist to your account"
+              running={syncStatus === "saving"}
+            />
           </div>
         </div>
       )}
@@ -472,8 +561,8 @@ function SnapchatConnect() {
                 {summary.account.name || "Your Snapchat account"} is connected
               </h3>
               <p className="text-sm text-[var(--text-muted)] mt-1.5">
-                We pulled and stored your ad data. Nothing has been analysed yet — run a report
-                whenever you're ready.
+                We pulled and stored your ad data. Nothing has been analysed yet
+                — run a report whenever you're ready.
               </p>
             </div>
             <div className="w-full grid sm:grid-cols-3 gap-4 mt-2">
@@ -529,7 +618,9 @@ function SnapchatConnect() {
             <AlertCircle className="w-8 h-8 text-[var(--risk-critical)]" />
           </div>
           <div>
-            <h3 className="text-xl font-bold font-display">Connection failed</h3>
+            <h3 className="text-xl font-bold font-display">
+              Connection failed
+            </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
               We couldn't reach Snapchat or authenticate the token.
             </p>
@@ -601,7 +692,9 @@ function Stat({
       <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
         {value}
       </div>
-      {note && <div className="text-[10px] text-[var(--text-muted)] mt-1">{note}</div>}
+      {note && (
+        <div className="text-[10px] text-[var(--text-muted)] mt-1">{note}</div>
+      )}
     </div>
   );
 }

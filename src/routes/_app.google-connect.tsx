@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -14,7 +14,17 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
+import { useAuth } from "@/hooks/useAuth";
+import { useOAuthPopup } from "@/hooks/useOAuthPopup";
 import { getGoogleOAuthUrlFn, type GoogleSyncResult } from "@/lib/google";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { resolveBusinessId } from "@/lib/businessId";
+import {
+  clearLastOAuthError,
+  readLastOAuthError,
+  rememberOAuthState,
+  type OAuthResult,
+} from "@/lib/oauthResult";
 import { toast } from "sonner";
 
 type ConnectMethod = "oauth" | "manual";
@@ -25,13 +35,14 @@ export const Route = createFileRoute("/_app/google-connect")({
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// sessionStorage key holding the CSRF state we send to Google; the callback
-// route validates the returned `state` against it.
+// localStorage key holding the recent CSRF states we've sent to Google; the
+// callback route validates the returned `state` against them.
 const OAUTH_STATE_KEY = "google_oauth_state";
 
 function GoogleConnect() {
   const navigate = useNavigate();
-  const { syncGoogle } = useBusinessData();
+  const { syncGoogle, refetch } = useBusinessData();
+  const { user } = useAuth();
 
   const [method, setMethod] = useState<ConnectMethod>("oauth");
 
@@ -51,10 +62,18 @@ function GoogleConnect() {
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [summary, setSummary] = useState<GoogleSyncResult | null>(null);
+  // A failure recorded by the popup. Survives the popup tab closing and this
+  // page being reloaded, so a lost handshake still leaves the user an
+  // explanation instead of a silently reset form.
+  const [lastError, setLastError] = useState<OAuthResult | null>(null);
+
+  useEffect(() => {
+    setLastError(readLastOAuthError("google"));
+  }, []);
 
   useEffect(() => {
     const state = crypto.randomUUID();
-    localStorage.setItem(OAUTH_STATE_KEY, state);
+    rememberOAuthState(OAUTH_STATE_KEY, state);
     getGoogleOAuthUrlFn({ data: { state } })
       .then((res) =>
         setOauth({ loading: false, configured: res.configured, url: res.url }),
@@ -62,36 +81,55 @@ function GoogleConnect() {
       .catch(() => setOauth({ loading: false, configured: false, url: null }));
   }, []);
 
+  // Last-resort check when the popup closed without leaving any result: ask the
+  // database directly rather than assuming either outcome. A connection that
+  // actually saved must not be reported as a failure just because the
+  // popup→parent handshake was lost.
+  const confirmConnected = useCallback(async () => {
+    if (!isSupabaseConfigured) return false;
+    const businessId = await resolveBusinessId(user, "", "Google Ads").catch(
+      () => null,
+    );
+    if (!businessId) return false;
+    const { data } = await supabase
+      .from("google_accounts")
+      .select("customer_id")
+      .eq("business_id", businessId)
+      .maybeSingle();
+    return Boolean(data?.customer_id);
+  }, [user]);
+
+  const handleOAuthSuccess = useCallback(async () => {
+    // Refetch before navigating: /google-data renders from provider state, and
+    // without this it would show "not connected" until a manual refresh.
+    setLastError(null);
+    clearLastOAuthError();
+    await refetch();
+    toast.success("Google Ads connected. Data synced.");
+    navigate({ to: "/google-data" });
+  }, [refetch, navigate]);
+
+  const handleOAuthError = useCallback((message: string) => {
+    setSyncStatus("error");
+    setErrorMessage(message);
+    setLastError(readLastOAuthError("google"));
+  }, []);
+
+  const { connecting: oauthConnecting, open: openOAuthPopup } = useOAuthPopup({
+    provider: "google",
+    confirmConnected,
+    onSuccess: handleOAuthSuccess,
+    onError: handleOAuthError,
+  });
+
+  useEffect(() => {
+    setSyncStatus((s) => (oauthConnecting ? "connecting" : s));
+  }, [oauthConnecting]);
+
   const handleOAuthStart = () => {
     if (!oauth.url) return;
-    const popup = window.open(oauth.url, "_blank");
-    if (!popup) {
-      window.location.href = oauth.url;
-      return;
-    }
-    setSyncStatus("connecting");
-
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type !== "oauth_done") return;
-      window.removeEventListener("message", onMessage);
-      clearInterval(closedTimer);
-      if (e.data.status === "success") {
-        navigate({ to: "/google-data" });
-      } else {
-        setSyncStatus("error");
-        setErrorMessage(e.data.message || "Authorization failed. Please try again.");
-      }
-    };
-    window.addEventListener("message", onMessage);
-
-    const closedTimer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(closedTimer);
-        window.removeEventListener("message", onMessage);
-        setSyncStatus("idle");
-      }
-    }, 500);
+    setErrorMessage("");
+    openOAuthPopup(oauth.url);
   };
 
   const runSync = async (
@@ -147,6 +185,30 @@ function GoogleConnect() {
         title="Connect Google Ads"
         subtitle="We authenticate, pull your spend, ROAS and campaign performance, and store it securely. This verifies your acquisition costs on high-intent channels for the Exit Score."
       />
+
+      {syncStatus === "idle" && lastError && (
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--risk-critical)]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-[var(--risk-critical)]">
+              Your last attempt failed at the {lastError.stage} step
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">
+              {lastError.message || "No further detail was reported."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              clearLastOAuthError();
+              setLastError(null);
+            }}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {syncStatus === "idle" && (
         <>

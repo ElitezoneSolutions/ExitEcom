@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -14,7 +14,17 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
+import { useAuth } from "@/hooks/useAuth";
+import { useOAuthPopup } from "@/hooks/useOAuthPopup";
 import { getTikTokOAuthUrlFn, type TikTokSyncResult } from "@/lib/tiktok";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { resolveBusinessId } from "@/lib/businessId";
+import {
+  clearLastOAuthError,
+  readLastOAuthError,
+  rememberOAuthState,
+  type OAuthResult,
+} from "@/lib/oauthResult";
 import { toast } from "sonner";
 
 type ConnectMethod = "oauth" | "direct";
@@ -28,7 +38,8 @@ const OAUTH_STATE_KEY = "tiktok_oauth_state";
 
 function TikTokConnect() {
   const navigate = useNavigate();
-  const { syncTikTok } = useBusinessData();
+  const { syncTikTok, refetch } = useBusinessData();
+  const { user } = useAuth();
 
   const [method, setMethod] = useState<ConnectMethod>("oauth");
   const [advertiserId, setAdvertiserId] = useState("");
@@ -44,10 +55,17 @@ function TikTokConnect() {
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [summary, setSummary] = useState<TikTokSyncResult | null>(null);
+  // A failure recorded by the popup — survives the popup closing and this page
+  // reloading, so a lost handshake still leaves the user an explanation.
+  const [lastError, setLastError] = useState<OAuthResult | null>(null);
+
+  useEffect(() => {
+    setLastError(readLastOAuthError("tiktok"));
+  }, []);
 
   useEffect(() => {
     const state = crypto.randomUUID();
-    localStorage.setItem(OAUTH_STATE_KEY, state);
+    rememberOAuthState(OAUTH_STATE_KEY, state);
     getTikTokOAuthUrlFn({ data: { state } })
       .then((res) =>
         setOauth({ loading: false, configured: res.configured, url: res.url }),
@@ -55,36 +73,53 @@ function TikTokConnect() {
       .catch(() => setOauth({ loading: false, configured: false, url: null }));
   }, []);
 
+  // Last-resort check when the popup closed without leaving a result: ask the
+  // database rather than assuming either outcome.
+  const confirmConnected = useCallback(async () => {
+    if (!isSupabaseConfigured) return false;
+    const businessId = await resolveBusinessId(user, "", "TikTok Ads").catch(
+      () => null,
+    );
+    if (!businessId) return false;
+    const { data } = await supabase
+      .from("tiktok_accounts")
+      .select("advertiser_id")
+      .eq("business_id", businessId)
+      .maybeSingle();
+    return Boolean(data?.advertiser_id);
+  }, [user]);
+
+  const handleOAuthSuccess = useCallback(async () => {
+    // Refetch before navigating: /tiktok-data renders from provider state and
+    // would otherwise show "not connected" until a manual refresh.
+    setLastError(null);
+    clearLastOAuthError();
+    await refetch();
+    toast.success("TikTok Ads connected. Data synced.");
+    navigate({ to: "/tiktok-data" });
+  }, [refetch, navigate]);
+
+  const handleOAuthError = useCallback((message: string) => {
+    setSyncStatus("error");
+    setErrorMessage(message);
+    setLastError(readLastOAuthError("tiktok"));
+  }, []);
+
+  const { connecting: oauthConnecting, open: openOAuthPopup } = useOAuthPopup({
+    provider: "tiktok",
+    confirmConnected,
+    onSuccess: handleOAuthSuccess,
+    onError: handleOAuthError,
+  });
+
+  useEffect(() => {
+    setSyncStatus((s) => (oauthConnecting ? "connecting" : s));
+  }, [oauthConnecting]);
+
   const handleOAuthStart = () => {
     if (!oauth.url) return;
-    const popup = window.open(oauth.url, "_blank");
-    if (!popup) {
-      window.location.href = oauth.url;
-      return;
-    }
-    setSyncStatus("connecting");
-
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type !== "oauth_done") return;
-      window.removeEventListener("message", onMessage);
-      clearInterval(closedTimer);
-      if (e.data.status === "success") {
-        navigate({ to: "/tiktok-data" });
-      } else {
-        setSyncStatus("error");
-        setErrorMessage(e.data.message || "Authorization failed. Please try again.");
-      }
-    };
-    window.addEventListener("message", onMessage);
-
-    const closedTimer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(closedTimer);
-        window.removeEventListener("message", onMessage);
-        setSyncStatus("idle");
-      }
-    }, 500);
+    setErrorMessage("");
+    openOAuthPopup(oauth.url);
   };
 
   const runSync = async (
@@ -138,6 +173,30 @@ function TikTokConnect() {
         subtitle="We authenticate, pull your spend, ROAS and campaign performance, and store it securely. This verifies your acquisition costs and blended ROAS for the Exit Score."
       />
 
+      {syncStatus === "idle" && lastError && (
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--risk-critical)]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-[var(--risk-critical)]">
+              Your last attempt failed at the {lastError.stage} step
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">
+              {lastError.message || "No further detail was reported."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              clearLastOAuthError();
+              setLastError(null);
+            }}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {syncStatus === "idle" && (
         <>
           <div className="inline-flex p-1 mb-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-warm)] gap-1">
@@ -165,14 +224,19 @@ function TikTokConnect() {
                     T
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold leading-tight">TikTok Access Token</h3>
+                    <h3 className="text-lg font-semibold leading-tight">
+                      TikTok Access Token
+                    </h3>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
                       Use a long-lived token from TikTok Ads Manager
                     </p>
                   </div>
                 </div>
 
-                <form onSubmit={handleDirectSync} className="flex flex-col gap-5">
+                <form
+                  onSubmit={handleDirectSync}
+                  className="flex flex-col gap-5"
+                >
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
                       Advertiser ID
@@ -187,7 +251,8 @@ function TikTokConnect() {
                       className="w-full font-mono"
                     />
                     <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                      Found in TikTok Ads Manager &rarr; Account Settings (a 13-digit number).
+                      Found in TikTok Ads Manager &rarr; Account Settings (a
+                      13-digit number).
                     </p>
                   </div>
                   <div>
@@ -204,7 +269,8 @@ function TikTokConnect() {
                       className="w-full font-mono"
                     />
                     <p className="text-[10px] text-[var(--text-muted)] mt-2 leading-relaxed">
-                      Generated in the TikTok Marketing API portal under your app &rarr; Authentication.
+                      Generated in the TikTok Marketing API portal under your
+                      app &rarr; Authentication.
                     </p>
                   </div>
                   <label className="flex items-center gap-2.5 cursor-pointer select-none">
@@ -216,7 +282,9 @@ function TikTokConnect() {
                     />
                     <span className="text-xs text-[var(--text-secondary)]">
                       TikTok Sandbox environment{" "}
-                      <span className="text-[var(--text-muted)]">(sandbox-ads.tiktok.com)</span>
+                      <span className="text-[var(--text-muted)]">
+                        (sandbox-ads.tiktok.com)
+                      </span>
                     </span>
                   </label>
 
@@ -224,7 +292,8 @@ function TikTokConnect() {
                     type="submit"
                     className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md mt-2"
                   >
-                    <Sparkles className="w-4 h-4 text-white" /> Connect &amp; Pull Data
+                    <Sparkles className="w-4 h-4 text-white" /> Connect &amp;
+                    Pull Data
                   </button>
                 </form>
 
@@ -243,22 +312,48 @@ function TikTokConnect() {
                     {
                       n: 1,
                       h: "Open TikTok for Business",
-                      b: <>Go to <strong>business-api.tiktok.com</strong>, register or sign in, and create an app under <strong>My Apps</strong>.</>,
+                      b: (
+                        <>
+                          Go to <strong>business-api.tiktok.com</strong>,
+                          register or sign in, and create an app under{" "}
+                          <strong>My Apps</strong>.
+                        </>
+                      ),
                     },
                     {
                       n: 2,
                       h: "Add reporting permissions",
-                      b: <>In your app settings, enable <strong>Ad Account Management</strong> and <strong>Reporting</strong> scopes (read-only is sufficient).</>,
+                      b: (
+                        <>
+                          In your app settings, enable{" "}
+                          <strong>Ad Account Management</strong> and{" "}
+                          <strong>Reporting</strong> scopes (read-only is
+                          sufficient).
+                        </>
+                      ),
                     },
                     {
                       n: 3,
                       h: "Generate a long-lived token",
-                      b: <>Under <strong>Authentication &rarr; Access Token</strong>, generate a token authorised for your advertiser account. Tokens last ~365 days.</>,
+                      b: (
+                        <>
+                          Under{" "}
+                          <strong>Authentication &rarr; Access Token</strong>,
+                          generate a token authorised for your advertiser
+                          account. Tokens last ~365 days.
+                        </>
+                      ),
                     },
                     {
                       n: 4,
                       h: "Copy your advertiser id",
-                      b: <>In TikTok Ads Manager, open <strong>Account Settings</strong> and copy the 13-digit <strong>Advertiser ID</strong>.</>,
+                      b: (
+                        <>
+                          In TikTok Ads Manager, open{" "}
+                          <strong>Account Settings</strong> and copy the
+                          13-digit <strong>Advertiser ID</strong>.
+                        </>
+                      ),
                     },
                   ].map((s) => (
                     <div key={s.n} className="flex items-start gap-4">
@@ -267,14 +362,18 @@ function TikTokConnect() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-sm">{s.h}</h4>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">{s.b}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                          {s.b}
+                        </p>
                       </div>
                     </div>
                   ))}
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>Tip:</strong> For the easiest setup use the <strong>OAuth</strong> tab — it connects in one click without generating a token manually.
+                      <strong>Tip:</strong> For the easiest setup use the{" "}
+                      <strong>OAuth</strong> tab — it connects in one click
+                      without generating a token manually.
                     </div>
                   </div>
                 </div>
@@ -290,7 +389,9 @@ function TikTokConnect() {
                     T
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold leading-tight">Connect with TikTok</h3>
+                    <h3 className="text-lg font-semibold leading-tight">
+                      Connect with TikTok
+                    </h3>
                     <p className="text-xs text-[var(--text-muted)] mt-0.5">
                       Authorise in one click — no token to manage yourself
                     </p>
@@ -308,20 +409,25 @@ function TikTokConnect() {
                       onClick={handleOAuthStart}
                       className="w-full btn-primary justify-center py-3 text-sm rounded-md shadow-md"
                     >
-                      <ExternalLink className="w-4 h-4 text-white" /> Continue with TikTok
+                      <ExternalLink className="w-4 h-4 text-white" /> Continue
+                      with TikTok
                     </button>
                     <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      You'll approve read-only access on TikTok, then come straight back here — we pull your data automatically.
+                      You'll approve read-only access on TikTok, then come
+                      straight back here — we pull your data automatically.
                     </p>
                   </div>
                 ) : (
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800 flex gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <strong>OAuth isn't configured on this deployment.</strong>{" "}
+                      <strong>
+                        OAuth isn't configured on this deployment.
+                      </strong>{" "}
                       Use the <strong>Access token</strong> tab instead, or set{" "}
-                      <code>TIKTOK_APP_ID</code>, <code>TIKTOK_APP_SECRET</code> and{" "}
-                      <code>TIKTOK_OAUTH_REDIRECT_URI</code> in the server environment.
+                      <code>TIKTOK_APP_ID</code>, <code>TIKTOK_APP_SECRET</code>{" "}
+                      and <code>TIKTOK_OAUTH_REDIRECT_URI</code> in the server
+                      environment.
                     </div>
                   </div>
                 )}
@@ -329,9 +435,14 @@ function TikTokConnect() {
                 <div className="flex flex-col items-center gap-1.5 text-xs text-[var(--text-muted)] pt-2 text-center">
                   <span className="flex items-center gap-2 justify-center">
                     <Lock className="w-3.5 h-3.5 shrink-0" />
-                    Read-only. Your token is stored securely against your account.
+                    Read-only. Your token is stored securely against your
+                    account.
                   </span>
-                  <Link to="/privacy" target="_blank" className="text-[var(--accent)] hover:underline">
+                  <Link
+                    to="/privacy"
+                    target="_blank"
+                    className="text-[var(--accent)] hover:underline"
+                  >
                     Privacy Policy
                   </Link>
                 </div>
@@ -343,10 +454,49 @@ function TikTokConnect() {
                 </h3>
                 <div className="flex flex-col gap-5">
                   {[
-                    { n: 1, h: "Continue with TikTok", b: <>Click <strong>Continue with TikTok</strong> — you go straight to TikTok to approve read-only reporting access.</> },
-                    { n: 2, h: "Approve access", b: <>TikTok asks you to grant access to your advertiser account. Approve and you're redirected back here automatically.</> },
-                    { n: 3, h: "Pick your advertiser account", b: <>If your login has access to several advertiser accounts, choose which one to analyse. Otherwise we proceed automatically.</> },
-                    { n: 4, h: "That's it", b: <>We pull your spend, ROAS and campaign performance and store it — no token to copy or paste.</> },
+                    {
+                      n: 1,
+                      h: "Continue with TikTok",
+                      b: (
+                        <>
+                          Click <strong>Continue with TikTok</strong> — you go
+                          straight to TikTok to approve read-only reporting
+                          access.
+                        </>
+                      ),
+                    },
+                    {
+                      n: 2,
+                      h: "Approve access",
+                      b: (
+                        <>
+                          TikTok asks you to grant access to your advertiser
+                          account. Approve and you're redirected back here
+                          automatically.
+                        </>
+                      ),
+                    },
+                    {
+                      n: 3,
+                      h: "Pick your advertiser account",
+                      b: (
+                        <>
+                          If your login has access to several advertiser
+                          accounts, choose which one to analyse. Otherwise we
+                          proceed automatically.
+                        </>
+                      ),
+                    },
+                    {
+                      n: 4,
+                      h: "That's it",
+                      b: (
+                        <>
+                          We pull your spend, ROAS and campaign performance and
+                          store it — no token to copy or paste.
+                        </>
+                      ),
+                    },
                   ].map((s) => (
                     <div key={s.n} className="flex items-start gap-4">
                       <div className="w-6 h-6 rounded-full bg-[var(--blue-100)] flex items-center justify-center font-bold text-xs text-[var(--accent)] shrink-0 mt-0.5">
@@ -354,7 +504,9 @@ function TikTokConnect() {
                       </div>
                       <div>
                         <h4 className="font-semibold text-sm">{s.h}</h4>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">{s.b}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+                          {s.b}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -365,13 +517,20 @@ function TikTokConnect() {
         </>
       )}
 
-      {(syncStatus === "connecting" || syncStatus === "fetching" || syncStatus === "saving") && (
+      {(syncStatus === "connecting" ||
+        syncStatus === "fetching" ||
+        syncStatus === "saving") && (
         <div className="card-light max-w-xl mx-auto p-10 flex flex-col items-center justify-center text-center gap-8 shadow-lg my-12 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-[var(--bg-secondary)]">
             <div
               className="h-full bg-[var(--accent)] transition-all duration-1000 ease-out"
               style={{
-                width: syncStatus === "connecting" ? "25%" : syncStatus === "fetching" ? "70%" : "92%",
+                width:
+                  syncStatus === "connecting"
+                    ? "25%"
+                    : syncStatus === "fetching"
+                      ? "70%"
+                      : "92%",
               }}
             />
           </div>
@@ -385,15 +544,25 @@ function TikTokConnect() {
               {syncStatus === "saving" && "Saving securely…"}
             </h3>
             <p className="text-xs text-[var(--text-muted)] mt-2.5 max-w-sm mx-auto leading-relaxed">
-              {syncStatus === "connecting" && "Verifying your access token and advertiser account."}
-              {syncStatus === "fetching" && "Fetching spend, conversions and campaign performance for the last 12 months."}
-              {syncStatus === "saving" && "Storing the raw data. No report is generated — you run those on demand."}
+              {syncStatus === "connecting" &&
+                "Verifying your access token and advertiser account."}
+              {syncStatus === "fetching" &&
+                "Fetching spend, conversions and campaign performance for the last 12 months."}
+              {syncStatus === "saving" &&
+                "Storing the raw data. No report is generated — you run those on demand."}
             </p>
           </div>
           <div className="w-full max-w-sm flex flex-col gap-2 mt-2 text-left text-xs bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] font-medium">
             <Step label="🔐 Authenticate" done={syncStatus !== "connecting"} />
-            <Step label="📊 Pull spend, ROAS & campaigns" done={syncStatus === "saving"} running={syncStatus === "fetching"} />
-            <Step label="💾 Persist to your account" running={syncStatus === "saving"} />
+            <Step
+              label="📊 Pull spend, ROAS & campaigns"
+              done={syncStatus === "saving"}
+              running={syncStatus === "fetching"}
+            />
+            <Step
+              label="💾 Persist to your account"
+              running={syncStatus === "saving"}
+            />
           </div>
         </div>
       )}
@@ -409,25 +578,50 @@ function TikTokConnect() {
                 {summary.account.name || "Your TikTok account"} is connected
               </h3>
               <p className="text-sm text-[var(--text-muted)] mt-1.5">
-                We pulled and stored your ad data. Nothing has been analysed yet — run a report whenever you're ready.
+                We pulled and stored your ad data. Nothing has been analysed yet
+                — run a report whenever you're ready.
               </p>
             </div>
             <div className="w-full grid sm:grid-cols-3 gap-4 mt-2">
-              <Stat icon={<DollarSign className="w-4 h-4 text-[var(--accent)]" />} label="Spend (12mo)" value={`${summary.account.currency} ${summary.totals.spend.toLocaleString()}`} />
-              <Stat icon={<TrendingUp className="w-4 h-4 text-[var(--accent)]" />} label="ROAS" value={`${summary.totals.roas.toFixed(2)}x`} note="self-reported by TikTok" />
-              <Stat icon={<Megaphone className="w-4 h-4 text-[var(--accent)]" />} label="Campaigns" value={summary.campaigns.length.toLocaleString()} note={summary.capped.campaigns ? "capped" : undefined} />
+              <Stat
+                icon={<DollarSign className="w-4 h-4 text-[var(--accent)]" />}
+                label="Spend (12mo)"
+                value={`${summary.account.currency} ${summary.totals.spend.toLocaleString()}`}
+              />
+              <Stat
+                icon={<TrendingUp className="w-4 h-4 text-[var(--accent)]" />}
+                label="ROAS"
+                value={`${summary.totals.roas.toFixed(2)}x`}
+                note="self-reported by TikTok"
+              />
+              <Stat
+                icon={<Megaphone className="w-4 h-4 text-[var(--accent)]" />}
+                label="Campaigns"
+                value={summary.campaigns.length.toLocaleString()}
+                note={summary.capped.campaigns ? "capped" : undefined}
+              />
             </div>
             <div className="w-full flex items-center justify-center gap-4 text-xs text-[var(--text-muted)] mt-1">
-              <span>{summary.range.since} → {summary.range.until}</span>
+              <span>
+                {summary.range.since} → {summary.range.until}
+              </span>
               {summary.sandbox && (
-                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">sandbox data</span>
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
+                  sandbox data
+                </span>
               )}
             </div>
             <div className="flex flex-col sm:flex-row gap-3 w-full mt-4">
-              <button onClick={() => navigate({ to: "/tiktok-data" })} className="flex-1 btn-primary py-3 rounded-md justify-center font-semibold text-sm">
+              <button
+                onClick={() => navigate({ to: "/tiktok-data" })}
+                className="flex-1 btn-primary py-3 rounded-md justify-center font-semibold text-sm"
+              >
                 View Ad Data
               </button>
-              <button onClick={() => navigate({ to: "/exit-score" })} className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm cursor-pointer">
+              <button
+                onClick={() => navigate({ to: "/exit-score" })}
+                className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm cursor-pointer"
+              >
                 Run your report
               </button>
             </div>
@@ -441,17 +635,27 @@ function TikTokConnect() {
             <AlertCircle className="w-8 h-8 text-[var(--risk-critical)]" />
           </div>
           <div>
-            <h3 className="text-xl font-bold font-display">Connection failed</h3>
-            <p className="text-sm text-[var(--text-muted)] mt-1.5">We couldn't reach TikTok or authenticate the token.</p>
+            <h3 className="text-xl font-bold font-display">
+              Connection failed
+            </h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1.5">
+              We couldn't reach TikTok or authenticate the token.
+            </p>
           </div>
           <div className="w-full p-4 bg-red-50 border border-red-100 rounded text-left text-xs font-mono text-[var(--risk-critical)] overflow-x-auto max-h-40">
             {errorMessage}
           </div>
           <div className="flex gap-4 w-full mt-2">
-            <button onClick={() => setSyncStatus("idle")} className="flex-1 btn-primary py-3 rounded-md justify-center font-semibold text-sm">
+            <button
+              onClick={() => setSyncStatus("idle")}
+              className="flex-1 btn-primary py-3 rounded-md justify-center font-semibold text-sm"
+            >
               Try Again
             </button>
-            <Link to="/data-sources" className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm text-center">
+            <Link
+              to="/data-sources"
+              className="flex-1 btn-ghost-dark py-3 rounded-md justify-center font-medium text-sm text-center"
+            >
               Cancel
             </Link>
           </div>
@@ -461,23 +665,53 @@ function TikTokConnect() {
   );
 }
 
-function Step({ label, done, running }: { label: string; done?: boolean; running?: boolean }) {
+function Step({
+  label,
+  done,
+  running,
+}: {
+  label: string;
+  done?: boolean;
+  running?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between text-[var(--text-secondary)]">
       <span>{label}</span>
       <span className="font-mono text-[10px]">
-        {done ? <span className="text-[var(--positive)]">DONE</span> : running ? "RUNNING" : "PENDING"}
+        {done ? (
+          <span className="text-[var(--positive)]">DONE</span>
+        ) : running ? (
+          "RUNNING"
+        ) : (
+          "PENDING"
+        )}
       </span>
     </div>
   );
 }
 
-function Stat({ icon, label, value, note }: { icon: React.ReactNode; label: string; value: string; note?: string }) {
+function Stat({
+  icon,
+  label,
+  value,
+  note,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  note?: string;
+}) {
   return (
     <div className="bg-[var(--bg-primary)] p-4 rounded-md border border-[var(--border-warm)] text-left">
-      <div className="label-caps flex items-center gap-1.5">{icon} {label}</div>
-      <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">{value}</div>
-      {note && <div className="text-[10px] text-[var(--text-muted)] mt-1">{note}</div>}
+      <div className="label-caps flex items-center gap-1.5">
+        {icon} {label}
+      </div>
+      <div className="font-display text-3xl font-bold text-[var(--text-primary)] mt-3">
+        {value}
+      </div>
+      {note && (
+        <div className="text-[10px] text-[var(--text-muted)] mt-1">{note}</div>
+      )}
     </div>
   );
 }

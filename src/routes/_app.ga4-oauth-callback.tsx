@@ -4,6 +4,13 @@ import { RefreshCw, AlertCircle, CheckCircle2, BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { exchangeGA4OAuthCodeFn, type GA4OAuthProperty } from "@/lib/ga4";
+import {
+  OAUTH_MESSAGE_TYPE,
+  consumeOAuthState,
+  oauthLog,
+  writeOAuthResult,
+  type OAuthStage,
+} from "@/lib/oauthResult";
 
 // Google redirects here after the user approves (or denies) the OAuth consent.
 // Authenticated route under the pathless _app layout — the round-trip preserves
@@ -27,7 +34,7 @@ export const Route = createFileRoute("/_app/ga4-oauth-callback")({
   component: GA4OAuthCallback,
 });
 
-type Phase = "exchanging" | "picking" | "saving" | "error";
+type Phase = "exchanging" | "picking" | "saving" | "error" | "success";
 
 function GA4OAuthCallback() {
   const navigate = useNavigate();
@@ -39,29 +46,48 @@ function GA4OAuthCallback() {
   const [properties, setProperties] = useState<GA4OAuthProperty[]>([]);
   const tokenRef = useRef<string>("");
   const ran = useRef(false);
+  const stageRef = useRef<OAuthStage>("exchanging");
 
+  /**
+   * Terminal handler. The localStorage record is written FIRST — it's the only
+   * signal that survives both a severed `window.opener` and the parent's
+   * close-poll racing our postMessage.
+   */
   const done = (status: "success" | "error", message?: string) => {
-    if (window.opener) {
-      window.opener.postMessage(
-        { type: "oauth_done", status, message },
+    const stage = status === "success" ? "done" : stageRef.current;
+    oauthLog("ga4", `done: ${status}`, {
+      stage,
+      hasOpener: Boolean(window.opener),
+    });
+
+    writeOAuthResult({ provider: "ga4", status, stage, message });
+
+    try {
+      window.opener?.postMessage(
+        { type: OAUTH_MESSAGE_TYPE, provider: "ga4", status, message },
         window.location.origin,
       );
-      window.close();
-      return;
+    } catch {
+      // Opener gone — the storage record already covers us.
     }
+
     if (status === "success") {
-      navigate({ to: "/ga4-data" });
+      setPhase("success");
     } else {
       setErrorMessage(message ?? "");
       setPhase("error");
     }
+    window.close();
   };
 
   const fail = (msg: string) => done("error", msg);
 
   const pickProperty = async (property: GA4OAuthProperty) => {
     setPhase("saving");
+    stageRef.current = "pulling";
+    oauthLog("ga4", "property picked", { propertyId: property.propertyId });
     try {
+      stageRef.current = "committing";
       await syncGA4ViaOAuth(property.propertyId, tokenRef.current);
       done("success");
     } catch (err) {
@@ -81,18 +107,21 @@ function GA4OAuthCallback() {
       return;
     }
 
-    const expected = localStorage.getItem(OAUTH_STATE_KEY);
-    localStorage.removeItem(OAUTH_STATE_KEY);
-    if (!search.code || !search.state || search.state !== expected) {
+    if (!search.code || !consumeOAuthState(OAUTH_STATE_KEY, search.state)) {
       fail(
         "This authorisation link is invalid or expired. Please start the connection again.",
       );
       return;
     }
 
+    oauthLog("ga4", "callback mounted", {
+      hasOpener: Boolean(window.opener),
+    });
     exchangeGA4OAuthCodeFn({ data: { code: search.code } })
       .then(async ({ refreshToken, properties }) => {
         tokenRef.current = refreshToken;
+        stageRef.current = "listing";
+        oauthLog("ga4", "exchange ok", { properties: properties.length });
         if (properties.length === 0) {
           fail(
             "No Google Analytics 4 properties were found for this login. Make sure the account has access to a GA4 property.",
@@ -103,6 +132,7 @@ function GA4OAuthCallback() {
           await pickProperty(properties[0]);
           return;
         }
+        stageRef.current = "picking";
         setProperties(properties);
         setPhase("picking");
       })
@@ -186,6 +216,28 @@ function GA4OAuthCallback() {
         </div>
       )}
 
+      {phase === "success" && (
+        <div className="card-light max-w-xl mx-auto p-10 text-center flex flex-col items-center gap-5 shadow-lg my-12">
+          <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center border border-green-200">
+            <CheckCircle2 className="w-8 h-8 text-[var(--success,#16a34a)]" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold font-display">GA4 connected</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1.5">
+              Your analytics data has been saved. You can close this window — or
+              continue below.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/ga4-data" })}
+            className="btn-primary py-3 px-6 rounded-md justify-center font-semibold text-sm"
+          >
+            View GA4 data
+          </button>
+        </div>
+      )}
+
       {phase === "error" && (
         <div className="card-light max-w-xl mx-auto p-8 text-center flex flex-col items-center gap-5 shadow-lg my-12 border-2 border-[var(--risk-critical)]/30">
           <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center border border-red-200">
@@ -196,7 +248,16 @@ function GA4OAuthCallback() {
               Connection failed
             </h3>
             <p className="text-sm text-[var(--text-muted)] mt-1.5">
-              We couldn't complete the GA4 connection.
+              We couldn't complete the GA4 connection
+              {stageRef.current !== "done" ? (
+                <>
+                  {" "}
+                  — it failed at the{" "}
+                  <span className="font-medium">{stageRef.current}</span> step.
+                </>
+              ) : (
+                "."
+              )}
             </p>
           </div>
           <div className="w-full p-4 bg-red-50 border border-red-100 rounded text-left text-xs font-mono text-[var(--risk-critical)] overflow-x-auto max-h-40">
