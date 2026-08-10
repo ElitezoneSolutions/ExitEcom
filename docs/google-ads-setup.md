@@ -72,6 +72,13 @@ GOOGLE_OAUTH_REDIRECT_URI=https://dash.exitecom.com/google-oauth-callback   # pr
 > Dev port: `npm run dev` serves on **8080** in this project; use whatever it prints
 > and keep `GOOGLE_OAUTH_REDIRECT_URI` + the Google Cloud redirect URI in sync.
 
+> **Testing OAuth locally?** `.env` normally points `GOOGLE_OAUTH_REDIRECT_URI` at the
+> **production** callback, so a local attempt sends the authorization code to prod and
+> the popup can never hand it back to `localhost`. To test locally you must (1) register
+> the localhost callback on the Google Cloud OAuth client, and (2) point the local
+> `GOOGLE_OAUTH_REDIRECT_URI` at it. Also watch the port: if 8080 is already in use Vite
+> silently falls back to 8081, and the redirect URI then no longer matches.
+
 ### How the flow works
 
 ```

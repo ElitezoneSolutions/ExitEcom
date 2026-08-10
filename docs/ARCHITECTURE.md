@@ -246,6 +246,57 @@ rows into RLS-protected per-business tables (a server-side anon client would be
 blocked by RLS, exactly as in §5). The stored figures then feed the Exit Score on
 demand via `useReport` and surface on the per-platform data pages.
 
+### The OAuth popup handshake
+
+Every OAuth connector opens the consent flow in a second tab and needs the result
+back in the original one. Two things make the obvious approach (`postMessage`
+alone) lossy, and both are handled centrally:
+
+- Google's `accounts.google.com` sends **Cross-Origin-Opener-Policy**, which
+  severs `window.opener` for that browsing context. On return to our origin the
+  popup may have no opener to post to.
+- The parent also polls `popup.closed`. The popup posts and then immediately
+  calls `window.close()`; `closed` flips synchronously while the message is still
+  a queued task, so a naive poll can win the race and discard the result.
+
+So the callback writes its outcome to `localStorage` (`src/lib/oauthResult.ts`)
+**before** closing, and `useOAuthPopup` (`src/hooks/useOAuthPopup.ts`) resolves
+from whichever of three signals lands first — `postMessage`, a `storage` event,
+or its own close-detection — latching so the rest are no-ops. If the popup closes
+leaving no record, the parent asks the database rather than assuming. On success
+it refetches before navigating, since the data pages render from provider state.
+
+Persistence itself must never fail quietly: every `commit*Sync` resolves its
+target business through `resolveBusinessId` (`src/lib/businessId.ts`), which
+returns `null` only when Supabase is unconfigured and otherwise throws rather
+than skipping the write. Failures carry the stage they happened at
+(`exchanging | listing | picking | pulling | committing`) into the popup's error
+card and a persisted panel on the connect page.
+
+### Why a connection survives forever, and across devices
+
+A connector is "connected" because its credentials are in an RLS-protected table
+(`shopify_stores`, `meta_accounts`, `google_accounts`, `tiktok_accounts`,
+`snapchat_accounts`, `ga4_accounts`), not because of anything in the browser. The
+`localStorage` caches are a first-paint optimisation only, always seeded from
+Supabase and safe to clear.
+
+`valuation_data.connected_sources` — the array behind every "Connected" badge —
+is a denormalised copy of that truth, so it is treated carefully:
+
+- **Writes are read-modify-write** via `addConnectedSource` /
+  `removeConnectedSource` (`src/lib/connectedSources.ts`), never built from React
+  state. Building it from state is what let an OAuth popup with a stale, empty
+  array overwrite the stored list and disconnect every other connector.
+- **Loads reconcile it** against the account rows that actually exist, restoring
+  anything missing. Additive only: an unreadable table is "unknown", never
+  "disconnected".
+
+Token longevity differs by platform: Google, GA4 and Snapchat hold refresh tokens
+and renew indefinitely; TikTok's tokens are long-lived; **Meta** issues a ~60-day
+long-lived token with no refresh token, so Meta alone requires periodic
+re-authorisation.
+
 Per-platform key quirks (full details in each `docs/*-setup.md`):
 
 - **Meta** (`src/lib/meta.ts`, [`docs/meta-ads-setup.md`](./meta-ads-setup.md)) —

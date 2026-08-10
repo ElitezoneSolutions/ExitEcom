@@ -8,6 +8,12 @@ import {
 } from "react";
 import { useAuth } from "./useAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { resolveBusinessId } from "@/lib/businessId";
+import {
+  addConnectedSource,
+  reconcileConnectedSources,
+  removeConnectedSource,
+} from "@/lib/connectedSources";
 import { toast } from "sonner";
 import type { DocumentReviewStatus } from "@/components/ex/DocumentStatusBadge";
 import {
@@ -1037,6 +1043,80 @@ function useBusinessDataImpl() {
   const [plFiles, setPLFiles] = useState<PLFile[]>([]);
   const [plLastSyncedAt, setPLLastSyncedAt] = useState<string | null>(null);
 
+  /**
+   * Checks which connectors actually have a persisted row and folds anything
+   * missing back into `connected_sources`, so a connection survives forever and
+   * across devices even if the stored array drifted. Best-effort: a failure here
+   * must never break the page load, it just leaves the array as-is.
+   */
+  const reconcileStoredSources = async (
+    businessId: string,
+    loaded: BusinessData,
+  ) => {
+    try {
+      const exists = async (table: string, column: string) => {
+        const { data, error } = await supabase
+          .from(table)
+          .select(column)
+          .eq("business_id", businessId)
+          .limit(1);
+        // A missing table or an RLS denial is "unknown", not "disconnected".
+        if (error) return false;
+        return (data?.length ?? 0) > 0;
+      };
+
+      const [
+        shopify,
+        meta,
+        google,
+        tiktok,
+        snapchat,
+        ga4,
+        bank_statements,
+        pl_upload,
+      ] = await Promise.all([
+        exists("shopify_stores", "business_id"),
+        exists("meta_accounts", "business_id"),
+        exists("google_accounts", "business_id"),
+        exists("tiktok_accounts", "business_id"),
+        exists("snapchat_accounts", "business_id"),
+        exists("ga4_accounts", "business_id"),
+        exists("bank_statement_files", "business_id"),
+        exists("pl_files", "business_id"),
+      ]);
+
+      const repaired = reconcileConnectedSources(loaded.connectedSources, {
+        shopify,
+        meta,
+        google,
+        tiktok,
+        snapchat,
+        ga4,
+        bank_statements,
+        pl_upload,
+      });
+
+      if (repaired.length === loaded.connectedSources.length) return;
+
+      console.info(
+        "[connectors] restoring sources missing from connected_sources:",
+        repaired.filter((s) => !loaded.connectedSources.includes(s)),
+      );
+
+      const updated = { ...loaded, connectedSources: repaired };
+      setBusiness(updated);
+      localStorage.setItem(CACHE_BUSINESS, JSON.stringify(updated));
+      await supabase
+        .from("valuation_data")
+        .upsert(
+          { business_id: businessId, connected_sources: repaired },
+          { onConflict: "business_id" },
+        );
+    } catch (err) {
+      console.warn("[connectors] could not reconcile connected sources:", err);
+    }
+  };
+
   const fetchData = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
@@ -1184,6 +1264,15 @@ function useBusinessDataImpl() {
       await loadGA4Data(bizData.id);
       await loadBankStatements(bizData.id);
       await loadPLFiles(bizData.id);
+
+      // Repair `connected_sources` from what's actually stored. The tokens in
+      // the `*_accounts` tables are the real proof a connector is usable; the
+      // array is a denormalised copy that earlier versions could clobber (a
+      // commit running in an OAuth popup wrote the array from stale in-memory
+      // state, wiping every other connector). Without this, an affected user is
+      // told to reconnect something that is in fact still connected. Additive
+      // only — see `reconcileConnectedSources`.
+      await reconcileStoredSources(bizData.id, mappedBusiness);
     } catch (err: unknown) {
       console.error("Error fetching business data from Supabase:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -1611,31 +1700,12 @@ function useBusinessDataImpl() {
       ),
     }));
 
-    if (!isSupabaseConfigured || !user) {
-      toast.success("TikTok Ads synced (local sandbox).");
-      return result;
-    }
-
-    // In the OAuth popup, business.id loads asynchronously and may not be in
-    // state yet when this runs (especially for single-account connections where
-    // the exchange resolves before the business data fetch completes). Fetch it
-    // directly from Supabase rather than silently skipping the write.
-    let businessId = business.id;
-    if (!businessId) {
-      const { data: biz } = await supabase
-        .from("businesses")
-        .select("id")
-        .eq("owner_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      businessId = biz?.id ?? "";
-    }
-
+    const businessId = await resolveBusinessId(user, business.id, "TikTok Ads");
     if (!businessId) {
       toast.success("TikTok Ads synced (local sandbox).");
       return result;
     }
+
     const nowISO = new Date().toISOString();
 
     try {
@@ -1698,16 +1768,7 @@ function useBusinessDataImpl() {
         "business_id,tiktok_campaign_id",
       );
 
-      const sources = Array.from(
-        new Set([...business.connectedSources, "tiktok"]),
-      );
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: sources },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await addConnectedSource(businessId, "tiktok");
     } catch (err) {
       throw describeDbError(err, "TikTok");
     }
@@ -1781,9 +1842,8 @@ function useBusinessDataImpl() {
   };
 
   const disconnectTikTok = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("tiktok"),
-    );
+    const dropSource = (s: string) => s.toLowerCase().includes("tiktok");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
 
     setTikTokAccount(null);
     setTikTokMonthly([]);
@@ -1812,13 +1872,7 @@ function useBusinessDataImpl() {
         .from("tiktok_accounts")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       toast.success("TikTok Ads disconnected.");
     } catch (err) {
       throw describeDbError(err, "TikTok");
@@ -1948,12 +2002,16 @@ function useBusinessDataImpl() {
       ),
     }));
 
-    if (!isSupabaseConfigured || !user || !business.id) {
+    const businessId = await resolveBusinessId(
+      user,
+      business.id,
+      "Snapchat Ads",
+    );
+    if (!businessId) {
       toast.success("Snapchat Ads synced (local sandbox).");
       return result;
     }
 
-    const businessId = business.id;
     const nowISO = new Date().toISOString();
 
     try {
@@ -2019,16 +2077,7 @@ function useBusinessDataImpl() {
         "business_id,snapchat_campaign_id",
       );
 
-      const sources = Array.from(
-        new Set([...business.connectedSources, "snapchat"]),
-      );
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: sources },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await addConnectedSource(businessId, "snapchat");
     } catch (err) {
       throw describeDbError(err, "Snapchat");
     }
@@ -2118,9 +2167,8 @@ function useBusinessDataImpl() {
   };
 
   const disconnectSnapchat = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("snapchat"),
-    );
+    const dropSource = (s: string) => s.toLowerCase().includes("snapchat");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
 
     setSnapchatAccount(null);
     setSnapchatMonthly([]);
@@ -2149,13 +2197,7 @@ function useBusinessDataImpl() {
         .from("snapchat_accounts")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       toast.success("Snapchat Ads disconnected.");
     } catch (err) {
       throw describeDbError(err, "Snapchat");
@@ -2248,16 +2290,11 @@ function useBusinessDataImpl() {
       ...prev,
     ]);
 
-    const sources = Array.from(
-      new Set([...business.connectedSources, "bank_statements"]),
-    );
-    const { error: valErr } = await supabase
-      .from("valuation_data")
-      .upsert(
-        { business_id: businessId, connected_sources: sources },
-        { onConflict: "business_id" },
-      );
-    if (valErr) throw describeDbError(valErr, "Bank Statements");
+    try {
+      await addConnectedSource(businessId, "bank_statements");
+    } catch (err) {
+      throw describeDbError(err, "Bank Statements");
+    }
 
     await supabase
       .from("documents")
@@ -2281,9 +2318,9 @@ function useBusinessDataImpl() {
   };
 
   const disconnectBankStatements = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("bank_statements"),
-    );
+    const dropSource = (s: string) =>
+      s.toLowerCase().includes("bank_statements");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
     setBankStatementMonthly([]);
     setBankStatementFiles([]);
     setBankLastSyncedAt(null);
@@ -2303,13 +2340,7 @@ function useBusinessDataImpl() {
         .from("bank_statement_files")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       await supabase
         .from("documents")
         .update({ uploaded: false })
@@ -2388,16 +2419,11 @@ function useBusinessDataImpl() {
     if (fileErr) throw describeDbError(fileErr, "P&L Upload");
     setPLFiles((prev) => [mapPLFileRow(fileRow as PLFileRow), ...prev]);
 
-    const sources = Array.from(
-      new Set([...business.connectedSources, "pl_upload"]),
-    );
-    const { error: valErr } = await supabase
-      .from("valuation_data")
-      .upsert(
-        { business_id: businessId, connected_sources: sources },
-        { onConflict: "business_id" },
-      );
-    if (valErr) throw describeDbError(valErr, "P&L Upload");
+    try {
+      await addConnectedSource(businessId, "pl_upload");
+    } catch (err) {
+      throw describeDbError(err, "P&L Upload");
+    }
 
     await supabase
       .from("documents")
@@ -2421,9 +2447,8 @@ function useBusinessDataImpl() {
   };
 
   const disconnectPL = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("pl_upload"),
-    );
+    const dropSource = (s: string) => s.toLowerCase().includes("pl_upload");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
     setPLFiles([]);
     setPLLastSyncedAt(null);
     setBusiness((b) => ({ ...b, connectedSources: remaining }));
@@ -2435,13 +2460,7 @@ function useBusinessDataImpl() {
     const businessId = business.id;
     try {
       await supabase.from("pl_files").delete().eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       await supabase
         .from("documents")
         .update({ uploaded: false })
@@ -2521,12 +2540,12 @@ function useBusinessDataImpl() {
       ),
     }));
 
-    if (!isSupabaseConfigured || !user || !business.id) {
+    const businessId = await resolveBusinessId(user, business.id, "Shopify");
+    if (!businessId) {
       toast.success("Store synced (local sandbox).");
       return result;
     }
 
-    const businessId = business.id;
     const nowISO = new Date().toISOString();
 
     try {
@@ -2600,9 +2619,6 @@ function useBusinessDataImpl() {
       );
 
       // Record the store identity + the connected source.
-      const sources = Array.from(
-        new Set([...business.connectedSources, "shopify"]),
-      );
       await supabase
         .from("businesses")
         .update({
@@ -2611,13 +2627,7 @@ function useBusinessDataImpl() {
           ...(business.country ? {} : { country: result.shop.country }),
         })
         .eq("id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: sources },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await addConnectedSource(businessId, "shopify");
     } catch (err) {
       throw describeDbError(err);
     }
@@ -2704,9 +2714,8 @@ function useBusinessDataImpl() {
   // source, and clear local state/cache. A previously computed report is left as
   // a stale snapshot — the user can re-run once data is reconnected.
   const disconnectShopify = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("shopify"),
-    );
+    const dropSource = (s: string) => s.toLowerCase().includes("shopify");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
 
     // Clear local state/cache immediately (works even without Supabase).
     setStore(null);
@@ -2742,13 +2751,7 @@ function useBusinessDataImpl() {
         .from("shopify_stores")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       toast.success("Shopify disconnected.");
     } catch (err) {
       throw describeDbError(err);
@@ -2781,12 +2784,12 @@ function useBusinessDataImpl() {
       ),
     }));
 
-    if (!isSupabaseConfigured || !user || !business.id) {
+    const businessId = await resolveBusinessId(user, business.id, "Meta Ads");
+    if (!businessId) {
       toast.success("Meta Ads synced (local sandbox).");
       return result;
     }
 
-    const businessId = business.id;
     const nowISO = new Date().toISOString();
 
     try {
@@ -2851,16 +2854,7 @@ function useBusinessDataImpl() {
         "business_id,meta_campaign_id",
       );
 
-      const sources = Array.from(
-        new Set([...business.connectedSources, "meta"]),
-      );
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: sources },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await addConnectedSource(businessId, "meta");
     } catch (err) {
       throw describeDbError(err, "Meta");
     }
@@ -2943,9 +2937,8 @@ function useBusinessDataImpl() {
   // Disconnect Meta: delete all stored Meta data + credentials, drop the source,
   // and clear local state/cache. Mirrors disconnectShopify.
   const disconnectMeta = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("meta"),
-    );
+    const dropSource = (s: string) => s.toLowerCase().includes("meta");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
 
     setMetaAccount(null);
     setMetaMonthly([]);
@@ -2974,13 +2967,7 @@ function useBusinessDataImpl() {
         .from("meta_accounts")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       toast.success("Meta Ads disconnected.");
     } catch (err) {
       throw describeDbError(err, "Meta");
@@ -3102,28 +3089,12 @@ function useBusinessDataImpl() {
       missingSources: b.missingSources.filter((s) => s.toLowerCase() !== "ga4"),
     }));
 
-    if (!isSupabaseConfigured || !user) {
+    const businessId = await resolveBusinessId(user, business.id, "GA4");
+    if (!businessId) {
       toast.success("GA4 synced (local sandbox).");
       return result;
     }
 
-    // The OAuth popup may resolve before the business row is in state — fetch
-    // the id directly rather than silently skipping the write.
-    let businessId = business.id;
-    if (!businessId) {
-      const { data: biz } = await supabase
-        .from("businesses")
-        .select("id")
-        .eq("owner_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      businessId = biz?.id ?? "";
-    }
-    if (!businessId) {
-      toast.success("GA4 synced (local sandbox).");
-      return result;
-    }
     const nowISO = new Date().toISOString();
 
     try {
@@ -3184,16 +3155,7 @@ function useBusinessDataImpl() {
         "business_id,channel",
       );
 
-      const sources = Array.from(
-        new Set([...business.connectedSources, "ga4"]),
-      );
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: sources },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await addConnectedSource(businessId, "ga4");
     } catch (err) {
       throw describeDbError(err, "GA4");
     }
@@ -3264,9 +3226,8 @@ function useBusinessDataImpl() {
   // Disconnect GA4: delete all stored GA4 data + credentials, drop the source,
   // and clear local state/cache.
   const disconnectGA4 = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => s.toLowerCase() !== "ga4",
-    );
+    const dropSource = (s: string) => s.toLowerCase() === "ga4";
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
 
     setGA4Account(null);
     setGA4Monthly([]);
@@ -3295,13 +3256,7 @@ function useBusinessDataImpl() {
         .from("ga4_accounts")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       toast.success("GA4 disconnected.");
     } catch (err) {
       throw describeDbError(err, "GA4");
@@ -3330,12 +3285,12 @@ function useBusinessDataImpl() {
       ),
     }));
 
-    if (!isSupabaseConfigured || !user || !business.id) {
+    const businessId = await resolveBusinessId(user, business.id, "Google Ads");
+    if (!businessId) {
       toast.success("Google Ads synced (local sandbox).");
       return result;
     }
 
-    const businessId = business.id;
     const nowISO = new Date().toISOString();
 
     try {
@@ -3399,16 +3354,7 @@ function useBusinessDataImpl() {
         "business_id,google_campaign_id",
       );
 
-      const sources = Array.from(
-        new Set([...business.connectedSources, "google"]),
-      );
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: sources },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await addConnectedSource(businessId, "google");
     } catch (err) {
       throw describeDbError(err, "Google");
     }
@@ -3504,9 +3450,8 @@ function useBusinessDataImpl() {
   // Disconnect Google: delete all stored Google data + credentials, drop the
   // source, and clear local state/cache. Mirrors disconnectMeta.
   const disconnectGoogle = async () => {
-    const remaining = business.connectedSources.filter(
-      (s) => !s.toLowerCase().includes("google"),
-    );
+    const dropSource = (s: string) => s.toLowerCase().includes("google");
+    const remaining = business.connectedSources.filter((s) => !dropSource(s));
 
     setGoogleAccount(null);
     setGoogleMonthly([]);
@@ -3535,13 +3480,7 @@ function useBusinessDataImpl() {
         .from("google_accounts")
         .delete()
         .eq("business_id", businessId);
-      const { error: valErr } = await supabase
-        .from("valuation_data")
-        .upsert(
-          { business_id: businessId, connected_sources: remaining },
-          { onConflict: "business_id" },
-        );
-      if (valErr) throw valErr;
+      await removeConnectedSource(businessId, dropSource);
       toast.success("Google Ads disconnected.");
     } catch (err) {
       throw describeDbError(err, "Google");

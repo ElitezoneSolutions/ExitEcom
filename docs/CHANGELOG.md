@@ -2,6 +2,80 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-11 — Connections are durable and cross-device
+
+Connecting a source now sticks: sign in months later, or on a different device,
+and it still reads as connected. Two problems were making connections look lost.
+
+- **A connector commit could disconnect every *other* connector.** Each
+  `commit*Sync` wrote `valuation_data.connected_sources` as
+  `[...business.connectedSources, "<source>"]` — taken from **React state**. In
+  an OAuth popup (a fresh page load, and on a new device with no localStorage
+  cache) that array is often still `[]` when the commit runs, so the upsert
+  overwrote the stored list with just the one source and silently wiped the
+  rest. All 16 add/remove sites now go through `addConnectedSource` /
+  `removeConnectedSource` (`src/lib/connectedSources.ts`), which read-modify-write
+  against the database — a stale tab can only ever add its own source.
+- **Drifted lists are now repaired on load.** The tokens in the `*_accounts`
+  tables are the real proof a connector works; the array is a denormalised copy.
+  On every load the app checks which connector rows actually exist and folds any
+  missing ones back into the array (and persists the repair), so users already
+  affected by the bug above get their connectors back without reconnecting. The
+  reconcile is deliberately **additive only** — a transient RLS error or an
+  unmigrated table can never mark a working connector as disconnected; removal
+  stays explicit, via the disconnect actions.
+
+Nothing needed to change about storage itself: every connector already persists
+its credentials server-side in RLS-protected tables (`shopify_stores`,
+`meta_accounts`, `google_accounts`, `tiktok_accounts`, `snapchat_accounts`,
+`ga4_accounts`), and the browser caches are only a first-paint optimisation
+seeded from Supabase.
+
+**Known platform limit:** Google, GA4 and Snapchat store a refresh token and
+renew themselves indefinitely; TikTok's tokens are long-lived. **Meta** is the
+exception — the Graph API issues a ~60-day long-lived token with no refresh
+token, so a Meta connection genuinely does need re-authorising every couple of
+months. That's a Meta constraint, not a storage bug.
+
+## 2026-08-11 — Connector OAuth: stop losing connections silently
+
+Connecting Google Ads via OAuth could appear to work and then be gone after a
+refresh, with no error shown anywhere. Three separate defects combined to make a
+failure indistinguishable from a success:
+
+- **A connector could write nothing and still report success.** Every commit
+  function bailed out with `toast.success("… synced (local sandbox).")` when
+  `business.id` wasn't in state — including in a fully configured production
+  environment, where that is a real failure, not a sandbox. TikTok and GA4 had
+  each been patched with a copy-pasted business-id lookup; Google, Meta,
+  Snapchat and Shopify had not. All six now share `resolveBusinessId`
+  (`src/lib/businessId.ts`), which returns `null` **only** when Supabase is
+  unconfigured and otherwise either returns a real id or throws. The "local
+  sandbox" message is now unreachable in production by construction.
+- **The parent page could silently discard the popup's result.** It polled
+  `popup.closed` every 500ms while also listening for a `postMessage`. The popup
+  posts and then immediately closes; `closed` flips synchronously while the
+  message is still queued, so the poll could win, tear down the listener and
+  reset the UI to idle — throwing away error messages. The popup now records its
+  outcome to `localStorage` **before** closing, and the new `useOAuthPopup` hook
+  resolves from whichever of three signals arrives first (postMessage, a
+  `storage` event, or its own close-detection), latching so the others are
+  no-ops. If the popup closes leaving no result at all, the parent queries the
+  database instead of guessing.
+- **Success navigated without refetching.** `/google-data` renders from provider
+  state, so it showed "not connected" until a manual refresh. Every connector now
+  refetches before navigating.
+
+Also: OAuth failures now name the step that broke (`exchanging`, `listing`,
+`picking`, `pulling`, `committing`) in the popup's error card and in a
+persisted "last attempt failed at …" panel on the connect page, so a lost popup
+still leaves an explanation. `[oauth:<provider>]` console breadcrumbs trace the
+whole flow. The popup also renders an in-tab success/error card if the browser
+refuses to close it — which is what happens when Google's COOP header severs
+`window.opener`. Finally, the CSRF state check now accepts any of the last few
+issued states, so a connect-page remount no longer invalidates an authorization
+already in flight. Applies to Google, Meta, TikTok, Snapchat and GA4.
+
 ## 2026-06-24 — Exit engine: wire missing feeds + guard "no data ≠ perfect"
 
 Three core-engine bug fixes:
