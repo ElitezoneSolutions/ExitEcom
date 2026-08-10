@@ -1,10 +1,19 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Logo } from "@/components/ex/Logo";
 import { SectionLabel } from "@/components/ex/SectionLabel";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { toast } from "sonner";
-import { RequireGuest } from "@/components/auth/RouteGuards";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  RequireGuest,
+  resolvePostAuthDestination,
+} from "@/components/auth/RouteGuards";
+import { Field } from "./signup";
 
 export const Route = createFileRoute("/forgot-password")({
   component: () => (
@@ -14,32 +23,83 @@ export const Route = createFileRoute("/forgot-password")({
   ),
 });
 
+/**
+ * Three-step recovery, all on one page:
+ *   "email"    → request a 6-digit code (Supabase "Reset Password" template),
+ *   "otp"      → exchange the code for a short-lived session,
+ *   "password" → set the new password with that session.
+ */
 function ForgotPassword() {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const { sendPasswordResetOtp, verifyPasswordResetOtp, updatePassword, user } =
+    useAuth();
+  const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const [step, setStep] = useState<"email" | "otp" | "password">("email");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-
-    try {
-      if (isSupabaseConfigured) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/login`,
-        });
-        if (error) throw new Error(error.message);
-      }
-      // Always show the same confirmation to avoid leaking which emails exist.
-      setSent(true);
-    } catch (err: unknown) {
-      toast.error(
-        err instanceof Error ? err.message : "Could not send reset email",
-      );
-    } finally {
-      setLoading(false);
+    const { error } = await sendPasswordResetOtp(email);
+    setLoading(false);
+    if (error) {
+      toast.error(error.message || "Could not send reset code");
+      return;
     }
+    // Move on regardless of whether the address exists — the copy on the next
+    // step is deliberately non-committal so we don't leak which emails are real.
+    setStep("otp");
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading || otp.length < 6) return;
+    setLoading(true);
+    const { error } = await verifyPasswordResetOtp(email, otp);
+    setLoading(false);
+    if (error) {
+      toast.error(error.message || "Invalid or expired code");
+      return;
+    }
+    setStep("password");
+  };
+
+  const handleResend = async () => {
+    const { error } = await sendPasswordResetOtp(email);
+    if (error) toast.error(error.message || "Could not resend code");
+    else toast.success("A new code is on its way.");
+  };
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setLoading(true);
+    const { error } = await updatePassword(password);
+    setLoading(false);
+    if (error) {
+      toast.error(error.message || "Could not update your password");
+      return;
+    }
+    toast.success("Password updated. You're signed in.");
+    // The recovery code already authenticated the user, so send them into the
+    // app rather than back to the login form.
+    const target = user
+      ? await resolvePostAuthDestination(user.id, "/dashboard")
+      : "/login";
+    router.history.replace(target);
   };
 
   return (
@@ -57,42 +117,117 @@ function ForgotPassword() {
             className="mt-4 text-2xl text-[var(--text-primary)]"
             style={{ fontFamily: "var(--font-body)", fontWeight: 500 }}
           >
-            Reset your password
+            {step === "password" ? "Set a new password" : "Reset your password"}
           </h1>
 
-          {sent ? (
-            <p className="mt-3 text-sm text-[var(--text-secondary)]">
-              If an account exists for{" "}
-              <span className="text-[var(--text-primary)] font-medium">
-                {email}
-              </span>
-              , we've sent a link to reset your password. Check your inbox.
-            </p>
-          ) : (
+          {step === "email" && (
             <>
               <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                Enter your email and we'll send you a link to set a new one.
+                Enter your email and we'll send you a 6-digit code.
               </p>
-              <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-                <label className="block">
-                  <span className="label-caps" style={{ fontSize: 10 }}>
-                    Email Address
-                  </span>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={loading}
-                    className="mt-2 w-full bg-transparent border border-[var(--border-warm)] rounded-md px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-50"
-                  />
-                </label>
+              <form className="mt-8 space-y-4" onSubmit={handleSendCode}>
+                <Field
+                  label="Email Address"
+                  type="email"
+                  value={email}
+                  onChange={setEmail}
+                  disabled={loading}
+                />
                 <button
                   type="submit"
                   disabled={loading}
                   className="btn-primary w-full justify-center mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Sending..." : "Send reset link"}
+                  {loading ? "Sending..." : "Send code"}
+                </button>
+              </form>
+            </>
+          )}
+
+          {step === "otp" && (
+            <>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                If an account exists for{" "}
+                <span className="text-[var(--text-primary)] font-medium">
+                  {email}
+                </span>
+                , we've sent a 6-digit code. Enter it below.
+              </p>
+              <form className="mt-8 space-y-6" onSubmit={handleVerify}>
+                <div className="flex justify-center">
+                  <InputOTP
+                    maxLength={6}
+                    value={otp}
+                    onChange={setOtp}
+                    disabled={loading}
+                  >
+                    <InputOTPGroup>
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <InputOTPSlot key={i} index={i} />
+                      ))}
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading || otp.length < 6}
+                  className="btn-primary w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Verifying..." : "Verify code"}
+                </button>
+              </form>
+              <p className="mt-6 text-sm text-center text-[var(--text-secondary)]">
+                Didn't get a code?{" "}
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={loading}
+                  className="text-[var(--accent)] hover:text-[var(--accent-muted)] disabled:opacity-50"
+                >
+                  Resend
+                </button>
+              </p>
+              <p className="mt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtp("");
+                    setStep("email");
+                  }}
+                  className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]"
+                >
+                  Use a different email
+                </button>
+              </p>
+            </>
+          )}
+
+          {step === "password" && (
+            <>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                Code verified. Choose a new password for your account.
+              </p>
+              <form className="mt-8 space-y-4" onSubmit={handleSetPassword}>
+                <Field
+                  label="New Password"
+                  type="password"
+                  value={password}
+                  onChange={setPassword}
+                  disabled={loading}
+                />
+                <Field
+                  label="Confirm New Password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  disabled={loading}
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary w-full justify-center mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Updating..." : "Update password"}
                 </button>
               </form>
             </>

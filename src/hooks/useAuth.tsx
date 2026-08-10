@@ -45,6 +45,18 @@ interface AuthContextType {
     token: string,
   ) => Promise<{ error: Error | null; data: unknown }>;
   resendSignupOtp: (email: string) => Promise<{ error: Error | null }>;
+  /** Email a 6-digit password-recovery code (Supabase "Reset Password" template). */
+  sendPasswordResetOtp: (email: string) => Promise<{ error: Error | null }>;
+  /**
+   * Verify the 6-digit recovery code. On success Supabase returns a short-lived
+   * session, which is what lets us call `updatePassword` immediately after.
+   */
+  verifyPasswordResetOtp: (
+    email: string,
+    token: string,
+  ) => Promise<{ error: Error | null; data: unknown }>;
+  /** Set a new password for the currently-authenticated (or just-verified) user. */
+  updatePassword: (password: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -344,6 +356,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Email a 6-digit recovery code. Supabase sends the "Reset Password" template;
+  // because that template renders `{{ .Token }}`, the user gets a code rather
+  // than a magic link — so no `redirectTo` is needed here.
+  const sendPasswordResetOtp = async (email: string) => {
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        return { error: error ? new Error(error.message) : null };
+      } catch (err: unknown) {
+        const errorVal = err instanceof Error ? err : new Error(String(err));
+        return { error: errorVal };
+      }
+    } else {
+      return { error: null };
+    }
+  };
+
+  // Exchanging a valid recovery code returns a short-lived session — that's the
+  // authentication that lets `updatePassword` run immediately afterwards.
+  const verifyPasswordResetOtp = async (email: string, token: string) => {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "recovery",
+        });
+        return { error: error ? new Error(error.message) : null, data };
+      } catch (err: unknown) {
+        const errorVal = err instanceof Error ? err : new Error(String(err));
+        return { error: errorVal, data: null };
+      }
+    } else {
+      const u = getMockUser(email, "Demo User");
+      setUser(u);
+      setSession(getMockSession(u));
+      return { error: null, data: { user: u, session: getMockSession(u) } };
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.auth.updateUser({ password });
+        return { error: error ? new Error(error.message) : null };
+      } catch (err: unknown) {
+        const errorVal = err instanceof Error ? err : new Error(String(err));
+        return { error: errorVal };
+      }
+    } else {
+      return { error: null };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -360,6 +426,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signInWithGoogle,
         verifyEmailOtp,
         resendSignupOtp,
+        sendPasswordResetOtp,
+        verifyPasswordResetOtp,
+        updatePassword,
       }}
     >
       {children}
