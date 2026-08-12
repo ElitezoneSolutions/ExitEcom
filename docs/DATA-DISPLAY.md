@@ -130,6 +130,20 @@ The core pages now compute from real Shopify-derived data (via `useReport` →
 - [x] `_app.risk-scanner` — computed risks, persisted to `risks`
 - [x] `_app.optimization` — computed actions, persisted to `actions`
 - [x] `_app.store-data` — raw orders / products / customers / metadata (new)
+- [x] `_app.reports` — five reports, one per tool: **Exit Readiness Score**,
+      **Valuation Engine**, **Risk Scanner**, **Optimization Plan**, and the
+      **Full Report** containing everything. All five are the same document
+      component (`src/components/ex/ReportDocument.tsx`) rendering a different
+      slice of one `computeFullReport` result, so picking a report changes which
+      sections appear — never a figure. The slices live in
+      `src/lib/reportSections.ts` (`REPORT_TYPES`), which also numbers the
+      sections per report; `reportSections.test.ts` locks that behaviour.
+      Printed to PDF via `window.print()` and a `@media print` block in
+      `styles.css` — no PDF dependency, so the export always matches what's on
+      screen. Sections backed by an optional feed (Marketing needs a connected ad
+      platform, Traffic needs GA4) are omitted entirely rather than estimated,
+      and unverified ad spend is labelled as a benchmark estimate in Data
+      Sources.
 
 Still on mock scaffolding (not yet wired — they remain gated, so no user sees mock
 data today):

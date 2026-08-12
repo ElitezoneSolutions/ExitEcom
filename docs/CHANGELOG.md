@@ -2,6 +2,88 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Printed reports keep their bars, dots and colours
+
+The PDF was dropping things that were plainly visible on screen. Two causes,
+both in the `@media print` block in `styles.css`:
+
+- **Backgrounds were being stripped.** Browsers discard `background-color` when
+  printing unless a page opts in, so everything coloured by background —
+  the monthly-revenue bars, the severity dots on risks/actions/score rows, and
+  the contents, note and stat panels — printed blank, while text-coloured
+  elements survived. Fixed with `print-color-adjust: exact` on all elements.
+- **The contents page was hidden.** The rule hiding screen chrome hid every
+  `<nav>`, and the document's own table of contents *is* a
+  `<nav class="report-contents">`. Hiding is now scoped to `.report-chrome` and
+  the app sidebar.
+
+Also: grids inside the document keep their columns when printing (only the
+page's sidebar/document columns collapse), and the revenue-bar track is
+outlined, so the chart still reads if the user unticks "Background graphics" in
+the print dialog.
+
+## 2026-08-12 — Reports offers a report per tool
+
+Reports now has five documents rather than one, so a founder can take a single
+tool's output to a buyer instead of the whole book:
+
+- **Exit Readiness Score** — the nine dimensions and what drives each
+- **Valuation Engine** — earnings basis, scenarios, every multiple driver
+- **Risk Scanner** — the full risk register with the buyer-lens fields
+- **Optimization Plan** — prioritised actions, steps, £ uplift
+- **Full Report** — everything
+
+Picked from cards at the top of the page; the chosen report renders below with
+its own contents list, section nav and cover (title and headline stats follow
+the report — the Risk Scanner leads with risks found and valuation at risk, the
+Optimization Plan with total uplift).
+
+They are not five implementations. Each section's markup is written once in
+`ReportDocument`, and `REPORT_TYPES` in `src/lib/reportSections.ts` declares
+which sections each report includes and in what order — so a figure cannot
+disagree between two reports, and adding a section to one is a one-line change.
+Section numbering is computed per report, and optional-feed sections (Marketing,
+Traffic) still drop out with the numbering closing up.
+`src/lib/reportSections.test.ts` covers the slicing, the numbering and the
+guard against a report naming a section the document can't render.
+
+## 2026-08-12 — Reports is a real, complete document
+
+`/reports` was the last page still showing invented content: three hardcoded
+rows with fake timestamps ("Today", "Yesterday", "3 days ago"), three fake
+report types, and buttons that did nothing. It is now a single buyer-grade
+**Exit Readiness Report** containing everything the deterministic engine
+computes.
+
+- **One document, not a list of report types.** Cover, contents, executive
+  summary, data sources & confidence, business overview, financial performance
+  (gross/net revenue, COGS, gross profit, opex, EBITDA, SDE, adjusted earnings,
+  growth, AOV, monthly revenue), customers & retention, product concentration
+  (top 15), marketing efficiency, traffic & acquisition, the 9-dimension exit
+  score, valuation scenarios and drivers, the full risk register with the
+  buyer-lens fields, the full optimization plan with steps and £ uplift, and a
+  methodology section stating how each figure is derived.
+  New: `src/components/ex/ReportDocument.tsx`.
+- **Every number comes straight off `computeFullReport`.** The page reads
+  `useReport()` and renders — it computes nothing of its own, so the figures are
+  identical to the Exit Score, Valuation, Risk Scanner and Optimization pages.
+- **Optional feeds are omitted, never estimated.** Marketing Efficiency renders
+  only when an ad platform is connected (`adSpendVerified`) and Traffic only
+  with GA4; section numbering closes up around them. When no ad feed exists,
+  Data Sources says plainly that spend is a benchmark estimate and ROAS cannot
+  be stated.
+- **PDF by print, with no new dependency.** "Download PDF" calls
+  `window.print()`; a `@media print` block in `styles.css` drops the sidebar,
+  page header and section nav, removes the sheet's frame, sets A4 margins and
+  applies `break-inside: avoid` so sections, tables and risk/action items don't
+  split across pages. The export therefore can't drift from the on-screen
+  version the way a second hand-built PDF layout would.
+- **Gating matches the other report pages** — `ConnectShopifyGate`, then
+  `RunReportCard` until the user generates, then the document with a
+  `RecomputeButton`.
+
+No migration, no server function and no AI is involved in any figure.
+
 ## 2026-08-11 — Connections are durable and cross-device
 
 Connecting a source now sticks: sign in months later, or on a different device,

@@ -281,3 +281,318 @@
 @utility surface-accent-muted {
   color: rgba(255, 255, 255, 0.82);
 }
+
+/* --- Exit Readiness Report -------------------------------------------------
+   Styles for the full report document (src/components/ex/ReportDocument.tsx).
+   Written as plain classes rather than @utility because they are a coherent
+   document stylesheet, not composable utilities, and the print block below has
+   to override them wholesale. */
+@layer components {
+  .report-doc {
+    color: var(--text-primary);
+  }
+
+  .report-cover {
+    border-bottom: 1px solid var(--border-warm);
+    padding-bottom: 1.75rem;
+  }
+  .report-cover-stats {
+    margin-top: 1.75rem;
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (min-width: 640px) {
+    .report-cover-stats {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .report-contents {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-warm);
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+  }
+  .report-toc-link {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    display: block;
+    padding: 0.125rem 0;
+  }
+  .report-toc-link:hover {
+    color: var(--accent);
+  }
+
+  .report-section {
+    scroll-margin-top: 1.5rem;
+  }
+  .report-head {
+    font-family: var(--font-display, "Cormorant Garamond"), serif;
+    font-size: 1.5rem;
+    line-height: 1.2;
+    padding-bottom: 0.625rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border-warm);
+  }
+  .report-subhead {
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+  .report-lede {
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    color: var(--text-secondary);
+  }
+  .report-body {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+
+  .report-stat-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (min-width: 640px) {
+    .report-stat-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .report-stat {
+    border: 1px solid var(--border-warm);
+    border-radius: 6px;
+    padding: 0.875rem 1rem;
+  }
+
+  .report-table-wrap {
+    overflow-x: auto;
+  }
+  .report-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .report-table th {
+    text-align: left;
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 500;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-warm);
+    white-space: nowrap;
+  }
+  .report-table td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--border-warm);
+    color: var(--text-secondary);
+    vertical-align: top;
+  }
+  .report-table td:first-child {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .report-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .report-item {
+    border-left: 2px solid var(--border-warm);
+    padding-left: 1rem;
+  }
+  .report-item-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+  }
+  .report-item-title {
+    font-weight: 500;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+  }
+  .report-item-meta {
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .report-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+  .report-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .report-field {
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin-top: 0.375rem;
+  }
+  .report-field-label {
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .report-steps {
+    margin-top: 0.625rem;
+    padding-left: 1.125rem;
+    list-style: decimal;
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+  .report-steps li {
+    margin-bottom: 0.25rem;
+  }
+
+  .report-driver {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border-warm);
+  }
+
+  .report-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .report-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+  }
+  .report-bar-label {
+    width: 5rem;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+  .report-bar-track {
+    flex: 1;
+    height: 0.75rem;
+    background-color: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .report-bar-fill {
+    display: block;
+    height: 100%;
+    background-color: var(--accent);
+  }
+  .report-bar-value {
+    width: 6rem;
+    text-align: right;
+    flex-shrink: 0;
+    color: var(--text-primary);
+  }
+
+  .report-note {
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    background-color: var(--bg-secondary);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 4px 4px 0;
+    padding: 0.75rem 1rem;
+  }
+}
+
+/* Print: the report sheet is the page. Everything else — app sidebar, page
+   header, section nav, buttons — is screen chrome and is dropped, so
+   "Download PDF" produces the document exactly as it reads on screen. */
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm 14mm;
+  }
+
+  /* Browsers drop every background colour when printing unless told not to.
+     Without this the revenue bars, severity dots, and the contents/note/stat
+     panels all print blank — anything coloured by `background-color` rather
+     than `color` simply vanishes from the PDF. */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  /* Screen chrome only. Deliberately NOT a blanket `nav` — the document's own
+     table of contents is a <nav class="report-contents"> and must print. */
+  aside:not(.report-doc *),
+  .report-chrome {
+    display: none !important;
+  }
+
+  /* Undo the app shell's layout constraints so the sheet spans the page. */
+  main,
+  main > div {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .min-h-screen {
+    min-height: 0 !important;
+    display: block !important;
+  }
+  /* Collapse the page's sidebar/document columns — but not grids inside the
+     document itself, which are part of the layout being printed. */
+  .grid:not(.report-doc *) {
+    display: block !important;
+  }
+
+  .report-sheet {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+
+  .report-contents,
+  .report-section,
+  .report-item,
+  .report-stat,
+  .report-note,
+  .report-table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-head {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .report-toc-link {
+    color: var(--text-secondary) !important;
+  }
+
+  /* Outline the bar track so the monthly-revenue chart still reads as a chart
+     if the user unticks "Background graphics" in the print dialog. */
+  .report-bar-track {
+    border: 1px solid var(--border-warm);
+  }
+}
