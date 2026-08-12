@@ -2,6 +2,15 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Reports is a picker first
+
+Opening Reports no longer drops you into a document. The page now lists the
+five reports as cards — name, what it covers, section count, and a **View
+Report** button — and renders nothing below them. Choosing one replaces the
+grid with that report alone, headed by its own title and an "All reports"
+control to go back. Recompute is available from both views; Download PDF sits
+with the open report, so the export is unambiguously the one on screen.
+
 ## 2026-08-12 — Printed reports keep their bars, dots and colours
 
 The PDF was dropping things that were plainly visible on screen. Two causes,

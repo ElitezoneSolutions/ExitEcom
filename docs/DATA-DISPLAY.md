@@ -132,7 +132,10 @@ The core pages now compute from real Shopify-derived data (via `useReport` →
 - [x] `_app.store-data` — raw orders / products / customers / metadata (new)
 - [x] `_app.reports` — five reports, one per tool: **Exit Readiness Score**,
       **Valuation Engine**, **Risk Scanner**, **Optimization Plan**, and the
-      **Full Report** containing everything. All five are the same document
+      **Full Report** containing everything. The page is a picker first — a card
+      per report with a "View Report" button, nothing rendered below — and
+      opening one shows that report alone with a back control. All five are the
+      same document
       component (`src/components/ex/ReportDocument.tsx`) rendering a different
       slice of one `computeFullReport` result, so picking a report changes which
       sections appear — never a figure. The slices live in
