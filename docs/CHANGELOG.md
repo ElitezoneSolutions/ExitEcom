@@ -2,6 +2,22 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Approval email sender and Reply-To
+
+The approval email arrived from `exitecomai@gmail.com` rather than the intended
+`notifications@exitecom.com`. Not a code bug: Gmail's SMTP sends as the
+authenticated account or a verified "Send mail as" alias, and silently rewrites
+anything else — no error, so the send reports success while showing the raw
+mailbox.
+
+- `SMTP_FROM` now set to `ExitEcom <notifications@exitecom.com>`; it takes effect
+  once that address is verified as an alias on the Gmail account, or once the
+  domain's own SMTP is used instead.
+- Added an optional `SMTP_REPLY_TO` secret. Reply-To isn't policed the way From
+  is, so replies reach the right inbox even while the From is being rewritten.
+- Documented both, plus why a Gmail account is the wrong long-term sender for a
+  business domain (DMARC alignment, deliverability).
+
 ## 2026-08-12 — Computed results go through admin approval
 
 Running Exit Readiness Score, Risk Scanner, Valuation Engine or Optimization

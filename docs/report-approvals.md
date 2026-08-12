@@ -181,6 +181,27 @@ function's own error paths). nodemailer negotiates STARTTLS on port 587
 correctly, which is what Gmail's submission port and most providers expect;
 `secure` is set only for 465, where TLS is implicit from the first byte.
 
+### The sender address
+
+`SMTP_FROM` is only honoured if the provider allows it. Gmail sends as the
+authenticated account or a **verified "Send mail as" alias** — anything else is
+silently rewritten to the account address, with no SMTP error, so the send looks
+successful while the founder sees the raw mailbox (`exitecomai@gmail.com`).
+
+To send as `notifications@exitecom.com`, one of:
+
+1. **Verify it as an alias** — Gmail → Settings → Accounts → "Send mail as" →
+   add `notifications@exitecom.com`, then enter the confirmation code Google
+   sends to that address. The mailbox has to exist and be readable.
+2. **Use the domain's own SMTP** (Google Workspace on `exitecom.com`, or any
+   provider). `SMTP_USER` becomes `notifications@exitecom.com` and the From works
+   natively. This is the better answer long-term: mail sent from a Gmail account
+   on behalf of a business domain fails DMARC alignment and is likelier to land
+   in spam.
+
+`SMTP_REPLY_TO` is set independently and is **not** policed the same way, so
+replies reach the right inbox even while the From is being rewritten.
+
 Email is **best-effort and never blocks approval**. If SMTP is unconfigured or
 delivery fails:
 

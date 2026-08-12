@@ -114,7 +114,9 @@ guide in `docs/billing-setup.md`.
 | Variable | Where | Description |
 |---|---|---|
 | `APP_URL` | App server env | Base URL used in the "your result is ready" email link. Defaults to `https://dash.exitecom.com` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | **Supabase Edge Function secrets**, not this app | Used by `notify-report-ready`. Set with `supabase secrets set` — Supabase does not expose the project's auth-email SMTP settings to Edge Functions automatically |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | **Supabase Edge Function secrets**, not this app | Used by `notify-report-ready`. Set with `supabase secrets set` — Supabase does not expose the project's auth-email SMTP settings to Edge Functions automatically |
+| `SMTP_FROM` | Edge Function secret | Sender address. Only honoured if the provider allows it — Gmail silently rewrites an unverified address to the authenticated account. See [`report-approvals.md`](report-approvals.md#the-sender-address) |
+| `SMTP_REPLY_TO` | Edge Function secret | Optional. Not policed like `From`, so replies reach the right inbox even when the From is rewritten |
 
 Approval works without any of these; the result is published and visible, only
 the email is skipped. See [`report-approvals.md`](report-approvals.md).
