@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { FullReport } from "@/lib/analytics";
 import type { BusinessData } from "@/hooks/useBusinessData";
+import { Logo } from "@/components/ex/Logo";
 import { fmtGBP } from "@/lib/utils";
 import {
   reportSections,
@@ -29,6 +30,8 @@ const signedPct = (x: number, digits = 0) =>
   `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
 const num = (n: number) => n.toLocaleString("en-GB");
 const multiple = (x: number) => `${x.toFixed(1)}x`;
+
+const BRAND_DOMAIN = "exitecom.com";
 
 const SEVERITY_COLOR: Record<string, string> = {
   high: "var(--risk-critical)",
@@ -596,6 +599,16 @@ export function ReportDocument({
           {bodies[s.id]}
         </Section>
       ))}
+
+      <Colophon storeName={storeName} generatedAt={generatedAt} />
+
+      {/* Repeats at the foot of every printed page (screen-hidden). */}
+      <div className="report-print-footer" aria-hidden="true">
+        <span>
+          {storeName} — {reportTypeById(type).name}
+        </span>
+        <span>ExitEcom · {BRAND_DOMAIN}</span>
+      </div>
     </article>
   );
 }
@@ -680,6 +693,13 @@ function Cover({
 }) {
   return (
     <header className="report-cover">
+      {/* Masthead — this is an ExitEcom document wherever it ends up, and it
+          is meant to end up in front of buyers and brokers. */}
+      <div className="report-masthead">
+        <Logo size="sm" />
+        <span className="report-masthead-domain">{BRAND_DOMAIN}</span>
+      </div>
+
       <div className="label-caps" style={{ fontSize: 10 }}>
         Confidential — {reportTypeById(type).name}
       </div>
@@ -704,6 +724,34 @@ function Cover({
         ))}
       </div>
     </header>
+  );
+}
+
+/** Closing credit — who produced the document and where it came from. */
+function Colophon({
+  storeName,
+  generatedAt,
+}: {
+  storeName: string;
+  generatedAt: Date;
+}) {
+  return (
+    <footer className="report-colophon">
+      <Logo size="sm" />
+      <p className="report-body mt-3">
+        Prepared by <strong>ExitEcom</strong> — pre-exit intelligence for
+        e-commerce founders. Generated for {storeName} on{" "}
+        {generatedAt.toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })}{" "}
+        from the data connected to this account.
+      </p>
+      <p className="report-colophon-meta">
+        {BRAND_DOMAIN} · Confidential — intended for the recipient named above.
+      </p>
+    </footer>
   );
 }
 

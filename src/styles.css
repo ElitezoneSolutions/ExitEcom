@@ -292,6 +292,39 @@
     color: var(--text-primary);
   }
 
+  .report-masthead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-warm);
+  }
+  .report-masthead-domain {
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .report-colophon {
+    border-top: 1px solid var(--border-warm);
+    padding-top: 1.5rem;
+  }
+  .report-colophon-meta {
+    margin-top: 0.5rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* Screen-hidden; becomes the running footer on every printed page. */
+  .report-print-footer {
+    display: none;
+  }
+
   .report-cover {
     border-bottom: 1px solid var(--border-warm);
     padding-bottom: 1.75rem;
@@ -594,5 +627,31 @@
      if the user unticks "Background graphics" in the print dialog. */
   .report-bar-track {
     border: 1px solid var(--border-warm);
+  }
+
+  /* A fixed element repeats on every printed page, which is how the ExitEcom
+     credit lands on page 12 as well as page 1. The sheet reserves room for it
+     so the last lines of a page can't run underneath. */
+  .report-print-footer {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 2mm;
+    border-top: 1px solid var(--border-warm);
+    background: #fff;
+    font-size: 7.5pt;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .report-sheet {
+    padding-bottom: 14mm !important;
+  }
+  .report-colophon {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

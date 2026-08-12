@@ -2,6 +2,25 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Reports carry ExitEcom branding
+
+These documents are meant to be handed to buyers and brokers, so they now say
+where they came from in three places:
+
+- **Masthead** on the cover — the ExitEcom logo and `exitecom.com`, above the
+  confidentiality line.
+- **Colophon** closing the document — "Prepared by ExitEcom — pre-exit
+  intelligence for e-commerce founders", the business it was generated for, the
+  date, and the domain.
+- **Running footer on every printed page** — the business name, which report it
+  is, and `ExitEcom · exitecom.com`. Implemented as a `position: fixed` element
+  in the print block (fixed elements repeat per page), with the sheet reserving
+  bottom padding so content can't run underneath it. Hidden on screen, where the
+  masthead and colophon already carry the brand.
+
+The domain lives in one constant (`BRAND_DOMAIN` in `ReportDocument.tsx`), and
+the logo reuses the existing `Logo` component rather than a second wordmark.
+
 ## 2026-08-12 — Reports is a picker first
 
 Opening Reports no longer drops you into a document. The page now lists the
