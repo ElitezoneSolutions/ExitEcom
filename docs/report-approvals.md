@@ -174,6 +174,13 @@ Sent by a **Supabase Edge Function**, `supabase/functions/notify-report-ready`,
 invoked with the service role from the approve handler. The function owns the
 SMTP credentials, so nothing about mail delivery lives in this app's environment.
 
+It uses `npm:nodemailer`, not a Deno-native SMTP client. A `denomailer`
+implementation booted fine but **crashed the worker on connect** (the invoke
+returned 503, which is the runtime killing the isolate rather than any of the
+function's own error paths). nodemailer negotiates STARTTLS on port 587
+correctly, which is what Gmail's submission port and most providers expect;
+`secure` is set only for 465, where TLS is implicit from the first byte.
+
 Email is **best-effort and never blocks approval**. If SMTP is unconfigured or
 delivery fails:
 
@@ -206,6 +213,10 @@ supabase functions deploy notify-report-ready
 ```
 
 **3. Give the function SMTP credentials.**
+
+Verify a send afterwards by invoking the function directly with the service-role
+key — a 200 `{"ok":true}` means SMTP is good, and it's much faster than driving
+the whole approval flow to find out.
 
 These are the same credentials configured for your project's auth emails, but
 Supabase does **not** expose those to Edge Functions automatically — they have to

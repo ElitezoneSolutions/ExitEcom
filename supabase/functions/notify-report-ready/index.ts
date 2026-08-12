@@ -17,7 +17,10 @@
 // sent as the Authorization bearer, so an anonymous caller can't send mail
 // through this endpoint.
 
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+// nodemailer rather than a Deno-native SMTP client: it negotiates STARTTLS on
+// port 587 correctly (Gmail's submission port), which is what most providers
+// expect. A denomailer implementation crashed the worker on connect.
+import nodemailer from "npm:nodemailer@6.9.16";
 
 interface Payload {
   email: string;
@@ -101,32 +104,31 @@ exitecom.com`;
   </body>
 </html>`;
 
-  const client = new SMTPClient({
-    connection: {
-      hostname: host,
-      port,
-      tls: port === 465,
-      auth: { username, password },
-    },
+  // `secure` means implicit TLS from the first byte (465). On 587 we connect in
+  // the clear and upgrade with STARTTLS, which nodemailer does automatically.
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user: username, pass: password },
   });
 
   try {
-    await client.send({
+    await transport.sendMail({
       from,
       to: email,
       subject: `Your ${toolName} is ready`,
-      content: text,
+      text,
       html,
     });
     return json({ ok: true });
   } catch (err) {
     console.error("[notify-report-ready] send failed", err);
-    return json({ error: err instanceof Error ? err.message : String(err) }, 502);
+    return json(
+      { error: err instanceof Error ? err.message : String(err) },
+      502,
+    );
   } finally {
-    try {
-      await client.close();
-    } catch {
-      // Connection already gone — nothing to clean up.
-    }
+    transport.close();
   }
 });

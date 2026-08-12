@@ -37,9 +37,14 @@ Full write-up in [`report-approvals.md`](report-approvals.md). Highlights:
   delete policy at all. A reviewed request is final; changing a published result
   means re-running the tool.
 
-**Not live yet.** This needs `supabase db push`, `supabase functions deploy
-notify-report-ready`, and the SMTP function secrets set. Committing the code
-changes nothing in production.
+**Live as of 2026-08-12.** Migration pushed to the hosted project, the Edge
+Function deployed, and Gmail SMTP secrets set and verified with a real send.
+
+One fix during deployment: the function first used `denomailer`, which booted
+but crashed the worker the moment it opened the SMTP connection — the invoke
+returned 503, which is the runtime killing the isolate rather than any of the
+function's own error paths. Replaced with `npm:nodemailer`, which negotiates
+STARTTLS on port 587 properly.
 
 ## 2026-08-12 — Printed reports no longer carry the query string
 
