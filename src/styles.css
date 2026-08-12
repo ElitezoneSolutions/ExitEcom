@@ -372,8 +372,6 @@
     text-transform: uppercase;
     color: var(--rp-on-panel-muted);
     margin-top: 0.5rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 1px solid var(--rp-panel-line);
   }
   .report-hero-strip {
     display: grid;
