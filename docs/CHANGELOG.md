@@ -2,6 +2,34 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Printed reports no longer carry the query string
+
+The browser stamps the page URL into the printed header/footer, so every page of
+an exported report read `https://dash.exitecom.com/reports?report=full` — an
+internal routing detail on a document meant for buyers and brokers.
+
+`useCleanPrintUrl()` (`src/lib/printUrl.ts`) swaps the URL for the bare origin
+on `beforeprint` and restores it on `afterprint`, so the footer reads
+`https://dash.exitecom.com`. It hooks the events rather than the button, so
+Ctrl/Cmd-P behaves the same, and it calls the native
+`History.prototype.replaceState` rather than the router-patched one — otherwise
+TanStack Router would treat it as a navigation to `/` and unmount the report
+being printed.
+
+## 2026-08-12 — Reports documented
+
+Added [`docs/reports.md`](reports.md), covering the Reports feature end to end:
+what a report is (rendered live, never stored), the three gating states, the
+five report types and the thirteen sections they slice from, the availability
+gating for Marketing and Traffic, URL-based report selection, branding, and how
+the print-to-PDF export works — including the two print traps that have already
+bitten once (a blanket `nav` rule hiding the document's own contents page, and
+backgrounds vanishing without `print-color-adjust: exact`).
+
+Also fixed the report's own Methodology section, which still told the reader
+"AI is used only to polish the wording of risk and action descriptions" after
+Gemini was removed.
+
 ## 2026-08-12 — Onboarding + Profile reworked, Gemini removed
 
 Three changes that ended up related: the profile screens now share one set of

@@ -274,6 +274,26 @@ Two traps to remember if you touch this block:
 button, the page header with its buttons, and the sticky contents nav. Add it to
 anything new that shouldn't print.
 
+### The browser's own header/footer
+
+Separately from our footer, the browser stamps the page title and the full URL
+around every printed page. Left alone that reads
+`https://dash.exitecom.com/reports?report=full` — internal routing detail, on a
+document that goes to buyers.
+
+It isn't reachable from CSS (it's browser chrome, not part of the document), so
+`useCleanPrintUrl()` (`src/lib/printUrl.ts`) swaps the URL for the bare origin
+on `beforeprint` and restores it on `afterprint`. It hooks the events rather
+than the button, so Ctrl/Cmd-P behaves the same.
+
+It calls the **native** `History.prototype.replaceState`, deliberately not
+`window.history.replaceState` — TanStack Router patches history to track
+navigation, and going through the patched method would tell the router we'd
+navigated to `/`, unmounting the report mid-print.
+
+The reader can still switch headers and footers off entirely in the print
+dialog; this just makes the default acceptable.
+
 ### Known limitation
 
 The running footer relies on `position: fixed` repeating on every printed page.

@@ -12,6 +12,7 @@ import {
   type ReportTypeId,
 } from "@/lib/reportSections";
 import { useReport } from "@/hooks/useReport";
+import { useCleanPrintUrl } from "@/lib/printUrl";
 
 // Which report is open lives in the URL (`/reports?report=risk`) rather than
 // component state, so the sidebar can link straight to one, and a report can be
@@ -41,6 +42,8 @@ function Reports() {
     navigate({ search: { report: id }, resetScroll: true });
   // Stamped once per mount so the printed document carries a stable date.
   const [generatedAt] = useState(() => new Date());
+  // Keep `?report=…` out of the browser's printed header/footer.
+  useCleanPrintUrl();
 
   const sections = useMemo(
     () => (report && open ? reportSections(report, open) : []),
