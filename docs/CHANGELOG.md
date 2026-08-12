@@ -2,6 +2,26 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Reports: buyer-grade cover and document styling
+
+The reports read as an app screen printed to paper rather than as a document a
+founder hands to an acquirer. Restyled to the Exit Readiness Score sample's
+layout, in ExitEcom's own colours. No figure, section or slicing rule changed.
+
+- **Hero panel on every cover.** The Exit Score and its tier now lead the
+  document as a filled brand-blue panel, with a four-figure strip beneath it.
+- **The hero owns the score,** so `coverStats()` no longer repeats it — the strip
+  carries the figures that frame the score (exit range, multiples, confidence),
+  still per-report.
+- **Executive verdict** — the summary's opening paragraph — is a filled panel
+  rather than loose body copy.
+- **Section eyebrows:** an accent `SECTION 01` marker above each section title.
+- **Tables** gained a filled header band with white headings, zebra rows and a
+  full border, so long tables stay readable across a page break.
+- **A scoped `--rp-*` palette** at the top of `.report-doc`, every value an alias
+  onto an app token — re-theming the document is one block, not a hunt through
+  the markup.
+
 ## 2026-08-12 — Admin dashboard: lead with the work
 
 The overview reported adoption (users, businesses, documents) but said nothing
@@ -131,7 +151,7 @@ deterministic, and the risk/action copy is deterministic templating.
 
 - `enrichRiskCopyFn` was dead code — exported but never called from anywhere.
 - `normalizeBusinessProfileFn` tidied free-text profile entries (`below 10k
-  dollar` → `< $10k`). The profile fields are dropdowns now, so there is nothing
+dollar` → `< $10k`). The profile fields are dropdowns now, so there is nothing
   left to tidy.
 - Purged from README, CLAUDE.md, `.env.example`, `docs/env-vars.md`,
   `docs/architecture.md`, `docs/report-calculations.md` and the privacy policy's
@@ -248,7 +268,7 @@ both in the `@media print` block in `styles.css`:
   the contents, note and stat panels — printed blank, while text-coloured
   elements survived. Fixed with `print-color-adjust: exact` on all elements.
 - **The contents page was hidden.** The rule hiding screen chrome hid every
-  `<nav>`, and the document's own table of contents *is* a
+  `<nav>`, and the document's own table of contents _is_ a
   `<nav class="report-contents">`. Hiding is now scoped to `.report-chrome` and
   the app sidebar.
 
@@ -324,7 +344,7 @@ No migration, no server function and no AI is involved in any figure.
 Connecting a source now sticks: sign in months later, or on a different device,
 and it still reads as connected. Two problems were making connections look lost.
 
-- **A connector commit could disconnect every *other* connector.** Each
+- **A connector commit could disconnect every _other_ connector.** Each
   `commit*Sync` wrote `valuation_data.connected_sources` as
   `[...business.connectedSources, "<source>"]` — taken from **React state**. In
   an OAuth popup (a fresh page load, and on a new device with no localStorage
@@ -732,6 +752,7 @@ traffic signal.
   and **P&L upload** (`..._pl_upload.sql`) — verified-financials inputs.
 
 ### Scoring & confidence updates (`src/lib/analytics.ts`)
+
 - **Marketing Efficiency & Stability** (dim 3) now uses real per-platform
   ROAS + spend-stability when any ad feed is connected (`adSpendVerified`),
   falling back to the repeat-rate proxy otherwise.
@@ -744,6 +765,7 @@ traffic signal.
 ## 2026-06 — Deterministic engine, raw data store & on-demand reports
 
 ### Sync and reporting are now decoupled
+
 - **Connecting a store no longer auto-generates a report.** It only
   authenticates, pulls, stores raw data, and confirms (counts only — no score or
   valuation on the success screen).
@@ -753,6 +775,7 @@ traffic signal.
   explicit `*test/demo/sandbox*` creds.
 
 ### Numbers are deterministic — AI is cosmetic only
+
 - New deterministic engine `src/lib/analytics.ts` computes metrics, the 9-dimension
   exit score, valuation, risks and actions from the **full** raw dataset (real line
   items). Same data → same numbers, fully auditable.
@@ -764,6 +787,7 @@ traffic signal.
   result pages, which now render **real computed values** (no more `mock.ts`).
 
 ### Raw data store + Store Data page
+
 - New migration `20260606000000_shopify_raw_data.sql`: `shopify_stores`,
   `shopify_orders`, `shopify_products`, `shopify_customers` (all RLS-protected,
   idempotent upserts) + new `valuation_data` columns. Applied live.
@@ -780,12 +804,14 @@ traffic signal.
 ## 2026-06 — Auth, real data & cleanup
 
 ### Email OTP sign-up
+
 - Sign-up now verifies the account with a **6-digit code emailed to the user** (instead of a magic link), then enters onboarding with a real session.
 - Added a "Verify your email" code screen with **Resend** and **Use a different email**.
 - Mounted global toast notifications (success / error / warning) — the app now gives feedback on every auth/onboarding action.
 - Supabase config (dashboard/API): custom SMTP enabled, email OTP length set to 6, "Confirm signup" template sends `{{ .Token }}`.
 
 ### Real data only (no dummy/placeholder)
+
 - New migration so sign-up seeds **only a user profile** — no more fake "NovaSkin Co." business/valuation/connections.
 - Onboarding now **saves the user's answers to Supabase** (business profile) instead of faking it.
 - Onboarding "Connect Data" step is **info-only** (Shopify + "Coming soon"); removed the fake "Connected" toggles.
@@ -796,14 +822,17 @@ traffic signal.
 - Doc: `docs/DATA-DISPLAY.md` (data contract + how/where results are shown).
 
 ### Data Sources page
+
 - **Shopify** is the only active integration; everything else shows a **"COMING SOON"** badge.
 
 ### Cleanup & docs
+
 - Removed the marketing landing page — `/` now redirects to `/signup`.
 - Fixed all TypeScript errors and lint issues; removed dead assets and an unused component.
 - Added `README.md`, `docs/ARCHITECTURE.md`, and `.env.example`.
 
 ## Known follow-ups
+
 - [ ] Add an **auth guard** so `/*` and `/onboarding` redirect to `/login` when not signed in.
 - [ ] Wire each gated result page to **real Shopify-derived data** when Shopify Connect is built (see `docs/DATA-DISPLAY.md` TODO list).
 - [ ] Consider a transactional email provider (e.g. Resend) so emails send from `otp@exitecom.com` rather than the Gmail account.

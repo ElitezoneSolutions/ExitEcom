@@ -34,9 +34,9 @@ const multiple = (x: number) => `${x.toFixed(1)}x`;
 const BRAND_DOMAIN = "exitecom.com";
 
 const SEVERITY_COLOR: Record<string, string> = {
-  high: "var(--risk-critical)",
-  medium: "var(--risk-medium)",
-  low: "var(--positive)",
+  high: "var(--rp-red)",
+  medium: "var(--rp-amber)",
+  low: "var(--rp-green)",
 };
 
 export function ReportDocument({
@@ -58,7 +58,9 @@ export function ReportDocument({
   const bodies: Record<string, ReactNode> = {
     summary: (
       <>
-        <p className="report-lede">
+        {/* The verdict reads as the buyer's opening paragraph, so it carries the
+            document's filled panel rather than sitting as loose body copy. */}
+        <p className="report-verdict">
           {storeName} is a {m.businessAge} {business.industry.toLowerCase()}{" "}
           business trading from {business.country || "—"}, with{" "}
           {fmtGBP(m.revenueTTM)} of trailing-twelve-month revenue across{" "}
@@ -594,8 +596,13 @@ export function ReportDocument({
 
       <Contents sections={sections} />
 
-      {sections.map((s) => (
-        <Section key={s.id} id={s.id} title={s.title}>
+      {sections.map((s, i) => (
+        <Section
+          key={s.id}
+          id={s.id}
+          title={s.title}
+          eyebrow={`Section ${String(i + 1).padStart(2, "0")}`}
+        >
           {bodies[s.id]}
         </Section>
       ))}
@@ -623,27 +630,32 @@ function mult(value: number, earnings: number) {
   return earnings > 0 ? multiple(value / earnings) : "—";
 }
 
-/** Headline figures on the cover — the four that matter for this report. */
+/**
+ * The four figures in the hero strip. The score and tier are the hero itself,
+ * so they're deliberately absent here — the strip frames the score rather than
+ * repeating it.
+ */
 function coverStats(type: ReportTypeId, report: FullReport) {
   const { score, valuation: v, risks, actions } = report;
-  const exitScore = { l: "Exit Score", v: `${score.exitScore}/100` };
   const fairMarket = { l: "Fair Market Value", v: fmtGBP(v.fairMarket) };
   const valueGap = { l: "Value Gap", v: fmtGBP(v.valueGap) };
+  const confidence = { l: "Data Confidence", v: `${score.dataConfidence}%` };
+  const exitRange = {
+    l: "Estimated Exit Range",
+    v: `${fmtGBP(v.valuationLow)} – ${fmtGBP(v.valuationHigh)}`,
+  };
 
   switch (type) {
     case "exit-score":
       return [
-        exitScore,
-        { l: "Tier", v: score.scoreTier },
-        { l: "Data Confidence", v: `${score.dataConfidence}%` },
-        fairMarket,
+        exitRange,
+        { l: "Current Multiple", v: multiple(v.currentMultiple) },
+        { l: "Achievable Multiple", v: multiple(v.optimisedMultiple) },
+        confidence,
       ];
     case "valuation":
       return [
-        {
-          l: "Valuation Range",
-          v: `${fmtGBP(v.valuationLow)} – ${fmtGBP(v.valuationHigh)}`,
-        },
+        exitRange,
         fairMarket,
         { l: "Current Multiple", v: multiple(v.currentMultiple) },
         valueGap,
@@ -655,8 +667,8 @@ function coverStats(type: ReportTypeId, report: FullReport) {
           l: "Valuation at Risk",
           v: fmtGBP(risks.reduce((s, r) => s + (r.impact || 0), 0)),
         },
-        exitScore,
         fairMarket,
+        confidence,
       ];
     case "optimization":
       return [
@@ -669,12 +681,7 @@ function coverStats(type: ReportTypeId, report: FullReport) {
         { l: "Optimised Value", v: fmtGBP(v.optimised) },
       ];
     default:
-      return [
-        exitScore,
-        { l: "Tier", v: score.scoreTier },
-        fairMarket,
-        valueGap,
-      ];
+      return [exitRange, fairMarket, valueGap, confidence];
   }
 }
 
@@ -691,6 +698,8 @@ function Cover({
   report: FullReport;
   generatedAt: Date;
 }) {
+  const { score } = report;
+
   return (
     <header className="report-cover">
       {/* Masthead — this is an ExitEcom document wherever it ends up, and it
@@ -700,11 +709,11 @@ function Cover({
         <span className="report-masthead-domain">{BRAND_DOMAIN}</span>
       </div>
 
-      <div className="label-caps" style={{ fontSize: 10 }}>
-        Confidential — {reportTypeById(type).name}
+      <div className="report-kicker">
+        ExitEcom | Confidential {reportTypeById(type).name}
       </div>
-      <h1 className="font-display text-4xl mt-3">{storeName}</h1>
-      <div className="text-sm text-[var(--text-muted)] mt-2">
+      <h1 className="report-cover-title">{storeName}</h1>
+      <div className="report-cover-meta">
         {business.industry || "E-commerce"} · {business.country || "—"} ·
         Prepared{" "}
         {generatedAt.toLocaleDateString("en-GB", {
@@ -713,16 +722,29 @@ function Cover({
           year: "numeric",
         })}
       </div>
-      <div className="report-cover-stats">
-        {coverStats(type, report).map((s) => (
-          <div key={s.l}>
-            <div className="label-caps" style={{ fontSize: 9 }}>
-              {s.l}
+
+      {/* The hero: the one number a buyer looks for, then the four figures that
+          frame it. Same values as before — the panel is what changed. */}
+      <div className="report-hero">
+        <div className="report-hero-main">
+          <div className="report-hero-label">Exit Readiness Score</div>
+          <div className="report-hero-score">{score.exitScore} / 100</div>
+          <div className="report-hero-tier">{score.scoreTier}</div>
+        </div>
+        <div className="report-hero-strip">
+          {coverStats(type, report).map((s) => (
+            <div key={s.l} className="report-hero-cell">
+              <div className="report-hero-cell-label">{s.l}</div>
+              <div className="report-hero-cell-value">{s.v}</div>
             </div>
-            <div className="font-display text-xl mt-1">{s.v}</div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+
+      <p className="report-footnote">
+        Prepared as if a professional buyer conducted preliminary due diligence
+        on your business · Generated by ExitEcom · Confidential
+      </p>
     </header>
   );
 }
@@ -758,9 +780,7 @@ function Colophon({
 function Contents({ sections }: { sections: ReportSection[] }) {
   return (
     <nav className="report-contents">
-      <div className="label-caps" style={{ fontSize: 10 }}>
-        Contents
-      </div>
+      <div className="report-eyebrow">Contents</div>
       <ol className="mt-3 grid sm:grid-cols-2 gap-x-8 gap-y-1.5">
         {sections.map((s) => (
           <li key={s.id}>
@@ -777,14 +797,17 @@ function Contents({ sections }: { sections: ReportSection[] }) {
 function Section({
   id,
   title,
+  eyebrow,
   children,
 }: {
   id: string;
   title: string;
+  eyebrow: string;
   children: ReactNode;
 }) {
   return (
     <section id={id} className="report-section">
+      <div className="report-eyebrow">{eyebrow}</div>
       <h2 className="report-head">{title}</h2>
       <div className="space-y-5">{children}</div>
     </section>
@@ -796,10 +819,8 @@ function StatGrid({ stats }: { stats: { l: string; v: string }[] }) {
     <div className="report-stat-grid">
       {stats.map((s) => (
         <div key={s.l} className="report-stat">
-          <div className="label-caps" style={{ fontSize: 9 }}>
-            {s.l}
-          </div>
-          <div className="font-display text-lg mt-1">{s.v}</div>
+          <div className="report-stat-label">{s.l}</div>
+          <div className="report-stat-value">{s.v}</div>
         </div>
       ))}
     </div>
@@ -858,7 +879,7 @@ function DriverList({
               <span>{d.name}</span>
               <span
                 style={{
-                  color: positive ? "var(--positive)" : "var(--risk-critical)",
+                  color: positive ? "var(--rp-green)" : "var(--rp-red)",
                 }}
               >
                 {d.impact}

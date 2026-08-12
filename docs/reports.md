@@ -5,7 +5,7 @@ what each report contains, how the PDF export works, and how to change any of it
 safely.
 
 > **Related:** [`report-calculations.md`](report-calculations.md) explains how
-> every individual figure is computed. This document covers the *documents* —
+> every individual figure is computed. This document covers the _documents_ —
 > how those figures are assembled, sliced and presented. If you're asking "where
 > does EBITDA come from?", read that one; if you're asking "why is Marketing
 > missing from my PDF?", read this one.
@@ -33,27 +33,27 @@ Three properties follow from that, and they're the point of the whole design:
 
 There are **five** reports. Four are per-tool; the fifth contains everything.
 
-| Report | Id | What it's for |
-|---|---|---|
-| Exit Readiness Score | `exit-score` | How the business scores across all nine dimensions, and what drives each |
-| Valuation Engine | `valuation` | What it's worth now and after optimization, with the full earnings basis |
-| Risk Scanner | `risk` | Every risk diligence will surface, and its modelled valuation impact |
-| Optimization Plan | `optimization` | Prioritised actions that close the value gap, with steps and £ uplift |
-| Full Report | `full` | All thirteen sections as one document |
+| Report               | Id             | What it's for                                                            |
+| -------------------- | -------------- | ------------------------------------------------------------------------ |
+| Exit Readiness Score | `exit-score`   | How the business scores across all nine dimensions, and what drives each |
+| Valuation Engine     | `valuation`    | What it's worth now and after optimization, with the full earnings basis |
+| Risk Scanner         | `risk`         | Every risk diligence will surface, and its modelled valuation impact     |
+| Optimization Plan    | `optimization` | Prioritised actions that close the value gap, with steps and £ uplift    |
+| Full Report          | `full`         | All thirteen sections as one document                                    |
 
 ---
 
 ## 2. The files
 
-| File | Responsibility |
-|---|---|
-| `src/routes/_app.reports.tsx` | The page: gating, the picker, chrome, the sticky contents nav |
-| `src/lib/reportSections.ts` | **Single source of truth** for which sections each report contains |
-| `src/components/ex/ReportDocument.tsx` | The document itself — every section's markup, the cover, colophon |
-| `src/lib/reportSections.test.ts` | Locks the slicing, numbering and availability rules (8 tests) |
-| `src/styles.css` | All `report-*` classes plus the `@media print` block |
-| `src/hooks/useReport.ts` | Assembles the analytics input and runs `computeFullReport()` |
-| `src/components/ex/Sidebar.tsx` | The Reports nav parent and its five deep-linked children |
+| File                                   | Responsibility                                                     |
+| -------------------------------------- | ------------------------------------------------------------------ |
+| `src/routes/_app.reports.tsx`          | The page: gating, the picker, chrome, the sticky contents nav      |
+| `src/lib/reportSections.ts`            | **Single source of truth** for which sections each report contains |
+| `src/components/ex/ReportDocument.tsx` | The document itself — every section's markup, the cover, colophon  |
+| `src/lib/reportSections.test.ts`       | Locks the slicing, numbering and availability rules (8 tests)      |
+| `src/styles.css`                       | All `report-*` classes plus the `@media print` block               |
+| `src/hooks/useReport.ts`               | Assembles the analytics input and runs `computeFullReport()`       |
+| `src/components/ex/Sidebar.tsx`        | The Reports nav parent and its five deep-linked children           |
 
 Nothing else needs to know a report exists.
 
@@ -105,7 +105,7 @@ and footer all carry the same date, and it doesn't tick over mid-print.
 ## 4. Choosing a report
 
 The picker is a grid of five cards, one per `REPORT_TYPES` entry, each showing
-the report's name, description and its live section count for *this* business
+the report's name, description and its live section count for _this_ business
 (so a card reads "8 sections" rather than "9" when GA4 isn't connected).
 
 **Which report is open lives in the URL**, not in component state:
@@ -123,7 +123,7 @@ validateSearch: (search: Record<string, unknown>) => {
   const requested = search.report;
   const valid = REPORT_TYPES.some((t) => t.id === requested);
   return { report: valid ? (requested as ReportTypeId) : undefined };
-}
+};
 ```
 
 An unrecognised value falls back to the picker rather than erroring.
@@ -146,21 +146,21 @@ nav can't drift from the reports that exist. Two consequences worth knowing:
 Thirteen sections exist. Each report names the subset it wants, in the order it
 wants them.
 
-| Id | Title | Appears in | Gated on |
-|---|---|---|---|
-| `summary` | Executive Summary | all five | — |
-| `sources` | Data Sources & Confidence | all but optimization | — |
-| `overview` | Business Overview | full, exit-score | — |
-| `financials` | Financial Performance | full, valuation | — |
-| `customers` | Customers & Retention | full, exit-score | — |
-| `products` | Product Concentration | full, exit-score | — |
-| `marketing` | Marketing Efficiency | full, exit-score | **`adSpendVerified`** |
-| `traffic` | Traffic & Acquisition | full, exit-score | **`ga4Connected`** |
-| `score` | Exit Readiness Score | full, exit-score | — |
-| `valuation` | Valuation | full, valuation, optimization | — |
-| `risks` | Risk Register | full, risk | — |
-| `plan` | Optimization Plan | full, optimization | — |
-| `methodology` | Methodology & Basis of Preparation | all five | — |
+| Id            | Title                              | Appears in                    | Gated on              |
+| ------------- | ---------------------------------- | ----------------------------- | --------------------- |
+| `summary`     | Executive Summary                  | all five                      | —                     |
+| `sources`     | Data Sources & Confidence          | all but optimization          | —                     |
+| `overview`    | Business Overview                  | full, exit-score              | —                     |
+| `financials`  | Financial Performance              | full, valuation               | —                     |
+| `customers`   | Customers & Retention              | full, exit-score              | —                     |
+| `products`    | Product Concentration              | full, exit-score              | —                     |
+| `marketing`   | Marketing Efficiency               | full, exit-score              | **`adSpendVerified`** |
+| `traffic`     | Traffic & Acquisition              | full, exit-score              | **`ga4Connected`**    |
+| `score`       | Exit Readiness Score               | full, exit-score              | —                     |
+| `valuation`   | Valuation                          | full, valuation, optimization | —                     |
+| `risks`       | Risk Register                      | full, risk                    | —                     |
+| `plan`        | Optimization Plan                  | full, optimization            | —                     |
+| `methodology` | Methodology & Basis of Preparation | all five                      | —                     |
 
 Every report **opens with `summary` and closes with `methodology`** — a test
 enforces this, so a reader always gets the headline and the caveats regardless
@@ -206,9 +206,13 @@ with everything connected, 11 with neither ad feed nor GA4.
 `reportSections(report, type)` returns:
 
 ```tsx
-{sections.map((s) => (
-  <Section key={s.id} id={s.id} title={s.title}>{bodies[s.id]}</Section>
-))}
+{
+  sections.map((s) => (
+    <Section key={s.id} id={s.id} title={s.title}>
+      {bodies[s.id]}
+    </Section>
+  ));
+}
 ```
 
 That's the load-bearing idea: **five reports, one implementation**. A section is
@@ -218,17 +222,21 @@ present the same figure differently.
 Structure of any report:
 
 ```
-Cover        masthead (logo + exitecom.com), "Confidential — <report name>",
-             store name, industry · country · prepared date, 4 headline stats
+Cover        masthead (logo + exitecom.com), "ExitEcom | Confidential <report>",
+             store name, industry · country · prepared date,
+             hero panel: Exit Score /100 + tier, then a 4-figure strip
 Contents     two-column linked table of contents (a <nav>, and it prints)
-Sections     the slice for this report type
+Sections     the slice for this report type, each under a "Section NN" eyebrow
 Colophon     "Prepared by ExitEcom", generated-for line, domain, confidentiality
 Footer       fixed running footer, print-only
 ```
 
-**Cover stats are per-report** (`coverStats()`): the Risk Scanner leads with
-risks found and valuation at risk; the Valuation Engine leads with the range and
-current multiple; Optimization leads with action count and total uplift.
+**The hero owns the score.** The Exit Score and its tier are the hero panel on
+every report, so `coverStats()` deliberately does _not_ repeat them — it returns
+the four figures that _frame_ the score, and those are per-report: the Risk
+Scanner leads with risks found and valuation at risk; the Valuation Engine with
+the exit range and current multiple; Optimization with action count and total
+uplift.
 
 ### Branding
 
@@ -237,6 +245,14 @@ in front of buyers and brokers. `exitecom.com` appears in three places — the
 cover masthead, the colophon, and the running footer on **every printed page**.
 The domain is a single constant, `BRAND_DOMAIN`, at the top of
 `ReportDocument.tsx`.
+
+The document has its own scoped palette — the `--rp-*` variables at the top of
+the `.report-doc` block in `styles.css`, every one of them an alias onto an app
+token. Filled panels (hero, executive verdict, table heads) carry the brand blue
+`--accent`; headings on white stay `--text-primary` navy so dense tables don't
+become a wall of accent colour; labels on a filled panel use `--blue-200`, which
+brand blue itself is too dark to provide. Re-theming the document means editing
+that one block, not hunting colours through the markup.
 
 ---
 
@@ -251,15 +267,15 @@ buyer receives another. Print-to-PDF makes divergence impossible.
 
 The `@media print` block in `src/styles.css` does the work:
 
-| Rule | Why |
-|---|---|
-| `@page { size: A4; margin: 16mm 14mm }` | Page geometry |
-| `print-color-adjust: exact` on `*` | **Browsers strip background colours when printing unless told not to.** Without this the revenue bars, severity dots and the contents/note/stat panels print blank — anything coloured by `background-color` rather than `color` silently vanishes |
-| `aside:not(.report-doc *), .report-chrome` hidden | Removes app chrome. Deliberately **not** a blanket `nav` — the document's own contents page is a `<nav class="report-contents">` and must print |
-| `.grid:not(.report-doc *) { display: block }` | Collapses the page's sidebar/document columns without flattening grids *inside* the document |
-| `main`, `main > div` constraints removed | Lets the sheet span the page |
-| `break-inside: avoid` on sections, items, tables, stats, notes | Stops a risk or a table splitting across pages |
-| `.report-print-footer` fixed to the bottom | The per-page running footer |
+| Rule                                                                 | Why                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@page { size: A4; margin: 16mm 14mm }`                              | Page geometry                                                                                                                                                                                                                                      |
+| `print-color-adjust: exact` on `*`                                   | **Browsers strip background colours when printing unless told not to.** Without this the revenue bars, severity dots and the contents/note/stat panels print blank — anything coloured by `background-color` rather than `color` silently vanishes |
+| `aside:not(.report-doc *), .report-chrome` hidden                    | Removes app chrome. Deliberately **not** a blanket `nav` — the document's own contents page is a `<nav class="report-contents">` and must print                                                                                                    |
+| `.grid:not(.report-doc *) { display: block }`                        | Collapses the page's sidebar/document columns without flattening grids _inside_ the document                                                                                                                                                       |
+| `main`, `main > div` constraints removed                             | Lets the sheet span the page                                                                                                                                                                                                                       |
+| `break-inside: avoid` on sections, items, tables, stats, notes       | Stops a risk or a table splitting across pages                                                                                                                                                                                                     |
+| `.report-print-footer` fixed to the bottom                           | The per-page running footer                                                                                                                                                                                                                        |
 
 Two traps to remember if you touch this block:
 

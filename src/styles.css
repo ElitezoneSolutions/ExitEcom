@@ -288,8 +288,30 @@
    document stylesheet, not composable utilities, and the print block below has
    to override them wholesale. */
 @layer components {
+  /* The document's palette is the app's own — brand-blue filled panels, deep
+     navy headings — arranged in the layout of the Exit Readiness Score sample.
+     Aliased into `--rp-*` and scoped to `.report-doc` so the document reads as
+     one coherent print stylesheet and the print block can override it whole. */
   .report-doc {
-    color: var(--text-primary);
+    /* Filled panels — hero, verdict, table heads — carry the brand blue. */
+    --rp-panel: var(--accent); /* #1a56db */
+    --rp-panel-deep: var(--accent-muted); /* #1e47c5 — the hero figure strip */
+    --rp-panel-line: rgba(255, 255, 255, 0.24); /* dividers inside a panel */
+    --rp-accent: var(--accent);
+    --rp-on-panel: #ffffff;
+    --rp-on-panel-muted: var(--blue-200); /* #bfdbfe — labels on blue */
+    /* Headings on white stay the deep institutional navy; only the filled
+       panels are blue, so dense tables don't become a wall of accent colour. */
+    --rp-heading: var(--text-primary); /* #0d1f3c */
+    --rp-ink: var(--text-secondary);
+    --rp-muted: var(--text-muted);
+    --rp-zebra: var(--bg-secondary);
+    --rp-line: var(--border-warm);
+    --rp-red: var(--risk-critical);
+    --rp-amber: var(--risk-medium);
+    --rp-green: var(--positive);
+
+    color: var(--rp-ink);
   }
 
   .report-masthead {
@@ -297,19 +319,128 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding-bottom: 1.25rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border-warm);
+    padding-bottom: 1rem;
+    margin-bottom: 1.75rem;
+    border-bottom: 1px solid var(--rp-line);
   }
   .report-masthead-domain {
     font-size: 0.6875rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--rp-muted);
+  }
+  /* The accented confidentiality line that sits opposite the logo. */
+  .report-kicker {
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--rp-accent);
+  }
+
+  /* --- Hero: the brand-blue score card and its figure strip --------------- */
+  .report-hero {
+    background-color: var(--rp-panel);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 1.75rem;
+  }
+  .report-hero-main {
+    padding: 1.75rem 1.5rem 1.5rem;
+    text-align: center;
+  }
+  .report-hero-label {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--rp-on-panel-muted);
+  }
+  .report-hero-score {
+    font-family: var(--font-display, "Cormorant Garamond"), serif;
+    font-size: 3.5rem;
+    line-height: 1.05;
+    font-weight: 700;
+    color: var(--rp-on-panel);
+    margin-top: 0.5rem;
+  }
+  .report-hero-tier {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--rp-on-panel-muted);
+    margin-top: 0.5rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--rp-panel-line);
+  }
+  .report-hero-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    background-color: var(--rp-panel-deep);
+  }
+  @media (min-width: 640px) {
+    .report-hero-strip {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .report-hero-cell {
+    padding: 0.875rem 1rem;
+    text-align: center;
+    border-top: 1px solid var(--rp-panel-line);
+    border-left: 1px solid var(--rp-panel-line);
+  }
+  /* Only the cells that actually start a row lose their left divider — two per
+     row on narrow screens, four per row from `sm` up. */
+  .report-hero-cell:nth-child(2n + 1) {
+    border-left: none;
+  }
+  @media (min-width: 640px) {
+    .report-hero-cell:nth-child(2n + 1) {
+      border-left: 1px solid var(--rp-panel-line);
+    }
+    .report-hero-cell:nth-child(4n + 1) {
+      border-left: none;
+    }
+  }
+  .report-hero-cell-label {
+    font-size: 0.5625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--rp-on-panel-muted);
+    line-height: 1.4;
+  }
+  .report-hero-cell-value {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--rp-on-panel);
+    margin-top: 0.35rem;
+  }
+
+  /* Executive verdict — the filled prose block under the hero. */
+  .report-verdict {
+    background-color: var(--rp-panel);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    color: var(--rp-on-panel);
+    font-size: 0.875rem;
+    line-height: 1.75;
+  }
+  .report-verdict strong {
+    color: var(--rp-on-panel-muted);
+    font-weight: 700;
+  }
+
+  .report-footnote {
+    margin-top: 1.25rem;
+    text-align: center;
+    font-size: 0.6875rem;
+    color: var(--rp-muted);
   }
 
   .report-colophon {
-    border-top: 1px solid var(--border-warm);
+    border-top: 3px solid var(--rp-accent);
     padding-top: 1.5rem;
   }
   .report-colophon-meta {
@@ -317,7 +448,7 @@
     font-size: 0.6875rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--rp-muted);
   }
 
   /* Screen-hidden; becomes the running footer on every printed page. */
@@ -325,66 +456,74 @@
     display: none;
   }
 
-  .report-cover {
-    border-bottom: 1px solid var(--border-warm);
-    padding-bottom: 1.75rem;
+  .report-cover-title {
+    font-family: var(--font-display, "Cormorant Garamond"), serif;
+    font-size: 2.25rem;
+    line-height: 1.15;
+    color: var(--rp-heading);
+    margin-top: 0.5rem;
   }
-  .report-cover-stats {
-    margin-top: 1.75rem;
-    display: grid;
-    gap: 1.25rem;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  @media (min-width: 640px) {
-    .report-cover-stats {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
+  .report-cover-meta {
+    font-size: 0.8125rem;
+    color: var(--rp-muted);
+    margin-top: 0.5rem;
   }
 
   .report-contents {
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-warm);
-    border-radius: 6px;
+    border: 1px solid var(--rp-line);
+    border-top: 3px solid var(--rp-accent);
+    border-radius: 0 0 6px 6px;
     padding: 1.25rem 1.5rem;
   }
   .report-toc-link {
     font-size: 0.8125rem;
-    color: var(--text-secondary);
+    color: var(--rp-ink);
     text-decoration: none;
     display: block;
     padding: 0.125rem 0;
   }
   .report-toc-link:hover {
-    color: var(--accent);
+    color: var(--rp-on-panel-muted);
   }
 
   .report-section {
     scroll-margin-top: 1.5rem;
   }
+  /* Accent eyebrow above every section title — the sample's section marker. */
+  .report-eyebrow {
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--rp-accent);
+    margin-bottom: 0.3rem;
+  }
   .report-head {
     font-family: var(--font-display, "Cormorant Garamond"), serif;
     font-size: 1.5rem;
     line-height: 1.2;
+    color: var(--rp-heading);
     padding-bottom: 0.625rem;
     margin-bottom: 1.25rem;
-    border-bottom: 1px solid var(--border-warm);
+    border-bottom: 1px solid var(--rp-muted);
   }
   .report-subhead {
     font-size: 0.6875rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--rp-accent);
+    font-weight: 700;
     margin-top: 0.5rem;
   }
   .report-lede {
     font-size: 0.9375rem;
     line-height: 1.75;
-    color: var(--text-secondary);
+    color: var(--rp-ink);
   }
   .report-body {
     font-size: 0.875rem;
     line-height: 1.7;
-    color: var(--text-secondary);
+    color: var(--rp-ink);
   }
 
   .report-stat-grid {
@@ -398,9 +537,23 @@
     }
   }
   .report-stat {
-    border: 1px solid var(--border-warm);
-    border-radius: 6px;
+    border: 1px solid var(--rp-line);
+    border-top: 2px solid var(--rp-accent);
+    border-radius: 0 0 6px 6px;
     padding: 0.875rem 1rem;
+  }
+  .report-stat-label {
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--rp-muted);
+  }
+  .report-stat-value {
+    font-family: var(--font-display, "Cormorant Garamond"), serif;
+    font-size: 1.125rem;
+    color: var(--rp-heading);
+    margin-top: 0.25rem;
   }
 
   .report-table-wrap {
@@ -410,34 +563,39 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.8125rem;
+    border: 1px solid var(--rp-line);
   }
   .report-table th {
     text-align: left;
     font-size: 0.625rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--text-muted);
-    font-weight: 500;
+    color: var(--rp-on-panel);
+    background-color: var(--rp-panel);
+    font-weight: 700;
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border-warm);
     white-space: nowrap;
   }
   .report-table td {
     padding: 0.625rem 0.75rem;
-    border-bottom: 1px solid var(--border-warm);
-    color: var(--text-secondary);
+    border-bottom: 1px solid var(--rp-line);
+    color: var(--rp-ink);
     vertical-align: top;
   }
+  /* Zebra banding, as in the sample's spec tables. */
+  .report-table tbody tr:nth-child(even) td {
+    background-color: var(--rp-zebra);
+  }
   .report-table td:first-child {
-    color: var(--text-primary);
-    font-weight: 500;
+    color: var(--rp-heading);
+    font-weight: 700;
   }
   .report-table tr:last-child td {
     border-bottom: none;
   }
 
   .report-item {
-    border-left: 2px solid var(--border-warm);
+    border-left: 2px solid var(--rp-accent);
     padding-left: 1rem;
   }
   .report-item-head {
@@ -448,14 +606,14 @@
     margin-bottom: 0.375rem;
   }
   .report-item-title {
-    font-weight: 500;
+    font-weight: 700;
     font-size: 0.9375rem;
-    color: var(--text-primary);
+    color: var(--rp-heading);
   }
   .report-item-meta {
     font-size: 0.6875rem;
     letter-spacing: 0.08em;
-    color: var(--text-muted);
+    color: var(--rp-muted);
     margin-left: auto;
     white-space: nowrap;
   }
@@ -474,14 +632,15 @@
   .report-field {
     font-size: 0.8125rem;
     line-height: 1.65;
-    color: var(--text-secondary);
+    color: var(--rp-ink);
     margin-top: 0.375rem;
   }
   .report-field-label {
     font-size: 0.625rem;
+    font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--rp-accent);
   }
   .report-steps {
     margin-top: 0.625rem;
@@ -489,7 +648,7 @@
     list-style: decimal;
     font-size: 0.8125rem;
     line-height: 1.7;
-    color: var(--text-secondary);
+    color: var(--rp-ink);
   }
   .report-steps li {
     margin-bottom: 0.25rem;
@@ -500,9 +659,9 @@
     justify-content: space-between;
     gap: 1rem;
     font-size: 0.8125rem;
-    color: var(--text-secondary);
+    color: var(--rp-ink);
     padding: 0.3rem 0;
-    border-bottom: 1px solid var(--border-warm);
+    border-bottom: 1px solid var(--rp-line);
   }
 
   .report-bars {
@@ -519,33 +678,34 @@
   .report-bar-label {
     width: 5rem;
     flex-shrink: 0;
-    color: var(--text-muted);
+    color: var(--rp-muted);
   }
   .report-bar-track {
     flex: 1;
     height: 0.75rem;
-    background-color: var(--bg-secondary);
+    background-color: var(--rp-zebra);
     border-radius: 2px;
     overflow: hidden;
   }
   .report-bar-fill {
     display: block;
     height: 100%;
-    background-color: var(--accent);
+    background-color: var(--rp-panel);
   }
   .report-bar-value {
     width: 6rem;
     text-align: right;
     flex-shrink: 0;
-    color: var(--text-primary);
+    color: var(--rp-heading);
+    font-weight: 700;
   }
 
   .report-note {
     font-size: 0.8125rem;
     line-height: 1.65;
-    color: var(--text-secondary);
-    background-color: var(--bg-secondary);
-    border-left: 2px solid var(--accent);
+    color: var(--rp-ink);
+    background-color: var(--rp-zebra);
+    border-left: 3px solid var(--rp-accent);
     border-radius: 0 4px 4px 0;
     padding: 0.75rem 1rem;
   }
@@ -611,22 +771,27 @@
   .report-item,
   .report-stat,
   .report-note,
-  .report-table {
+  .report-table,
+  .report-hero,
+  .report-verdict {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* An eyebrow stranded at the foot of a page, with its title overleaf, reads
+     as a stray line of accent text. */
+  .report-eyebrow,
   .report-head {
     break-after: avoid;
     page-break-after: avoid;
   }
   .report-toc-link {
-    color: var(--text-secondary) !important;
+    color: var(--rp-ink) !important;
   }
 
   /* Outline the bar track so the monthly-revenue chart still reads as a chart
      if the user unticks "Background graphics" in the print dialog. */
   .report-bar-track {
-    border: 1px solid var(--border-warm);
+    border: 1px solid var(--rp-line);
   }
 
   /* A fixed element repeats on every printed page, which is how the ExitEcom
