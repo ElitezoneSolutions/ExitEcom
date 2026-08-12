@@ -113,8 +113,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange((event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+        setSession((prev) =>
+          prev?.access_token === session?.access_token ? prev : session,
+        );
+        // Supabase re-fires SIGNED_IN/TOKEN_REFRESHED every time the tab regains
+        // focus. Handing back a fresh User object each time would change its
+        // identity and re-trigger every `[user]` effect downstream, which reads
+        // to the user as the app spontaneously reloading. Keep the previous
+        // object unless the signed-in user actually changed.
+        setUser((prev) => {
+          const next = session?.user ?? null;
+          return prev?.id && prev.id === next?.id ? prev : next;
+        });
         setLoading(false);
 
         if (event === "SIGNED_OUT" && !manualSignOut.current) {
