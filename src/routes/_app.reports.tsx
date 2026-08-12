@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Printer, FileText, ArrowLeft, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ex/PageHeader";
@@ -13,7 +13,18 @@ import {
 } from "@/lib/reportSections";
 import { useReport } from "@/hooks/useReport";
 
-export const Route = createFileRoute("/_app/reports")({ component: Reports });
+// Which report is open lives in the URL (`/reports?report=risk`) rather than
+// component state, so the sidebar can link straight to one, and a report can be
+// bookmarked, shared or reloaded without landing back on the picker. An
+// unrecognised value falls back to the picker rather than erroring.
+export const Route = createFileRoute("/_app/reports")({
+  component: Reports,
+  validateSearch: (search: Record<string, unknown>) => {
+    const requested = search.report;
+    const valid = REPORT_TYPES.some((t) => t.id === requested);
+    return { report: valid ? (requested as ReportTypeId) : undefined };
+  },
+});
 
 // Reports offers one document per tool — Exit Readiness Score, Valuation
 // Engine, Risk Scanner, Optimization Plan — plus the Full Report. The page is
@@ -24,7 +35,10 @@ export const Route = createFileRoute("/_app/reports")({ component: Reports });
 function Reports() {
   const { isShopifyConnected, report, business, store, computing, run } =
     useReport();
-  const [open, setOpen] = useState<ReportTypeId | null>(null);
+  const { report: open } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const openReport = (id?: ReportTypeId) =>
+    navigate({ search: { report: id }, resetScroll: true });
   // Stamped once per mount so the printed document carries a stable date.
   const [generatedAt] = useState(() => new Date());
 
@@ -83,7 +97,7 @@ function Reports() {
                 {reportSections(report, t.id).length} sections
               </div>
               <button
-                onClick={() => setOpen(t.id)}
+                onClick={() => openReport(t.id)}
                 className="btn-primary mt-5 text-sm justify-center"
               >
                 View Report <ArrowRight className="w-4 h-4" />
@@ -102,7 +116,7 @@ function Reports() {
     <>
       <div className="report-chrome">
         <button
-          onClick={() => setOpen(null)}
+          onClick={() => openReport(undefined)}
           className="btn-ghost-light text-xs mb-5"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> All reports

@@ -55,27 +55,6 @@ const SECTION_TITLES: Record<string, string> = {
 
 export const REPORT_TYPES: ReportType[] = [
   {
-    id: "full",
-    name: "Full Report",
-    description:
-      "Every figure we hold, as one buyer-grade document — financials, retention, product mix, marketing, score, valuation, risks and plan.",
-    sections: [
-      "summary",
-      "sources",
-      "overview",
-      "financials",
-      "customers",
-      "products",
-      "marketing",
-      "traffic",
-      "score",
-      "valuation",
-      "risks",
-      "plan",
-      "methodology",
-    ],
-  },
-  {
     id: "exit-score",
     name: "Exit Readiness Score",
     description:
@@ -113,10 +92,34 @@ export const REPORT_TYPES: ReportType[] = [
       "The prioritised actions that close your value gap, each with the steps to execute and the £ uplift it unlocks.",
     sections: ["summary", "valuation", "plan", "methodology"],
   },
+  {
+    id: "full",
+    name: "Full Report",
+    description:
+      "Every figure we hold, as one buyer-grade document — financials, retention, product mix, marketing, score, valuation, risks and plan.",
+    sections: [
+      "summary",
+      "sources",
+      "overview",
+      "financials",
+      "customers",
+      "products",
+      "marketing",
+      "traffic",
+      "score",
+      "valuation",
+      "risks",
+      "plan",
+      "methodology",
+    ],
+  },
 ];
 
 export function reportTypeById(id: ReportTypeId): ReportType {
-  return REPORT_TYPES.find((t) => t.id === id) ?? REPORT_TYPES[0];
+  return (
+    REPORT_TYPES.find((t) => t.id === id) ??
+    REPORT_TYPES.find((t) => t.id === "full")!
+  );
 }
 
 /** True when the underlying feed for an optional section is connected. */

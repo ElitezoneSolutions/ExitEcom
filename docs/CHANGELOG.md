@@ -2,6 +2,34 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Sidebar Reports nav tells the truth
+
+The Reports group offered **Saved Reports** and **Downloads**. Both pointed at
+the same `/reports` route, and neither feature existed — nothing is saved, and
+the PDF is print-on-demand rather than a stored file. Two labels, one
+destination, both promising something the app doesn't do.
+
+Replaced with a single **Reports** parent that expands to the five reports —
+Exit Readiness Score, Valuation Engine, Risk Scanner, Optimization Plan, Full
+Report — matching the existing Data Sources parent/children pattern.
+
+- **Which report is open now lives in the URL** (`/reports?report=risk`) instead
+  of component state, so the sidebar can link straight to one and a report can
+  be bookmarked, shared or reloaded without bouncing back to the picker. An
+  unrecognised value falls back to the picker rather than erroring.
+- **Active-state detection is search-aware.** All five children share the
+  `/reports` path, so matching on pathname alone would light up all of them at
+  once; an entry with a `search` matches only that value, and one without
+  matches only the bare route.
+- **The children are generated from `REPORT_TYPES`**, so the nav can't drift
+  from the reports that actually exist.
+- Full Report moved to the end of `REPORT_TYPES` (tools first, then the
+  everything document), which also reorders the picker cards.
+  `reportTypeById`'s fallback now names "full" explicitly rather than relying on
+  it being first.
+- Removed four dead lucide imports (`Bookmark`, `Download`, and the
+  already-unused `BarChart3`, `Folder`).
+
 ## 2026-08-12 — Reports carry ExitEcom branding
 
 These documents are meant to be handed to buyers and brokers, so they now say

@@ -7,11 +7,7 @@ import {
   ShieldAlert,
   TrendingUp,
   Zap,
-  BarChart3,
   FileText,
-  Folder,
-  Bookmark,
-  Download,
   Settings,
   CreditCard,
   LogOut,
@@ -21,6 +17,7 @@ import {
   ScrollText,
 } from "lucide-react";
 import { Logo } from "./Logo";
+import { REPORT_TYPES } from "@/lib/reportSections";
 import { useBusinessData } from "@/hooks/useBusinessData";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -60,8 +57,19 @@ const groups = [
   {
     label: "Reports",
     items: [
-      { to: "/reports", label: "Saved Reports", icon: Bookmark },
-      { to: "/reports", label: "Downloads", icon: Download },
+      {
+        to: "/reports",
+        label: "Reports",
+        icon: FileText,
+        // Built from REPORT_TYPES so the nav can't drift from the reports that
+        // actually exist. Each child deep-links to one via `?report=`, which the
+        // page reads back (see routes/_app.reports.tsx).
+        children: REPORT_TYPES.map((t) => ({
+          to: "/reports" as const,
+          label: t.name,
+          search: { report: t.id },
+        })),
+      },
     ],
   },
   {
@@ -85,8 +93,22 @@ const adminGroup = {
   ],
 } as const;
 
+// A nav entry matches the current location. Path alone isn't enough: the five
+// Reports children all live at `/reports` and are told apart by `?report=`, so
+// an entry carrying a `search` matches only that value, and an entry without
+// one matches only the bare route (the Reports picker, not an open report).
+function useIsActive() {
+  const { pathname, search } = useLocation();
+  const openReport = (search as { report?: string } | undefined)?.report;
+  return (item: { to: string; search?: { report: string } }) => {
+    if (pathname !== item.to) return false;
+    if (item.search) return item.search.report === openReport;
+    return openReport === undefined;
+  };
+}
+
 export function Sidebar() {
-  const { pathname } = useLocation();
+  const isActive = useIsActive();
   const { business } = useBusinessData();
   const { signOut, role } = useAuth();
   const isSuperadmin = role === "superadmin";
@@ -97,7 +119,9 @@ export function Sidebar() {
     ? "Super Admin"
     : business.name || "Your business";
   const ownerInitial = isSuperadmin ? "A" : (business.ownerName?.[0] ?? "?");
-  const ownerName = isSuperadmin ? "Administrator" : business.ownerName || "Owner";
+  const ownerName = isSuperadmin
+    ? "Administrator"
+    : business.ownerName || "Owner";
 
   const handleLogout = async () => {
     try {
@@ -136,15 +160,14 @@ export function Sidebar() {
 
                 // Expandable parent with child links (e.g. Data Sources).
                 if ("children" in it) {
-                  const parentActive = pathname === it.to;
-                  const anyChildActive = it.children.some(
-                    (c) => pathname === c.to,
-                  );
+                  const parentActive = isActive(it);
+                  const anyChildActive = it.children.some((c) => isActive(c));
                   const highlighted = parentActive || anyChildActive;
                   return (
                     <li key={it.label}>
                       <Link
                         to={it.to}
+                        search={{}}
                         className="flex items-center gap-3 px-3 py-2 text-sm rounded-sm transition-colors relative"
                         style={{
                           color: highlighted
@@ -163,11 +186,12 @@ export function Sidebar() {
                       </Link>
                       <ul className="mt-0.5 ml-[1.45rem] pl-3 border-l border-[var(--border-warm)] space-y-0.5">
                         {it.children.map((c) => {
-                          const childActive = pathname === c.to;
+                          const childActive = isActive(c);
                           return (
                             <li key={c.label}>
                               <Link
                                 to={c.to}
+                                search={"search" in c ? c.search : {}}
                                 className="flex items-center px-3 py-1.5 text-[13px] rounded-sm transition-colors relative"
                                 style={{
                                   color: childActive
@@ -191,7 +215,7 @@ export function Sidebar() {
                   );
                 }
 
-                const active = pathname === it.to;
+                const active = isActive(it);
                 return (
                   <li key={it.label}>
                     <Link
