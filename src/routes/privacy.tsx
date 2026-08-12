@@ -143,12 +143,6 @@ function PrivacyPolicy() {
                 these platforms when you connect them, subject to their own
                 terms and policies.
               </li>
-              <li>
-                <strong>AI text assistance (Google Gemini), optional.</strong>{" "}
-                Used only to polish the wording of risk and recommendation copy
-                and to tidy display labels. It is never used to make decisions
-                about you, and the platform functions fully without it.
-              </li>
             </ul>
             <p className="mt-3">
               We may also disclose information if required by law, or to protect

@@ -8,8 +8,8 @@ deterministically from real store + marketing data. Server-rendered React on
 ## Non-negotiable rules
 - **All numbers are deterministic.** Every score/valuation/risk/£ figure is
   computed in plain, auditable code in `src/lib/analytics.ts`. **Never route a
-  number through an LLM.** Gemini (`src/lib/ai.ts`) is optional and only polishes
-  the _prose_ of risk/action copy — never figures.
+  number through an LLM.** There is no AI in the product at all — the risk and
+  action copy is deterministic templating too. Don't reintroduce one.
 - **Server-only secrets.** API tokens and OAuth secrets live in server functions
   / `process.env`, **never** `VITE_`-prefixed (that inlines them into the browser
   bundle). The only public client var is the Supabase anon key.
@@ -42,6 +42,6 @@ deterministically from real store + marketing data. Server-rendered React on
 - `docs/architecture.md` — wiring, data model, connector pattern.
 - `docs/report-calculations.md` — exactly how every figure is computed.
 - `docs/data-display.md` — what's shown where + the no-dummy-data rule.
-- `docs/env-vars.md` — every env var (Supabase, each connector, Gemini).
+- `docs/env-vars.md` — every env var (Supabase, each connector, Stripe).
 - `docs/*-ads-setup.md`, `docs/ga4-setup.md` — per-connector setup + troubleshooting.
 - `docs/changelog.md` — newest-first change log.

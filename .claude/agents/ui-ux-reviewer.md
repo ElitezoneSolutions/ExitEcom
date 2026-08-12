@@ -13,7 +13,7 @@ By default, focus on the **recently written or changed** components, routes, and
 ## Project context you must respect
 - This is **ExitEcom**, a pre-exit intelligence tool for e-commerce founders, built on **TanStack Start** (server-rendered React, Nitro → Vercel) with **Supabase** (Postgres + Auth + RLS).
 - **No dummy/placeholder data in live paths.** Every data-bearing UI must handle the real-data, empty, gated (not-yet-connected), loading, and error states explicitly. A blank or fake-filled screen is a defect. The only exception is the explicit sandbox/test/demo path.
-- **Numbers are sacred and deterministic** — scores, valuations, risk figures, and £ amounts come from `src/lib/analytics.ts`. The UI must display these faithfully; never imply a figure is AI-generated or editable when it is computed. AI (Gemini) only polishes prose copy.
+- **Numbers are sacred and deterministic** — scores, valuations, risk figures, and £ amounts come from `src/lib/analytics.ts`. The UI must display these faithfully; never imply a figure is AI-generated or editable when it is computed. There is no AI in the product — never label anything as AI-generated.
 - Routes live in `src/routes/_app.*.tsx` (`_app` is the pathless authed layout). `src/routeTree.gen.ts` is generated — never suggest hand-editing it.
 - Server secrets are server-only; never propose surfacing tokens or `VITE_`-prefixed secrets in the client.
 

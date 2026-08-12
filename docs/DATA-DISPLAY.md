@@ -24,7 +24,7 @@ live paths:
 
 | Data | Where it's collected | DB table | Surfaced on |
 | --- | --- | --- | --- |
-| Business profile (name, industry, channel, country, age, monthly revenue, founder context, exit timeframe) | **Onboarding** (`src/routes/onboarding.tsx`) | `businesses` | Profile (`/profile`) |
+| Business profile (name, industry, channel, country, age, monthly revenue, founder dependency, exit timeframe) | **Onboarding** (`src/routes/onboarding.tsx`) | `businesses` | Profile (`/profile`) — fully editable there |
 | Raw store data: orders, products, customers, store metadata | **Shopify Connect** (`syncShopifyStoreFn`) | `shopify_stores`, `shopify_orders`, `shopify_products`, `shopify_customers` | Store Data (`/store-data`) |
 | Meta Ads: account, monthly insights (spend/ROAS), campaigns | **Meta Connect** (`_app.meta-connect`, OAuth + sync server fn) | `meta_accounts`, `meta_monthly_insights`, `meta_campaigns` | Meta Data (`/meta-data`); enriches Exit Score (Marketing Efficiency) |
 | Google Ads: account, monthly insights (spend/ROAS), campaigns | **Google Connect** (`_app.google-connect`, OAuth + sync server fn) | `google_accounts`, `google_monthly_insights`, `google_campaigns` | Google Data (`/google-data`); enriches Exit Score (Marketing Efficiency) |
@@ -93,7 +93,7 @@ after that they render the persisted snapshot with a **"Re-compute"** button.
 ## Flow
 
 ```
-Sign up ──▶ Onboarding (4 steps) ──writes businesses row──▶ Data Sources
+Sign up ──▶ Onboarding (3 steps) ──writes businesses row──▶ Data Sources
                                                                 │
                                                    Connect Shopify
                                           (syncShopifyStoreFn → syncStore)
@@ -114,10 +114,19 @@ Sign up ──▶ Onboarding (4 steps) ──writes businesses row──▶ Data
                                         Dashboard + result pages show real numbers
 ```
 
-- Onboarding Step 2 is **info-only**: Shopify is "connect after setup", all other
-  integrations are "Coming soon". No fake "Connected" toggles.
-- Onboarding Step 4 **inserts** the `businesses` row + a zeroed `valuation_data`
-  row (no fabricated valuation), then routes to `/data-sources`.
+- Onboarding Step 1 (Business Basics) and Step 2 (Founder Context) are pure
+  data capture — every field starts **blank**, so a saved value is always a
+  deliberate answer rather than a default we picked. Answers are drafted to
+  `localStorage` between steps and cleared on a successful save.
+- Every choice comes from `src/lib/profileOptions.ts`, shared with `/profile`,
+  so a value chosen at signup is always selectable later. Only Shopify is
+  selectable as a channel; the rest are listed but disabled ("Coming soon") —
+  no fake "Connected" toggles.
+- Onboarding Step 3 **inserts** the `businesses` row + a zeroed `valuation_data`
+  row (no fabricated valuation), then routes to `/data-sources`. If the save
+  fails it shows a retry state — it never claims success it didn't achieve.
+- `/profile` edits the same row through the same dropdowns, plus the three
+  founder-dependency answers, and shows which fields are still blank.
 
 ## Status — result pages wired to real data
 

@@ -70,6 +70,12 @@ export interface BusinessData {
   country: string;
   monthlyRevenue: string;
   exitTimeframe: string;
+  // Founder-dependency answers, collected at onboarding and editable on
+  // /profile. How much runs through the founder personally is one of the first
+  // things an acquirer probes.
+  paidAdManager: string;
+  supplierManager: string;
+  hasDocumentedSops: string;
   url?: string;
   revenueTTM: number;
   revenueMonthly: { m: string; v: number }[];
@@ -167,6 +173,9 @@ const EMPTY_BUSINESS: BusinessData = {
   country: "",
   monthlyRevenue: "",
   exitTimeframe: "",
+  paidAdManager: "",
+  supplierManager: "",
+  hasDocumentedSops: "",
   url: "",
   revenueTTM: 0,
   revenueMonthly: [],
@@ -1208,6 +1217,9 @@ function useBusinessDataImpl() {
         country: bizData.country ?? "",
         monthlyRevenue: bizData.monthly_revenue ?? "",
         exitTimeframe: bizData.exit_timeframe ?? "",
+        paidAdManager: bizData.paid_ad_manager ?? "",
+        supplierManager: bizData.supplier_relationship_manager ?? "",
+        hasDocumentedSops: bizData.has_documented_sops ?? "",
         url: bizData.url ?? "",
         revenueMonthly:
           (valData?.revenue_monthly as { m: string; v: number }[] | null) ?? [],
@@ -2499,6 +2511,9 @@ function useBusinessDataImpl() {
           age: updatedFields.age,
           monthly_revenue: updatedFields.monthlyRevenue,
           exit_timeframe: updatedFields.exitTimeframe,
+          paid_ad_manager: updatedFields.paidAdManager,
+          supplier_relationship_manager: updatedFields.supplierManager,
+          has_documented_sops: updatedFields.hasDocumentedSops,
         })
         .eq("id", business.id);
 

@@ -22,7 +22,6 @@ This repository is a server-rendered React app built on **TanStack Start**.
 | UI                 | React 19, Tailwind CSS v4, [shadcn/ui](https://ui.shadcn.com) (Radix) |
 | Data fetching      | TanStack Query                                                 |
 | Auth & database    | [Supabase](https://supabase.com) (Postgres + Auth + RLS)       |
-| AI / intelligence  | Google Gemini (`@google/generative-ai`) — **optional, cosmetic copy only** (never numbers) |
 | Charts / motion    | Recharts, Framer Motion                                         |
 | Build / deploy     | Vite 7, Nitro → Vercel (Cloudflare-compatible)                 |
 | Language / tooling | TypeScript, ESLint, Prettier                                   |
@@ -73,7 +72,6 @@ Create a `.env` file in the project root:
 | ------------------------ | -------- | ----------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`      | No\*     | Supabase project URL. Exposed to the client.                            |
 | `VITE_SUPABASE_ANON_KEY` | No\*     | Supabase anon key. Exposed to the client.                               |
-| `GEMINI_API_KEY`         | No       | **Server-side only.** Optional cosmetic AI: polishes the _prose_ of risk/action copy and tidies the Business Profile fields into consistent display labels (e.g. `below 10k dollar` → `< $10k`, keeping your own currency — never converting it). Never touches numbers. |
 
 \* **Demo Mode:** if Supabase vars are missing or left as placeholders, the app
 runs against `localStorage` only (auth is mocked; see
@@ -87,12 +85,14 @@ configured" notice and the rest of the app is unaffected. See
 [`docs/env-vars.md`](docs/env-vars.md) for the full list and each connector's
 `docs/*-ads-setup.md` / `docs/ga4-setup.md` guide.
 
-> **Never set `VITE_GEMINI_API_KEY`.** The `VITE_` prefix inlines the value into
-> the browser bundle and would leak the key publicly. The key is read **only**
-> via `process.env.GEMINI_API_KEY` inside a server function (`src/lib/ai.ts`).
-> Without the key, risk/action copy falls back to deterministic templates and the
-> app works fully. **All valuation/score/risk numbers are deterministic and never
-> depend on Gemini.**
+> **No AI.** ExitEcom has no AI integration and no AI environment variables.
+> Every valuation/score/risk number **and** every line of risk/action copy is
+> produced deterministically in `src/lib/analytics.ts`.
+
+> **Never `VITE_`-prefix a secret.** The prefix inlines the value into the
+> browser bundle and would leak it publicly. Server-side credentials are read
+> **only** via `process.env` inside a server function. The one intentionally
+> public client variable is the Supabase anon key.
 
 ---
 
@@ -151,7 +151,6 @@ src/
 │   ├── supabase.ts         # Supabase client + isSupabaseConfigured flag
 │   ├── shopify.ts          # `syncShopifyStoreFn` server fn: pulls raw Shopify data
 │   ├── analytics.ts        # Deterministic engine: metrics, score, valuation, risks
-│   ├── ai.ts               # OPTIONAL Gemini copy-polish (prose only, never numbers)
 │   ├── mock.ts             # Legacy scaffolding for 3 unwired pages + formatters
 │   ├── error-capture.ts    # Out-of-band SSR error capture
 │   ├── error-page.ts       # Branded 500 HTML page
@@ -237,18 +236,14 @@ report — it only confirms what was pulled.
                rate, product concentration, margins, EBITDA/SDE, exit
                score across 9 dimensions, valuation multiples, risks, actions)
                                           │
-                       (optional) enrichRiskCopyFn  ← src/lib/ai.ts
-                       Gemini polishes risk/action PROSE only — never numbers
-                                          │
                                           ▼
               useBusinessData.saveComputedReport(report)
               → React state + localStorage + Supabase
                 (valuation_data / risks / actions)
 ```
 
-`syncShopifyStoreFn` (`src/lib/shopify.ts`) and `enrichRiskCopyFn`
-(`src/lib/ai.ts`) are TanStack **server functions**, so the Admin API token and
-the Gemini key never reach the browser. The token is **never** stored in
+`syncShopifyStoreFn` (`src/lib/shopify.ts`) is a TanStack **server function**, so
+the Admin API token never reaches the browser. The token is **never** stored in
 `localStorage`; it lives only in the RLS-protected `shopify_stores` row and is
 lazily re-fetched when a sync runs.
 

@@ -8,8 +8,8 @@ and SSR error handling. For setup and a high-level overview, start with the root
 > **Design rule (2026-06):** sync and reporting are decoupled. Connecting a store
 > only authenticates, pulls, and **stores raw data** — it never produces a report.
 > Reports run **on demand** and every number is computed deterministically in
-> `src/lib/analytics.ts`. Gemini (`src/lib/ai.ts`) is optional and only polishes
-> the _prose_ of risk/action copy — it never produces a number.
+> `src/lib/analytics.ts`. There is no AI in the product at all — not for the
+> figures, and not for the risk/action copy.
 
 ---
 
@@ -158,7 +158,7 @@ data, and exposes `{ ...bd, input, hasData, hasRun, report, computing, run }`.
 
 `syncShopifyStoreFn` is a TanStack **server function** (`POST`), so the Admin API
 token stays on the server. It **only pulls raw data** — no normalization, no
-Gemini, no report. Built with the current builder API:
+report. Built with the current builder API:
 
 ```ts
 createServerFn({ method: "POST" })
@@ -221,14 +221,14 @@ always yields the same numbers.
 - `computeFullReport(input)` → `{ metrics, score, valuation, risks, actions,
   businessUpdate }` — the single entry point used by `useReport`.
 
-### Optional AI copy-polish (`src/lib/ai.ts`)
+### No AI layer
 
-`enrichRiskCopyFn` is the **only** place AI is used. It is a server function that
-takes deterministically-computed risk copy and asks `gemini-2.5-flash` to rewrite
-**only** the `description`/`recommendation` _prose_ (explicitly instructed not to
-change any number). The key is read via `process.env.GEMINI_API_KEY` (server-only;
-**never** `VITE_`-prefixed). If the key is absent or anything fails, it returns the
-original text unchanged (`passthrough`). Numbers never pass through here.
+ExitEcom has **no AI integration**. There was once an optional Gemini copy-polish
+server function (`src/lib/ai.ts`); it was removed along with the
+`@google/generative-ai` dependency and the `GEMINI_API_KEY` variable. Every risk
+and action string is a deterministic template in `src/lib/analytics.ts`, so the
+same data always produces the same words as well as the same numbers. Don't
+reintroduce a model in this path.
 
 ---
 
@@ -486,13 +486,12 @@ Stripe key and never writes subscription state.
   absent — **not** to mock data (the live data layer no longer imports `mock.ts`).
 - **All numbers are deterministic.** Valuation, score and risk figures are
   computed in `src/lib/analytics.ts` and must stay auditable. **Never** route a
-  number through an LLM. Gemini (`src/lib/ai.ts`) is **optional and cosmetic only**
-  — it rewrites risk/action _prose_ and nothing else. The app is fully functional
-  with no Gemini key (copy falls back to deterministic templates).
-- **Server-only secrets** (Shopify token, Gemini key) belong inside server
-  functions / `process.env`, never in `VITE_`-prefixed client code (except the
-  Supabase anon key, which is public by design). In particular **never set
-  `VITE_GEMINI_API_KEY`** — it would inline the key into the browser bundle. The
+  number through an LLM. There is no AI in the product at all — the risk and
+  action copy is deterministic templating too.
+- **Server-only secrets** (the Shopify token, each OAuth secret) belong inside
+  server functions / `process.env`, never in `VITE_`-prefixed client code (except
+  the Supabase anon key, which is public by design) — the `VITE_` prefix inlines
+  the value into the browser bundle and leaks it publicly. The
   Shopify Admin token is also kept out of `localStorage`; it lives only in the
   RLS-protected `shopify_stores` row.
 - The deployed entry is `src/server.ts`; keep its catastrophic-error handling in

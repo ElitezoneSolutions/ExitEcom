@@ -109,11 +109,11 @@ guide in `docs/billing-setup.md`.
 | `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_`) for the `/api/stripe-webhook` endpoint; every event is verified against it |
 | `STRIPE_PRICE_PROFESSIONAL` | The recurring Price id (`price_…`) for the £199/mo plan |
 
-## AI (optional)
+## AI
 
-| Variable | Description |
-|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key — used only to polish risk/action copy. The platform works fully without it; all numbers are deterministic |
+None. ExitEcom has no AI integration and no AI-related environment variables —
+every figure and every line of risk/action copy is produced deterministically in
+`src/lib/analytics.ts`.
 
 ---
 
@@ -153,7 +153,4 @@ GA4_OAUTH_REDIRECT_URI=https://yourdomain.com/ga4-oauth-callback
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRICE_PROFESSIONAL=
-
-# AI copy polish (optional)
-# GEMINI_API_KEY=
 ```

@@ -2,6 +2,70 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Onboarding + Profile reworked, Gemini removed
+
+Three changes that ended up related: the profile screens now share one set of
+option lists, and removing the AI made the free-text fields they replaced
+unnecessary.
+
+### Gemini removed entirely
+
+`src/lib/ai.ts`, the `@google/generative-ai` dependency and `GEMINI_API_KEY` are
+gone. ExitEcom now has **no AI integration at all** — figures were already
+deterministic, and the risk/action copy is deterministic templating.
+
+- `enrichRiskCopyFn` was dead code — exported but never called from anywhere.
+- `normalizeBusinessProfileFn` tidied free-text profile entries (`below 10k
+  dollar` → `< $10k`). The profile fields are dropdowns now, so there is nothing
+  left to tidy.
+- Purged from README, CLAUDE.md, `.env.example`, `docs/env-vars.md`,
+  `docs/architecture.md`, `docs/report-calculations.md` and the privacy policy's
+  third-party disclosure.
+
+### Business Profile: dropdowns, founder dependency, completeness
+
+`/profile` was seven free-text boxes, so "beauty", "Beauty" and "Beauty &
+Skincare" were three different industries and nothing matched what onboarding
+had saved.
+
+- Every field except Business Name is now a **dropdown** — industry, primary
+  channel, country, business age, monthly revenue, exit timeframe — sourced from
+  the new `src/lib/profileOptions.ts`, which onboarding imports too.
+- **The three founder-dependency answers are now editable.** Onboarding has
+  always asked who runs paid ads, who handles suppliers and whether SOPs are
+  documented, written all three to `businesses` — and then never read them back.
+  They weren't loaded into `BusinessData`, shown anywhere, or updatable. Now they
+  are all three.
+- Fields are grouped (Business Basics / Exit Intent / Founder Dependency), Save
+  is disabled until something actually changes, and a **Profile Completeness**
+  card names the fields still blank.
+- Fixed the business-age warning: it ran `parseFloat("Under 12 months")` → `NaN`,
+  so the "under 3 years compresses your multiple" hint never fired for the
+  youngest businesses. `businessAgeYears()` reads the conservative end of each
+  band ("3–5 years" → 3) and returns `null` for unknown.
+- A stored value outside the current list stays selectable (`withCurrentValue`),
+  so opening the page can't silently rewrite an older answer.
+
+### Onboarding
+
+- **No pre-filled guesses.** Industry, age, exit timeframe and the founder
+  questions used to arrive pre-selected, so skimming the form saved answers we
+  invented. All start blank and are required.
+- **A Back button.** The flow was one-way: a typo on step 1 could only be fixed
+  after finishing.
+- **Answers survive a refresh** via a `localStorage` draft, cleared on save.
+- **A failed save no longer shows "You're all set."** It toasted an error and
+  then displayed the success screen anyway, dropping the founder on an empty
+  dashboard with no idea their answers were lost. There's now a retry state.
+- Step 2's copy claimed the answers feed "our AI" — they don't, and there is no
+  AI. It now explains why founder dependency matters to a buyer.
+- Monthly revenue is brackets only; the free-typed custom amount is gone, since
+  every calculation uses real Shopify figures rather than this field.
+- Shared `Input`/`Select` moved to `src/components/ex/FormField.tsx` so both
+  screens use the same controls.
+
+No migration: all four columns already exist in `20260525000000_init.sql`.
+
 ## 2026-08-12 — Sidebar Reports nav tells the truth
 
 The Reports group offered **Saved Reports** and **Downloads**. Both pointed at

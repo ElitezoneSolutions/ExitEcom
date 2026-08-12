@@ -10,9 +10,8 @@ Shopify data into the four reports under **Exit Analysis**:
 
 > **Golden rule:** every number is computed in plain, auditable code in
 > [`src/lib/analytics.ts`](../src/lib/analytics.ts) — synchronously and
-> deterministically. The same raw data always produces the same numbers. AI
-> (Gemini, [`src/lib/ai.ts`](../src/lib/ai.ts)) is optional and only rewrites the
-> _prose_ of risk/action copy; it never produces or alters a figure.
+> deterministically. The same raw data always produces the same numbers. There
+> is no AI anywhere in the pipeline — not for the figures, and not for the copy.
 
 All four reports are derived from a single shared layer of **base metrics**, so
 that layer is documented first.
@@ -289,8 +288,7 @@ a monetary impact:
 Each risk carries five narrative fields, generated from the metrics:
 `description` (with the live numbers interpolated, e.g. _"top product accounts
 for 62% of order-line revenue"_), plus `buyerSees`, `buyerFears`, `buyerDoes`,
-and a `recommendation`. These strings are deterministic templates — and are the
-only thing Gemini may later rephrase (never the numbers).
+and a `recommendation`. These strings are deterministic templates.
 
 > **Related score field:** `riskScore = max(0, 100 − exitScore)`
 > (`buildBusinessUpdate`, [`analytics.ts:842`](../src/lib/analytics.ts)) — the

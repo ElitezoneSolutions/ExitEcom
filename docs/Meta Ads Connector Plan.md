@@ -16,7 +16,7 @@ today runs on a hardcoded `adSpend = revenueTTM * 0.22` guess (`analytics.ts:287
 This plan mirrors the existing Shopify connector exactly: connecting does ONE job
 — authenticate, pull the full dataset, hand raw rows back to persist. No
 normalization-into-score on connect; reports are computed on demand in
-`analytics.ts`. Numbers stay deterministic; Gemini only polishes copy.
+`analytics.ts`. Numbers stay deterministic.
 
 ---
 
@@ -173,7 +173,7 @@ follow-up: pgcrypto-encrypt it, since the UI promises "bank-grade encryption".
      is a traffic source, not a diversified *sales* channel (see review §D).
 6. **`.env.example`** — add `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`,
    `META_OAUTH_REDIRECT_URI` (server-side only; never `VITE_`-prefixed).
-7. **Gemini (`src/lib/ai.ts`)** — no change; numbers stay deterministic.
+7. **No AI layer** — numbers and copy both stay deterministic.
 
 ---
 
