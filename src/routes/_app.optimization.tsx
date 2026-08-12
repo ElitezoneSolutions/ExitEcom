@@ -5,6 +5,10 @@ import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ActionCard } from "@/components/ex/ActionCard";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import {
+  PendingReviewCard,
+  RejectedReviewCard,
+} from "@/components/ex/ReviewStateCard";
 import { useReport } from "@/hooks/useReport";
 import { fmtGBP } from "@/lib/utils";
 
@@ -13,7 +17,10 @@ export const Route = createFileRoute("/_app/optimization")({
 });
 
 function Optimization() {
-  const { isShopifyConnected, report, computing, run } = useReport();
+  // This page shows the APPROVED result for its tool — running submits a
+  // new computation for review rather than publishing one.
+  const { isShopifyConnected, report, computing, run, status, request } =
+    useReport("optimization");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setChecked((c) => ({ ...c, [k]: !c[k] }));
 
@@ -33,13 +40,27 @@ function Optimization() {
           title="Optimization Plan"
           subtitle="The highest-impact actions to increase what buyers will pay."
         />
-        <RunReportCard
-          feature="Optimization Plan"
-          blurb="We turn your store's weak points into a prioritised action plan with an estimated £ uplift for each move."
-          cta="Run Optimization Plan"
-          onRun={run}
-          computing={computing}
-        />
+        {status === "pending" ? (
+          <PendingReviewCard
+            feature="Optimization Plan"
+            submittedAt={request?.createdAt}
+          />
+        ) : status === "rejected" ? (
+          <RejectedReviewCard
+            feature="Optimization Plan"
+            note={request?.adminNote}
+            onRun={run}
+            computing={computing}
+          />
+        ) : (
+          <RunReportCard
+            feature="Optimization Plan"
+            blurb="We turn your store's weak points into a prioritised action plan with an estimated £ uplift for each move."
+            cta="Run Optimization Plan"
+            onRun={run}
+            computing={computing}
+          />
+        )}
       </>
     );
   }

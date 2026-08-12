@@ -44,6 +44,8 @@ deterministically from real store + marketing data. Server-rendered React on
 - `docs/data-display.md` — what's shown where + the no-dummy-data rule.
 - `docs/reports.md` — the Reports feature: the five reports, section slicing,
   branding and the print-to-PDF export.
+- `docs/report-approvals.md` — admin approval gate in front of every computed
+  result: the review queue, the audited override layer, the approval email.
 - `docs/env-vars.md` — every env var (Supabase, each connector, Stripe).
 - `docs/*-ads-setup.md`, `docs/ga4-setup.md` — per-connector setup + troubleshooting.
 - `docs/changelog.md` — newest-first change log.

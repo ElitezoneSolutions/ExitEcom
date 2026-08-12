@@ -1,17 +1,34 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useBusinessData } from "./useBusinessData";
+import { useReportRequests } from "./useReportRequests";
 import {
   computeFullReport,
   type AnalyticsInput,
   type FullReport,
 } from "@/lib/analytics";
+import {
+  applyOverrides,
+  type ReportRequest,
+  type RequestTool,
+} from "@/lib/reportRequests";
 
-// Shared logic for the on-demand report pages (Exit Score, Risk Scanner,
-// Valuation, Optimization). A report is only produced when the user clicks
-// "Run". Once run, it is recomputed deterministically from the stored raw data
-// for display (identical inputs → identical numbers) and re-persisted on demand.
-export function useReport() {
+// Shared logic for the on-demand tool pages (Exit Score, Risk Scanner,
+// Valuation, Optimization).
+//
+// Results go through admin approval. Clicking "Run" computes the report and
+// submits it for review — it does NOT publish anything. What the founder sees
+// afterwards is the APPROVED snapshot (the engine's payload with any admin
+// edits applied), not a fresh computation, so the page shows exactly what was
+// signed off rather than something that may have moved since.
+//
+// Pass the tool this page represents; the four are approved independently.
+// Called with no argument (the Reports page) it exposes the per-tool helpers
+// instead of a single report.
+
+export type RunState = "none" | "pending" | "approved" | "rejected";
+
+export function useReport(tool?: RequestTool) {
   const bd = useBusinessData();
   const {
     store,
@@ -19,7 +36,6 @@ export function useReport() {
     products,
     customers,
     business,
-    risks,
     metaMonthly,
     metaCampaigns,
     googleMonthly,
@@ -32,10 +48,10 @@ export function useReport() {
     ga4Channels,
     bankStatementFiles,
     plFiles,
-    saveComputedReport,
   } = bd;
+
+  const requests = useReportRequests(business.id);
   const [computing, setComputing] = useState(false);
-  const [justRan, setJustRan] = useState<FullReport | null>(null);
 
   const input: AnalyticsInput = useMemo(
     () => ({
@@ -117,40 +133,94 @@ export function useReport() {
   );
 
   const hasData = orders.length > 0;
-  const hasRun = business.exitScore > 0 || risks.length > 0;
 
-  const report: FullReport | null = useMemo(() => {
-    if (justRan) return justRan;
-    if (hasRun && hasData) {
-      try {
-        return computeFullReport(input);
-      } catch (err) {
-        console.error("Failed to compute report:", err);
-        return null;
+  const requestFor = useCallback(
+    (t: RequestTool): ReportRequest | null => requests.latest[t],
+    [requests.latest],
+  );
+
+  const statusFor = useCallback(
+    (t: RequestTool): RunState => requestFor(t)?.status ?? "none",
+    [requestFor],
+  );
+
+  /**
+   * The approved result for a tool: the frozen engine payload with the
+   * reviewer's edits applied. Null until an approval exists.
+   */
+  const approvedFor = useCallback(
+    (t: RequestTool): FullReport | null => {
+      const request = requestFor(t);
+      if (!request || request.status !== "approved") return null;
+      return applyOverrides(request.payload, request.overrides);
+    },
+    [requestFor],
+  );
+
+  /** Compute now and submit for review. Publishes nothing. */
+  const submitRun = useCallback(
+    async (t: RequestTool) => {
+      if (!hasData) {
+        toast.error("No store data yet — sync your store first.");
+        return;
       }
-    }
-    return null;
-  }, [justRan, hasRun, hasData, input]);
+      setComputing(true);
+      try {
+        await requests.submit(t, computeFullReport(input));
+        toast.success(
+          "Submitted for review — we'll email you when it's ready.",
+        );
+      } catch (err) {
+        console.error("Failed to submit report request:", err);
+        toast.error("Could not submit your request. Please try again.");
+      } finally {
+        setComputing(false);
+      }
+    },
+    [hasData, input, requests],
+  );
 
-  const run = async () => {
+  /** One computation, all four tools queued (the Reports page). */
+  const submitAllRuns = useCallback(async () => {
     if (!hasData) {
       toast.error("No store data yet — sync your store first.");
       return;
     }
     setComputing(true);
     try {
-      const r = computeFullReport(input);
-      setJustRan(r);
-      await saveComputedReport({
-        businessUpdate: r.businessUpdate,
-        risks: r.risks,
-        actions: r.actions,
-      });
-      toast.success("Report computed from your store data.");
+      await requests.submitAll(computeFullReport(input));
+      toast.success(
+        "Submitted for review — we'll email you when they're ready.",
+      );
+    } catch (err) {
+      console.error("Failed to submit report requests:", err);
+      toast.error("Could not submit your request. Please try again.");
     } finally {
       setComputing(false);
     }
-  };
+  }, [hasData, input, requests]);
 
-  return { ...bd, input, hasData, hasRun, report, computing, run };
+  const report = tool ? approvedFor(tool) : null;
+  const status: RunState = tool ? statusFor(tool) : "none";
+  const request = tool ? requestFor(tool) : null;
+
+  return {
+    ...bd,
+    input,
+    hasData,
+    computing,
+    requestsLoading: requests.loading,
+    refreshRequests: requests.refresh,
+    // Per-tool (when a tool was passed).
+    report,
+    status,
+    request,
+    run: () => (tool ? submitRun(tool) : submitAllRuns()),
+    // Cross-tool helpers (the Reports page).
+    statusFor,
+    approvedFor,
+    requestFor,
+    submitRun,
+    submitAllRuns,
+  };
 }

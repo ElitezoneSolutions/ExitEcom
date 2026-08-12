@@ -5,6 +5,10 @@ import { SectionLabel } from "@/components/ex/SectionLabel";
 import { RiskCard } from "@/components/ex/RiskCard";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import {
+  PendingReviewCard,
+  RejectedReviewCard,
+} from "@/components/ex/ReviewStateCard";
 import { useReport } from "@/hooks/useReport";
 import { fmtGBP } from "@/lib/utils";
 
@@ -13,7 +17,10 @@ export const Route = createFileRoute("/_app/risk-scanner")({
 });
 
 function RiskScanner() {
-  const { isShopifyConnected, report, computing, run } = useReport();
+  // This page shows the APPROVED result for its tool — running submits a
+  // new computation for review rather than publishing one.
+  const { isShopifyConnected, report, computing, run, status, request } =
+    useReport("risk");
 
   if (!isShopifyConnected) {
     return (
@@ -28,13 +35,27 @@ function RiskScanner() {
           title="Risk Scanner"
           subtitle="Buyer-grade risk intelligence — focused, not a firehose."
         />
-        <RunReportCard
-          feature="Risk Scanner"
-          blurb="We surface the risks a buyer will price in — concentration, retention and channel dependency — from your real store data."
-          cta="Run Risk Scanner"
-          onRun={run}
-          computing={computing}
-        />
+        {status === "pending" ? (
+          <PendingReviewCard
+            feature="Risk Scanner"
+            submittedAt={request?.createdAt}
+          />
+        ) : status === "rejected" ? (
+          <RejectedReviewCard
+            feature="Risk Scanner"
+            note={request?.adminNote}
+            onRun={run}
+            computing={computing}
+          />
+        ) : (
+          <RunReportCard
+            feature="Risk Scanner"
+            blurb="We surface the risks a buyer will price in — concentration, retention and channel dependency — from your real store data."
+            cta="Run Risk Scanner"
+            onRun={run}
+            computing={computing}
+          />
+        )}
       </>
     );
   }

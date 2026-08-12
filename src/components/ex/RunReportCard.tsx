@@ -41,7 +41,8 @@ export function RunReportCard({
       </button>
       <p className="mt-4 text-[11px] text-[var(--text-muted)]">
         Computed from your stored Shopify data with deterministic logic — no AI
-        affects the numbers.
+        affects the numbers. Our team reviews the result before it's released;
+        you'll get an email when it's ready.
       </p>
     </div>
   );
@@ -60,10 +61,10 @@ export function RecomputeButton({
       onClick={onRun}
       disabled={computing}
       className="btn-ghost-light text-sm inline-flex items-center gap-2 disabled:opacity-60"
-      title="Recompute from the latest stored data"
+      title="Compute again from the latest stored data and send for review"
     >
       <RefreshCw className={`w-3.5 h-3.5 ${computing ? "animate-spin" : ""}`} />
-      {computing ? "Computing…" : "Recompute"}
+      {computing ? "Submitting…" : "Re-run"}
     </button>
   );
 }

@@ -15,6 +15,7 @@ import {
   Users,
   FileCheck,
   ScrollText,
+  ClipboardCheck,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { REPORT_TYPES } from "@/lib/reportSections";
@@ -92,6 +93,7 @@ const adminGroup = {
   items: [
     { to: "/admin", label: "Overview", icon: ShieldCheck },
     { to: "/admin/users", label: "Users", icon: Users },
+    { to: "/admin/requests", label: "Review Queue", icon: ClipboardCheck },
     { to: "/admin/documents", label: "Documents", icon: FileCheck },
     { to: "/admin/audit", label: "Audit Log", icon: ScrollText },
   ],

@@ -5,6 +5,10 @@ import { PageHeader } from "@/components/ex/PageHeader";
 import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import {
+  PendingReviewCard,
+  RejectedReviewCard,
+} from "@/components/ex/ReviewStateCard";
 import { useReport } from "@/hooks/useReport";
 import { fmtGBP } from "@/lib/utils";
 
@@ -13,7 +17,10 @@ export const Route = createFileRoute("/_app/valuation")({
 });
 
 function Valuation() {
-  const { isShopifyConnected, report, computing, run } = useReport();
+  // This page shows the APPROVED result for its tool — running submits a
+  // new computation for review rather than publishing one.
+  const { isShopifyConnected, report, computing, run, status, request } =
+    useReport("valuation");
   const [open, setOpen] = useState(false);
 
   if (!isShopifyConnected) {
@@ -29,13 +36,27 @@ function Valuation() {
           title="Valuation Engine"
           subtitle="What a buyer will actually pay — and why."
         />
-        <RunReportCard
-          feature="Valuation Engine"
-          blurb="We translate your trailing-twelve-month revenue and earnings into a buyer-grade valuation range with three scenarios."
-          cta="Run Valuation Engine"
-          onRun={run}
-          computing={computing}
-        />
+        {status === "pending" ? (
+          <PendingReviewCard
+            feature="Valuation Engine"
+            submittedAt={request?.createdAt}
+          />
+        ) : status === "rejected" ? (
+          <RejectedReviewCard
+            feature="Valuation Engine"
+            note={request?.adminNote}
+            onRun={run}
+            computing={computing}
+          />
+        ) : (
+          <RunReportCard
+            feature="Valuation Engine"
+            blurb="We translate your trailing-twelve-month revenue and earnings into a buyer-grade valuation range with three scenarios."
+            cta="Run Valuation Engine"
+            onRun={run}
+            computing={computing}
+          />
+        )}
       </>
     );
   }

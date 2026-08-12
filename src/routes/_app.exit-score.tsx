@@ -5,6 +5,10 @@ import { SectionLabel } from "@/components/ex/SectionLabel";
 import { ProgressBar } from "@/components/ex/ProgressBar";
 import { ConnectShopifyGate } from "@/components/ex/ConnectShopifyGate";
 import { RunReportCard, RecomputeButton } from "@/components/ex/RunReportCard";
+import {
+  PendingReviewCard,
+  RejectedReviewCard,
+} from "@/components/ex/ReviewStateCard";
 import { useReport } from "@/hooks/useReport";
 import type { ScoreDimension } from "@/lib/analytics";
 import { fmtGBP, fmtGBPk } from "@/lib/utils";
@@ -14,7 +18,10 @@ export const Route = createFileRoute("/_app/exit-score")({
 });
 
 function ExitScore() {
-  const { isShopifyConnected, report, computing, run } = useReport();
+  // This page shows the APPROVED result for its tool — running submits a
+  // new computation for review rather than publishing one.
+  const { isShopifyConnected, report, computing, run, status, request } =
+    useReport("exit-score");
 
   if (!isShopifyConnected) {
     return (
@@ -32,13 +39,27 @@ function ExitScore() {
           title="Exit Readiness Score"
           subtitle="A buyer-grade assessment of your business across nine critical dimensions."
         />
-        <RunReportCard
-          feature="Exit Readiness Score"
-          blurb="We score your store across nine buyer-grade dimensions using your real orders, products and customers."
-          cta="Run Exit Readiness Score"
-          onRun={run}
-          computing={computing}
-        />
+        {status === "pending" ? (
+          <PendingReviewCard
+            feature="Exit Readiness Score"
+            submittedAt={request?.createdAt}
+          />
+        ) : status === "rejected" ? (
+          <RejectedReviewCard
+            feature="Exit Readiness Score"
+            note={request?.adminNote}
+            onRun={run}
+            computing={computing}
+          />
+        ) : (
+          <RunReportCard
+            feature="Exit Readiness Score"
+            blurb="We score your store across nine buyer-grade dimensions using your real orders, products and customers."
+            cta="Run Exit Readiness Score"
+            onRun={run}
+            computing={computing}
+          />
+        )}
       </>
     );
   }

@@ -11,6 +11,7 @@ export const Route = createFileRoute("/_app/admin")({ component: AdminShell });
 const TABS = [
   { to: "/admin", label: "Overview" },
   { to: "/admin/users", label: "Users" },
+  { to: "/admin/requests", label: "Review Queue" },
   { to: "/admin/documents", label: "Documents" },
   { to: "/admin/audit", label: "Audit Log" },
 ] as const;

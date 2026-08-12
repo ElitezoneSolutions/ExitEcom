@@ -2,6 +2,45 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Computed results go through admin approval
+
+Running Exit Readiness Score, Risk Scanner, Valuation Engine or Optimization
+Plan no longer publishes the result. Each run is queued for review in
+`/admin/requests`; the team reads it, edits anything they want, and approves or
+rejects it. On approval the result is published and the founder is emailed. Until
+then they see "We're processing your request — you'll get an email when it's
+done."
+
+Full write-up in [`report-approvals.md`](report-approvals.md). Highlights:
+
+- **One request per tool.** The four are approved independently, so a founder can
+  have an approved valuation while their risk scan is still in review. The Full
+  Report unlocks only once all four are approved — otherwise it would hand a
+  buyer a document containing an unreviewed risk register.
+- **The payload is frozen at submit time.** If it were recomputed at approval, a
+  Shopify sync in between would move the numbers and the team would be approving
+  something they never saw.
+- **Edits are an audited override layer, not a mutation.** Admin edits are stored
+  as a sparse patch; `applyOverrides()` lays them over the untouched engine
+  payload. The original is always recoverable, `overrideDiff()` shows exactly what
+  changed, every approval writes the change list to `admin_audit_log`, and an
+  untouched request publishes byte-identical deterministic output.
+- **Publishing is scoped to the approving tool.** Every request carries the whole
+  `computeFullReport` payload, so approving a valuation would otherwise publish an
+  unreviewed risk register as a side effect.
+- **Email is best-effort.** Sent by a new `notify-report-ready` Supabase Edge
+  Function over SMTP. If it fails the result is still approved and visible,
+  `notified_at` stays null, and the admin is told the email didn't send — better
+  than rolling back an approval because a mail server was down.
+- **A founder cannot approve their own request.** The insert policy allows only
+  `status = 'pending'` on a business they own, and there is no owner update or
+  delete policy at all. A reviewed request is final; changing a published result
+  means re-running the tool.
+
+**Not live yet.** This needs `supabase db push`, `supabase functions deploy
+notify-report-ready`, and the SMTP function secrets set. Committing the code
+changes nothing in production.
+
 ## 2026-08-12 — Printed reports no longer carry the query string
 
 The browser stamps the page URL into the printed header/footer, so every page of

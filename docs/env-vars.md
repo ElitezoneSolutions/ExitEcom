@@ -109,6 +109,18 @@ guide in `docs/billing-setup.md`.
 | `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_`) for the `/api/stripe-webhook` endpoint; every event is verified against it |
 | `STRIPE_PRICE_PROFESSIONAL` | The recurring Price id (`price_…`) for the £199/mo plan |
 
+## Report approval notifications
+
+| Variable | Where | Description |
+|---|---|---|
+| `APP_URL` | App server env | Base URL used in the "your result is ready" email link. Defaults to `https://dash.exitecom.com` |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | **Supabase Edge Function secrets**, not this app | Used by `notify-report-ready`. Set with `supabase secrets set` — Supabase does not expose the project's auth-email SMTP settings to Edge Functions automatically |
+
+Approval works without any of these; the result is published and visible, only
+the email is skipped. See [`report-approvals.md`](report-approvals.md).
+
+---
+
 ## AI
 
 None. ExitEcom has no AI integration and no AI-related environment variables —

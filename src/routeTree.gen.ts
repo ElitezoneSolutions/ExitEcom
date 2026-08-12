@@ -58,6 +58,7 @@ import { Route as AppBankStatementsDataRouteImport } from './routes/_app.bank-st
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
 import { Route as AppAdminIndexRouteImport } from './routes/_app.admin.index'
 import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
+import { Route as AppAdminRequestsRouteImport } from './routes/_app.admin.requests'
 import { Route as AppAdminDocumentsRouteImport } from './routes/_app.admin.documents'
 import { Route as AppAdminAuditRouteImport } from './routes/_app.admin.audit'
 import { Route as AppAdminUserUserIdRouteImport } from './routes/_app.admin-user.$userId'
@@ -307,6 +308,11 @@ const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AppAdminRoute,
 } as any)
+const AppAdminRequestsRoute = AppAdminRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 const AppAdminDocumentsRoute = AppAdminDocumentsRouteImport.update({
   id: '/documents',
   path: '/documents',
@@ -373,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/admin-user/$userId': typeof AppAdminUserUserIdRoute
   '/admin/audit': typeof AppAdminAuditRoute
   '/admin/documents': typeof AppAdminDocumentsRoute
+  '/admin/requests': typeof AppAdminRequestsRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/admin/': typeof AppAdminIndexRoute
 }
@@ -425,6 +432,7 @@ export interface FileRoutesByTo {
   '/admin-user/$userId': typeof AppAdminUserUserIdRoute
   '/admin/audit': typeof AppAdminAuditRoute
   '/admin/documents': typeof AppAdminDocumentsRoute
+  '/admin/requests': typeof AppAdminRequestsRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/admin': typeof AppAdminIndexRoute
 }
@@ -480,6 +488,7 @@ export interface FileRoutesById {
   '/_app/admin-user/$userId': typeof AppAdminUserUserIdRoute
   '/_app/admin/audit': typeof AppAdminAuditRoute
   '/_app/admin/documents': typeof AppAdminDocumentsRoute
+  '/_app/admin/requests': typeof AppAdminRequestsRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/admin/': typeof AppAdminIndexRoute
 }
@@ -535,6 +544,7 @@ export interface FileRouteTypes {
     | '/admin-user/$userId'
     | '/admin/audit'
     | '/admin/documents'
+    | '/admin/requests'
     | '/admin/users'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -587,6 +597,7 @@ export interface FileRouteTypes {
     | '/admin-user/$userId'
     | '/admin/audit'
     | '/admin/documents'
+    | '/admin/requests'
     | '/admin/users'
     | '/admin'
   id:
@@ -641,6 +652,7 @@ export interface FileRouteTypes {
     | '/_app/admin-user/$userId'
     | '/_app/admin/audit'
     | '/_app/admin/documents'
+    | '/_app/admin/requests'
     | '/_app/admin/users'
     | '/_app/admin/'
   fileRoutesById: FileRoutesById
@@ -1003,6 +1015,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminUsersRouteImport
       parentRoute: typeof AppAdminRoute
     }
+    '/_app/admin/requests': {
+      id: '/_app/admin/requests'
+      path: '/requests'
+      fullPath: '/admin/requests'
+      preLoaderRoute: typeof AppAdminRequestsRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
     '/_app/admin/documents': {
       id: '/_app/admin/documents'
       path: '/documents'
@@ -1030,6 +1049,7 @@ declare module '@tanstack/react-router' {
 interface AppAdminRouteChildren {
   AppAdminAuditRoute: typeof AppAdminAuditRoute
   AppAdminDocumentsRoute: typeof AppAdminDocumentsRoute
+  AppAdminRequestsRoute: typeof AppAdminRequestsRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppAdminIndexRoute: typeof AppAdminIndexRoute
 }
@@ -1037,6 +1057,7 @@ interface AppAdminRouteChildren {
 const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminAuditRoute: AppAdminAuditRoute,
   AppAdminDocumentsRoute: AppAdminDocumentsRoute,
+  AppAdminRequestsRoute: AppAdminRequestsRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppAdminIndexRoute: AppAdminIndexRoute,
 }
