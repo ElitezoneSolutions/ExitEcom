@@ -61,6 +61,10 @@ const groups = [
         to: "/reports",
         label: "Reports",
         icon: FileText,
+        // Children only unfold while the user is on /reports. Unlike Data
+        // Sources (whose children are separate pages), these are five views of
+        // one page, so listing them permanently is noise everywhere else.
+        collapsible: true,
         // Built from REPORT_TYPES so the nav can't drift from the reports that
         // actually exist. Each child deep-links to one via `?report=`, which the
         // page reads back (see routes/_app.reports.tsx).
@@ -109,6 +113,7 @@ function useIsActive() {
 
 export function Sidebar() {
   const isActive = useIsActive();
+  const { pathname } = useLocation();
   const { business } = useBusinessData();
   const { signOut, role } = useAuth();
   const isSuperadmin = role === "superadmin";
@@ -163,6 +168,7 @@ export function Sidebar() {
                   const parentActive = isActive(it);
                   const anyChildActive = it.children.some((c) => isActive(c));
                   const highlighted = parentActive || anyChildActive;
+                  const expanded = !("collapsible" in it) || pathname === it.to;
                   return (
                     <li key={it.label}>
                       <Link
@@ -184,33 +190,35 @@ export function Sidebar() {
                         <Icon className="w-4 h-4 shrink-0" strokeWidth={1.5} />
                         <span className="truncate">{it.label}</span>
                       </Link>
-                      <ul className="mt-0.5 ml-[1.45rem] pl-3 border-l border-[var(--border-warm)] space-y-0.5">
-                        {it.children.map((c) => {
-                          const childActive = isActive(c);
-                          return (
-                            <li key={c.label}>
-                              <Link
-                                to={c.to}
-                                search={"search" in c ? c.search : {}}
-                                className="flex items-center px-3 py-1.5 text-[13px] rounded-sm transition-colors relative"
-                                style={{
-                                  color: childActive
-                                    ? "var(--accent)"
-                                    : "var(--text-secondary)",
-                                  backgroundColor: childActive
-                                    ? "var(--sidebar-active)"
-                                    : "transparent",
-                                }}
-                              >
-                                {childActive && (
-                                  <span className="absolute -left-3 top-1 bottom-1 w-[2px] bg-[var(--accent)]" />
-                                )}
-                                <span className="truncate">{c.label}</span>
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      {expanded && (
+                        <ul className="mt-0.5 ml-[1.45rem] pl-3 border-l border-[var(--border-warm)] space-y-0.5">
+                          {it.children.map((c) => {
+                            const childActive = isActive(c);
+                            return (
+                              <li key={c.label}>
+                                <Link
+                                  to={c.to}
+                                  search={"search" in c ? c.search : {}}
+                                  className="flex items-center px-3 py-1.5 text-[13px] rounded-sm transition-colors relative"
+                                  style={{
+                                    color: childActive
+                                      ? "var(--accent)"
+                                      : "var(--text-secondary)",
+                                    backgroundColor: childActive
+                                      ? "var(--sidebar-active)"
+                                      : "transparent",
+                                  }}
+                                >
+                                  {childActive && (
+                                    <span className="absolute -left-3 top-1 bottom-1 w-[2px] bg-[var(--accent)]" />
+                                  )}
+                                  <span className="truncate">{c.label}</span>
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </li>
                   );
                 }
