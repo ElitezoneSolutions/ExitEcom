@@ -68,6 +68,12 @@ Deno.serve(async (req: Request) => {
   const username = Deno.env.get("SMTP_USER");
   const password = Deno.env.get("SMTP_PASS");
   const from = Deno.env.get("SMTP_FROM") ?? "ExitEcom <no-reply@exitecom.com>";
+  // Gmail (and most providers) will only send as the authenticated account or a
+  // verified "Send mail as" alias — an unverified SMTP_FROM is silently
+  // rewritten to the account address, so the founder sees the raw mailbox.
+  // Reply-To is not policed the same way, so replies reach the right inbox even
+  // while the From is being rewritten.
+  const replyTo = Deno.env.get("SMTP_REPLY_TO") || undefined;
 
   if (!host || !username || !password) {
     // Surfaced to the admin UI as "approved, but not emailed" rather than
@@ -116,6 +122,7 @@ exitecom.com`;
   try {
     await transport.sendMail({
       from,
+      replyTo,
       to: email,
       subject: `Your ${toolName} is ready`,
       text,
