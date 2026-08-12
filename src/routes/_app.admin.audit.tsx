@@ -19,6 +19,67 @@ const fmtDateTime = (iso: string) =>
     minute: "2-digit",
   });
 
+// Metadata is free-form jsonb, and report approvals put a full change list in
+// it — so `String(value)` turned every approval's detail into
+// "changes: [object Object],[object Object]". Objects and arrays are rendered
+// structurally instead, with the override diff spelled out as before → after.
+function Detail({ metadata }: { metadata: AuditLogRow["metadata"] }) {
+  const entries = Object.entries(metadata).filter(
+    ([, v]) => v !== null && v !== undefined && v !== "",
+  );
+  if (entries.length === 0)
+    return <span className="text-[var(--text-muted)]">—</span>;
+
+  return (
+    <div className="space-y-1 text-xs">
+      {entries.map(([key, value]) => {
+        if (key === "changes" && Array.isArray(value)) {
+          if (value.length === 0) {
+            return (
+              <div key={key} className="text-[var(--text-muted)]">
+                published as computed — no edits
+              </div>
+            );
+          }
+          return (
+            <details key={key}>
+              <summary className="cursor-pointer text-[var(--accent)]">
+                {value.length} edit{value.length === 1 ? "" : "s"}
+              </summary>
+              <ul className="mt-1 space-y-0.5 text-[var(--text-muted)]">
+                {value.map((change, i) => {
+                  const c = change as Record<string, unknown>;
+                  return (
+                    <li key={i}>
+                      {String(c.label ?? c.path ?? "field")}:{" "}
+                      <span className="line-through">
+                        {String(c.from ?? "—")}
+                      </span>{" "}
+                      → {String(c.to ?? "—")}
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          );
+        }
+        return (
+          <div key={key} className="text-[var(--text-muted)]">
+            <span className="text-[var(--text-secondary)]">{key}:</span>{" "}
+            {renderValue(value)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderValue(value: unknown): string {
+  if (Array.isArray(value)) return `${value.length} item(s)`;
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 function AdminAudit() {
   const { session } = useAuth();
   const accessToken = session?.access_token ?? "";
@@ -102,16 +163,7 @@ function AdminAudit() {
       key: "metadata",
       header: "Detail",
       csv: (r) => JSON.stringify(r.metadata),
-      render: (r) => {
-        const entries = Object.entries(r.metadata);
-        if (entries.length === 0)
-          return <span className="text-[var(--text-muted)]">—</span>;
-        return (
-          <span className="text-xs text-[var(--text-muted)]">
-            {entries.map(([k, v]) => `${k}: ${String(v)}`).join(", ")}
-          </span>
-        );
-      },
+      render: (r) => <Detail metadata={r.metadata} />,
     },
   ];
 

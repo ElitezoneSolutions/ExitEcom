@@ -4,7 +4,10 @@ import {
   Outlet,
   useLocation,
 } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { RequireSuperAdmin } from "@/components/auth/RouteGuards";
+import { useAuth } from "@/hooks/useAuth";
+import { getPendingCountFn } from "@/lib/admin/analytics";
 
 export const Route = createFileRoute("/_app/admin")({ component: AdminShell });
 
@@ -21,6 +24,26 @@ const TABS = [
 // switches between the admin modules; each module renders through <Outlet/>.
 function AdminShell() {
   const { pathname } = useLocation();
+  const { session } = useAuth();
+  const accessToken = session?.access_token ?? "";
+  // Results stay unpublished until someone approves them, so the count belongs
+  // on every admin page — not only on the one you have to remember to open.
+  const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    getPendingCountFn({ data: { accessToken } })
+      .then((r) => !cancelled && setPending(r.pending))
+      .catch(() => {
+        // A badge is not worth an error state; the queue page reports failures.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Re-checked on navigation so approving something updates the badge.
+  }, [accessToken, pathname]);
+
   return (
     <RequireSuperAdmin>
       <div>
@@ -42,6 +65,17 @@ function AdminShell() {
                 }}
               >
                 {t.label}
+                {t.to === "/admin/requests" && pending > 0 && (
+                  <span
+                    className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-medium align-middle"
+                    style={{
+                      backgroundColor: "var(--accent)",
+                      color: "var(--accent-foreground)",
+                    }}
+                  >
+                    {pending}
+                  </span>
+                )}
                 {active && (
                   <span className="absolute left-0 right-0 -bottom-px h-[2px] bg-[var(--accent)]" />
                 )}

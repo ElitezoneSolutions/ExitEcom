@@ -37,6 +37,18 @@ const fmtDateTime = (iso: string | null) =>
       })
     : "—";
 
+/** How long a pending request has been waiting, in whole hours. */
+function waitHours(iso: string) {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000);
+}
+
+function formatWait(hours: number) {
+  if (hours < 1) return "under an hour";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 // Reuse the shared badge's vocabulary: amber pending, green approved, red
 // rejected.
 const STATUS_BADGE: Record<RequestStatus, "pending" | "connected" | "high"> = {
@@ -54,6 +66,7 @@ function AdminRequests() {
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState<RequestStatus | "all">("pending");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -74,10 +87,27 @@ function AdminRequests() {
     void load();
   }, [load]);
 
-  const visible = useMemo(
-    () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
-    [rows, filter],
-  );
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (
+      rows
+        .filter((r) => filter === "all" || r.status === filter)
+        .filter(
+          (r) =>
+            !q ||
+            `${r.businessName ?? ""} ${r.ownerEmail ?? ""} ${r.toolName}`
+              .toLowerCase()
+              .includes(q),
+        )
+        // Oldest first while reviewing: the founder who has waited longest is the
+        // one to serve next. Reviewed lists stay newest-first.
+        .sort((a, b) =>
+          filter === "pending"
+            ? a.createdAt.localeCompare(b.createdAt)
+            : b.createdAt.localeCompare(a.createdAt),
+        )
+    );
+  }, [rows, filter, query]);
   const pendingCount = rows.filter((r) => r.status === "pending").length;
 
   if (openId) {
@@ -113,7 +143,7 @@ function AdminRequests() {
         }
       />
 
-      <div className="flex items-center gap-1 mb-6">
+      <div className="flex flex-wrap items-center gap-1 mb-6">
         {(["pending", "approved", "rejected", "all"] as const).map((f) => (
           <button
             key={f}
@@ -129,6 +159,12 @@ function AdminRequests() {
             {f === "pending" && pendingCount > 0 && ` (${pendingCount})`}
           </button>
         ))}
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search business, email or tool…"
+          className="ml-auto w-full sm:w-72 bg-transparent border border-[var(--border-warm)] rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--accent)]"
+        />
       </div>
 
       {error && (
@@ -147,9 +183,11 @@ function AdminRequests() {
         <div className="card-light p-10 text-center">
           <p className="font-display text-xl">Nothing to review.</p>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
-            {filter === "pending"
-              ? "Every submitted result has been reviewed."
-              : `No ${filter} requests.`}
+            {query.trim()
+              ? `Nothing matches "${query.trim()}".`
+              : filter === "pending"
+                ? "Every submitted result has been reviewed."
+                : `No ${filter} requests.`}
           </p>
         </div>
       )}
@@ -179,6 +217,21 @@ function AdminRequests() {
                   {r.businessName ?? "Unnamed business"} ·{" "}
                   {r.ownerEmail ?? "no email"} · submitted{" "}
                   {fmtDateTime(r.createdAt)}
+                  {r.status === "pending" && (
+                    <>
+                      {" · "}
+                      <span
+                        style={{
+                          color:
+                            waitHours(r.createdAt) >= 24
+                              ? "var(--risk-medium)"
+                              : undefined,
+                        }}
+                      >
+                        waiting {formatWait(waitHours(r.createdAt))}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
               {r.status === "approved" && (

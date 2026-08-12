@@ -275,7 +275,22 @@ Optionally set `APP_URL` in the **app's** server environment (defaults to
 
 ---
 
-## 10. Files
+## 10. Watching the queue
+
+Nothing publishes until someone approves it, so an unattended queue is a founder
+staring at a processing message. Three places surface it:
+
+- **`/admin` — "Needs your attention"**: results awaiting review, documents to
+  verify, and approvals whose email never sent, plus the longest current wait
+  (amber past 24 hours) and a per-tool breakdown.
+- **A count badge on the Review Queue tab**, on every admin page.
+- **The queue itself** sorts pending **oldest first** and shows each request's
+  wait age.
+
+There is deliberately no alert to the team on submission yet — if volume grows
+past what a glance at the dashboard covers, that's the next thing to add.
+
+## 11. Files
 
 | File | Responsibility |
 |---|---|

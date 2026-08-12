@@ -2,6 +2,33 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-12 — Admin dashboard: lead with the work
+
+The overview reported adoption (users, businesses, documents) but said nothing
+about the review queue — which is now the team's actual job, and the one thing
+that leaves a founder stuck on "we're processing your request" when nobody is
+watching.
+
+- **"Needs your attention" panel** at the top of the overview: results awaiting
+  review, documents to verify, and approvals whose notification email never
+  sent. It states plainly when nothing is waiting rather than showing three
+  zeroes as if they were metrics.
+- **Wait age, not just count.** One request pending three days is a worse failure
+  than ten submitted this morning, so the longest wait is shown and turns amber
+  past 24 hours — on the overview and on each queue row.
+- **Pending count badge on the Review Queue tab**, visible from every admin page.
+  Its own cheap `count` query rather than the full stats call, which scans users,
+  businesses, valuations and documents.
+- **Queue search** by business, email or tool, and pending sorted **oldest
+  first** — the founder who has waited longest is the one to serve next.
+  Reviewed lists stay newest-first.
+- **Fixed the audit log's Detail column.** It ran `String(value)` over free-form
+  jsonb, so every report approval rendered as
+  `changes: [object Object],[object Object]`. Override diffs now expand to
+  `field: old → new`, and "no edits" is stated explicitly rather than shown as an
+  empty list.
+- Seven-day approved/rejected counts and a per-tool breakdown of what's waiting.
+
 ## 2026-08-12 — Approval email sender and Reply-To
 
 The approval email arrived from `exitecomai@gmail.com` rather than the intended
