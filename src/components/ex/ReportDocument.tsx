@@ -537,8 +537,8 @@ export function ReportDocument({
         <p className="report-body">
           Every figure in this report is computed in auditable code from the raw
           data held in your account — the same inputs always produce the same
-          outputs. No language model influences any number; AI is used only to
-          polish the wording of risk and action descriptions.
+          outputs. No language model is involved anywhere: not in the figures,
+          and not in the wording of the risk and action descriptions.
         </p>
         <Table
           head={["Figure", "How it is derived"]}
