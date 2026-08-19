@@ -13,6 +13,7 @@ export const Route = createFileRoute("/_app/data-sources")({
 function DataSources() {
   const {
     business,
+    storeSource,
     disconnectShopify,
     disconnectMeta,
     disconnectGoogle,
@@ -70,7 +71,11 @@ function DataSources() {
       name: "Shopify",
       section: "Store",
       status: isShopifyConnected ? "connected" : "missing",
-      sync: isShopifyConnected ? "Synced live" : "—",
+      sync: isShopifyConnected
+        ? storeSource === "connect"
+          ? "Synced via ExitEcom app"
+          : "Synced live"
+        : "—",
       impact: "Valuation range narrowed by £15k",
       explanation:
         "Your core revenue engine — orders, products and customers. This is all we need to build your Exit Score.",

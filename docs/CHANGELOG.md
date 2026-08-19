@@ -2,6 +2,38 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-19 — Shopify: install an app instead of building one
+
+Connecting Shopify meant building your own custom app and pasting an `shpat_`
+token — a wall for the non-technical founders this product is for. Merchants can
+now install **ExitEcom Connect** (`connect.exitecom.com`) instead, which holds
+the Shopify token and hands us an opaque connection key.
+
+- **Connect Shopify now offers three paths,** in order: install the ExitEcom app
+  (one button, nothing to copy), paste a connection key, or — collapsed under
+  *Advanced* — the original custom-app token form, unchanged.
+- **Automatic handoff.** `startConnectHandoffFn` signs a 30-minute token naming
+  the business; after the merchant approves on Shopify, Connect pushes the whole
+  store to `POST /api/analytic/ingest` in signed chunks. The page polls
+  `shopify_stores` for the result — the install is cross-origin and detours
+  through Shopify, so the database is the only reliable signal.
+- **Push and pull.** The push populates the dashboard immediately; every later
+  refresh pulls through the connection key, so a failed push only delays data to
+  the next sync rather than losing it.
+- **`shopify_stores.connection_key` is back** (dropped in the 2026-06-24
+  removal), alongside `source` = `'connect' | 'custom_app'`. Both paths commit
+  through the same `commitSync`, so a store is stored identically either way.
+- **Both directions are HMAC-signed** with one shared secret
+  (`EXITECOM_LINK_SECRET`); the ingest handler also verifies the named business
+  exists, since a valid signature proves the sender and not the payload.
+- **In the Connect service:** the standalone merchant accounts, `/signup` route
+  and Gmail install-email stack are gone (the dashboard owns accounts now), the
+  three screens are restyled in ExitEcom's own tokens, `app/uninstalled` drops
+  the store immediately, and the unauthenticated `?shop=`-only data routes —
+  which served any store's data to anyone who knew its domain — are removed.
+- **New env vars:** `EXITECOM_LINK_SECRET`, optional `CONNECT_APP_URL`. See
+  [`env-vars.md`](env-vars.md) and [`shopify-connect-setup.md`](shopify-connect-setup.md).
+
 ## 2026-08-12 — Reports: buyer-grade cover and document styling
 
 The reports read as an app screen printed to paper rather than as a document a

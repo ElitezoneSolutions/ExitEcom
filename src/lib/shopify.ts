@@ -462,3 +462,151 @@ export const syncShopifyStoreFn = createServerFn({ method: "POST" })
       sandbox: false,
     };
   });
+
+// ---------------------------------------------------------------------------
+// ExitEcom Connect path (connect.exitecom.com).
+//
+// Instead of building their own Shopify custom app, a merchant installs the
+// ExitEcom Connect app. That service holds the Shopify access token and hands us
+// an opaque connection key (`eea_…`). Two ways the key reaches us:
+//
+//   auto   startConnectHandoffFn mints a signed link → the merchant installs →
+//          Connect pushes the store to /api/analytic/ingest (see
+//          src/lib/analytic-ingest.ts) with the key attached.
+//   manual the merchant copies the key off the Connect success page and pastes
+//          it into the dashboard.
+//
+// Either way, every LATER refresh pulls through syncShopifyViaConnectionKeyFn —
+// one code path, and the merchant never handles a raw Shopify token.
+// ---------------------------------------------------------------------------
+
+/** Public host of the Connect service, no trailing slash. */
+function connectAppUrl(): string {
+  const configured = (process.env.CONNECT_APP_URL ?? "").trim();
+  return (configured || "https://connect.exitecom.com").replace(/\/$/, "");
+}
+
+function connectSecret(): string {
+  return (process.env.EXITECOM_LINK_SECRET ?? "").trim();
+}
+
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Web Crypto, not node:crypto — same fetch runtime constraint as the webhook
+// handlers in src/server.ts.
+async function hmacHex(message: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return toHex(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)),
+  );
+}
+
+function base64url(value: string): string {
+  // btoa is available in the fetch runtime; encode to bytes first so any
+  // non-ASCII in the payload survives.
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** How long a handoff link stays usable. Mirrors the Connect service. */
+const LINK_TTL_MS = 30 * 60 * 1000;
+
+export interface ConnectHandoff {
+  /** Where to send the merchant to install ExitEcom Connect. */
+  url: string;
+}
+
+/**
+ * Start the auto-connect path: mint a signed link token naming this business and
+ * return the Connect install URL. The token is short-lived and carries no secret
+ * of its own, so it is safe to put in a URL the merchant follows.
+ */
+export const startConnectHandoffFn = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { businessId: string; userId?: string; email?: string }) => input,
+  )
+  .handler(async ({ data }): Promise<ConnectHandoff> => {
+    const secret = connectSecret();
+    if (!secret) {
+      throw new Error(
+        "The ExitEcom Connect app isn't configured on this deployment. Use a Shopify custom app token, or contact support.",
+      );
+    }
+    if (!data.businessId) {
+      throw new Error(
+        "Finish setting up your business before connecting Shopify.",
+      );
+    }
+
+    const payload = base64url(
+      JSON.stringify({
+        businessId: data.businessId,
+        userId: data.userId ?? null,
+        email: data.email ?? null,
+        exp: Date.now() + LINK_TTL_MS,
+      }),
+    );
+    const token = `${payload}.${await hmacHex(payload, secret)}`;
+
+    return {
+      url: `${connectAppUrl()}/install?link=${encodeURIComponent(token)}`,
+    };
+  });
+
+/**
+ * Pull a store through ExitEcom Connect using its connection key. Returns the
+ * same ShopifySyncResult shape as the custom-app path — Connect's
+ * getAllStoreData already emits it — so the caller commits it identically.
+ */
+export const syncShopifyViaConnectionKeyFn = createServerFn({ method: "POST" })
+  .inputValidator((input: { connectionKey: string }) => input)
+  .handler(async ({ data }): Promise<ShopifySyncResult> => {
+    const key = data.connectionKey?.trim();
+    if (!key) {
+      throw new Error("A connection key is required.");
+    }
+
+    const res = await fetch(
+      `${connectAppUrl()}/api/store-data?key=${encodeURIComponent(key)}`,
+      { headers: { Accept: "application/json" } },
+    );
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error(
+          "That connection key isn't recognised. Copy it again from the ExitEcom Connect page, or reinstall the app on your store.",
+        );
+      }
+      if (res.status === 502 || res.status === 503) {
+        throw new Error(
+          "Shopify didn't respond while we pulled your store. Please try again in a minute.",
+        );
+      }
+      throw new Error(
+        `Could not reach the ExitEcom Connect service (returned ${res.status}).`,
+      );
+    }
+
+    const result = (await res.json()) as ShopifySyncResult;
+    if (!result?.shop?.shopDomain) {
+      throw new Error(
+        "The ExitEcom Connect service returned an unexpected response.",
+      );
+    }
+    return result;
+  });

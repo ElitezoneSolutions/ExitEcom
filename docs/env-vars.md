@@ -28,6 +28,22 @@ into the browser bundle). Without these set the admin pages render an
 
 ---
 
+## Shopify — ExitEcom Connect
+
+Required for the **Install the ExitEcom app** path on Connect Shopify. Without
+them that card errors and merchants fall back to the connection-key or custom-app
+paths. See [`shopify-connect-setup.md`](shopify-connect-setup.md).
+
+| Variable | Description |
+|---|---|
+| `EXITECOM_LINK_SECRET` | Shared HMAC secret with the ExitEcom Connect service. Signs the outbound `?link=` handoff token and verifies the inbound push signature on `POST /api/analytic/ingest`. **Must be byte-identical** to the value in the Connect service's environment. Generate with `openssl rand -hex 32` |
+| `CONNECT_APP_URL` | *(optional)* Base URL of the Connect service. Defaults to `https://connect.exitecom.com` |
+
+The ingest endpoint also needs `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+(above) — it writes across users, so it uses the service-role client.
+
+---
+
 ## Meta (Facebook) Ads
 
 Required for the in-app OAuth flow. Without these the OAuth tab shows a fallback message and users must use the Access token tab.
@@ -137,6 +153,10 @@ every figure and every line of risk/action copy is produced deterministically in
 # Supabase
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
+
+# Shopify — ExitEcom Connect
+EXITECOM_LINK_SECRET=
+# CONNECT_APP_URL=https://connect.exitecom.com   # optional override
 
 # Meta Ads OAuth
 FACEBOOK_APP_ID=

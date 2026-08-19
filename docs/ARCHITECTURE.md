@@ -192,6 +192,35 @@ The client caller (`routes/app.shopify-connect.tsx`) calls the hook's
 `syncStore(shopDomain, accessToken)`, which invokes the server fn and persists the
 result. The success screen shows **counts only** — never a score or valuation.
 
+### 5b. ExitEcom Connect — the merchant-friendly path
+
+Asking a founder to build a Shopify custom app is the highest-friction step in
+onboarding, so most merchants instead install **ExitEcom Connect**
+(`connect.exitecom.com`, its own repo `ElitezoneSolutions/ExitEcom-Analytic`).
+That service holds the Shopify access token and hands the dashboard an opaque
+connection key (`eea_…`), so no Shopify credential reaches the browser or this
+database. `shopify_stores.source` distinguishes the two:
+
+| `source` | credential column | refresh path |
+|---|---|---|
+| `custom_app` | `access_token` | `syncShopifyStoreFn` (supports incremental) |
+| `connect` | `connection_key` | `syncShopifyViaConnectionKeyFn` (always full) |
+
+Both end at the **same** `commitSync` in the hook, so a store is stored
+identically however it arrived. Two extra pieces:
+
+- **`startConnectHandoffFn`** (`src/lib/shopify.ts`) signs a 30-minute
+  `businessId` token with `EXITECOM_LINK_SECRET` and returns the Connect install
+  URL. This is the auto path — the merchant copies nothing.
+- **`POST /api/analytic/ingest`** (`src/lib/analytic-ingest.ts`, mounted in
+  `src/server.ts` alongside the Stripe webhook because it too needs the raw
+  signed body) receives the store Connect pushes right after install, in signed
+  parts (`meta` → row chunks → `done`) so a multi-MB store never rides on one
+  request. It is the only Shopify writer that uses the **service-role** client.
+
+The push is best-effort; the pull path is the source of truth for every later
+refresh. Full walkthrough and troubleshooting: [`shopify-connect-setup.md`](shopify-connect-setup.md).
+
 ---
 
 ## 5a. Deterministic analytics engine (`src/lib/analytics.ts`)

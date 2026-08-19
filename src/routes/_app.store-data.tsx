@@ -19,6 +19,7 @@ type Tab = "orders" | "products" | "customers";
 function StoreData() {
   const {
     isShopifyConnected,
+    storeSource,
     store,
     orders,
     products,
@@ -166,8 +167,21 @@ function StoreData() {
           }
         />
         <Meta label="Plan" value={store?.plan || "—"} />
+        <Meta
+          label="Connected via"
+          value={
+            storeSource === "connect"
+              ? "ExitEcom app"
+              : storeSource === "custom_app"
+                ? "Custom app"
+                : "—"
+          }
+        />
         <Meta label="Business age" value={metrics.businessAge} />
-        <Meta label="Overall Revenue" value={money.format(metrics.revenueTTM)} />
+        <Meta
+          label="Overall Revenue"
+          value={money.format(metrics.revenueTTM)}
+        />
       </div>
 
       {/* At-a-glance counts */}

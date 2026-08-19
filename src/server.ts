@@ -6,6 +6,10 @@ import {
   handleStripeWebhook,
   isStripeWebhookRequest,
 } from "./lib/stripe-webhook";
+import {
+  handleAnalyticIngest,
+  isAnalyticIngestRequest,
+} from "./lib/analytic-ingest";
 
 type ServerEntry = {
   fetch: (
@@ -90,6 +94,11 @@ export default {
       // verification — handle it here, before TanStack/h3 can consume the body.
       if (isStripeWebhookRequest(request)) {
         return await handleStripeWebhook(request);
+      }
+      // Same reason: ExitEcom Connect signs the exact bytes it POSTs, so the
+      // body must reach the handler unconsumed.
+      if (isAnalyticIngestRequest(request)) {
+        return await handleAnalyticIngest(request);
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
