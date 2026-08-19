@@ -61,10 +61,11 @@ export function ReportDocument({
         {/* The verdict reads as the buyer's opening paragraph, so it carries the
             document's filled panel rather than sitting as loose body copy. */}
         <p className="report-verdict">
-          {storeName} is a {m.businessAge} {business.industry.toLowerCase()}{" "}
-          business trading from {business.country || "—"}, with{" "}
-          {fmtGBP(m.revenueTTM)} of trailing-twelve-month revenue across{" "}
-          {num(m.orderCount)} orders. It scores{" "}
+          {storeName} is a {business.industry.toLowerCase()} business trading
+          from {business.country || "—"}
+          {m.businessAgeYears > 0 ? ` with ${m.businessAge} of history` : ""},
+          turning over {fmtGBP(m.revenueTTM)} across {num(m.orderCount)} orders
+          in the last twelve months. It scores{" "}
           <strong>
             {score.exitScore}/100 ({score.scoreTier})
           </strong>{" "}
@@ -157,10 +158,9 @@ export function ReportDocument({
             ["Industry", business.industry || "—"],
             ["Sales channel", business.channel || "—"],
             ["Country", business.country || "—"],
-            [
-              "Trading history",
-              `${m.businessAge} (${m.businessAgeYears.toFixed(1)} years)`,
-            ],
+            // `businessAge` is already "N.N years" — printing the rounded years
+            // beside it read as "4.0 years (4.0 years)".
+            ["Trading history", m.businessAge],
             ["Reporting currency", m.currency],
             ["Intended exit timeframe", business.exitTimeframe || "—"],
             ["Orders (all time)", num(m.orderCount)],
@@ -596,13 +596,8 @@ export function ReportDocument({
 
       <Contents sections={sections} />
 
-      {sections.map((s, i) => (
-        <Section
-          key={s.id}
-          id={s.id}
-          title={s.title}
-          eyebrow={`Section ${String(i + 1).padStart(2, "0")}`}
-        >
+      {sections.map((s) => (
+        <Section key={s.id} section={s}>
           {bodies[s.id]}
         </Section>
       ))}
@@ -794,21 +789,23 @@ function Contents({ sections }: { sections: ReportSection[] }) {
   );
 }
 
+/**
+ * The number lives in the eyebrow, so the heading uses the unnumbered `label` —
+ * `section.title` carries the number for the contents list and the sticky nav.
+ */
 function Section({
-  id,
-  title,
-  eyebrow,
+  section,
   children,
 }: {
-  id: string;
-  title: string;
-  eyebrow: string;
+  section: ReportSection;
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="report-section">
-      <div className="report-eyebrow">{eyebrow}</div>
-      <h2 className="report-head">{title}</h2>
+    <section id={section.id} className="report-section">
+      <div className="report-eyebrow">
+        Section {String(section.number).padStart(2, "0")}
+      </div>
+      <h2 className="report-head">{section.label}</h2>
       <div className="space-y-5">{children}</div>
     </section>
   );

@@ -17,7 +17,12 @@ import type { FullReport } from "@/lib/analytics";
 
 export interface ReportSection {
   id: string;
+  /** Numbered, for the contents list and the page's sticky nav. */
   title: string;
+  /** The heading on its own — the document pairs it with a "Section NN" eyebrow. */
+  label: string;
+  /** Position in this report, after dropped sections have closed up. */
+  number: number;
 }
 
 export type ReportTypeId =
@@ -139,5 +144,10 @@ export function reportSections(
 ): ReportSection[] {
   return reportTypeById(typeId)
     .sections.filter((id) => sectionAvailable(id, report))
-    .map((id, i) => ({ id, title: `${i + 1}. ${SECTION_TITLES[id]}` }));
+    .map((id, i) => ({
+      id,
+      label: SECTION_TITLES[id],
+      number: i + 1,
+      title: `${i + 1}. ${SECTION_TITLES[id]}`,
+    }));
 }

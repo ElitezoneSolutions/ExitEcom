@@ -45,15 +45,16 @@ There are **five** reports. Four are per-tool; the fifth contains everything.
 
 ## 2. The files
 
-| File                                   | Responsibility                                                     |
-| -------------------------------------- | ------------------------------------------------------------------ |
-| `src/routes/_app.reports.tsx`          | The page: gating, the picker, chrome, the sticky contents nav      |
-| `src/lib/reportSections.ts`            | **Single source of truth** for which sections each report contains |
-| `src/components/ex/ReportDocument.tsx` | The document itself — every section's markup, the cover, colophon  |
-| `src/lib/reportSections.test.ts`       | Locks the slicing, numbering and availability rules (8 tests)      |
-| `src/styles.css`                       | All `report-*` classes plus the `@media print` block               |
-| `src/hooks/useReport.ts`               | Assembles the analytics input and runs `computeFullReport()`       |
-| `src/components/ex/Sidebar.tsx`        | The Reports nav parent and its five deep-linked children           |
+| File                                        | Responsibility                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/routes/_app.reports.tsx`               | The page: gating, the picker, chrome, the sticky contents nav             |
+| `src/lib/reportSections.ts`                 | **Single source of truth** for which sections each report contains        |
+| `src/components/ex/ReportDocument.tsx`      | The document itself — every section's markup, the cover, colophon         |
+| `src/lib/reportSections.test.ts`            | Locks the slicing, numbering and availability rules (8 tests)             |
+| `src/components/ex/ReportDocument.test.tsx` | Renders all five reports from a real `computeFullReport` result (5 tests) |
+| `src/styles.css`                            | All `report-*` classes plus the `@media print` block                      |
+| `src/hooks/useReport.ts`                    | Assembles the analytics input and runs `computeFullReport()`              |
+| `src/components/ex/Sidebar.tsx`             | The Reports nav parent and its five deep-linked children                  |
 
 Nothing else needs to know a report exists.
 
@@ -190,12 +191,22 @@ Numbers are **computed, not fixed**:
 
 ```ts
 .sections.filter((id) => sectionAvailable(id, report))
-.map((id, i) => ({ id, title: `${i + 1}. ${SECTION_TITLES[id]}` }));
+.map((id, i) => ({
+  id,
+  label: SECTION_TITLES[id],
+  number: i + 1,
+  title: `${i + 1}. ${SECTION_TITLES[id]}`,
+}));
 ```
 
 So numbering is always contiguous from 1 within whichever report you opened, and
 sections close up when a gated one drops out. The Full Report is 13 sections
 with everything connected, 11 with neither ad feed nor GA4.
+
+Each section is handed out three ways because its consumers need different
+things: `title` is numbered, for the contents list and the page's sticky nav;
+`label` and `number` are separate, because the document puts the number in the
+section eyebrow and the heading would otherwise carry it twice.
 
 ---
 
@@ -208,7 +219,7 @@ with everything connected, 11 with neither ad feed nor GA4.
 ```tsx
 {
   sections.map((s) => (
-    <Section key={s.id} id={s.id} title={s.title}>
+    <Section key={s.id} section={s}>
       {bodies[s.id]}
     </Section>
   ));
@@ -267,15 +278,15 @@ buyer receives another. Print-to-PDF makes divergence impossible.
 
 The `@media print` block in `src/styles.css` does the work:
 
-| Rule                                                                 | Why                                                                                                                                                                                                                                                |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@page { size: A4; margin: 16mm 14mm }`                              | Page geometry                                                                                                                                                                                                                                      |
-| `print-color-adjust: exact` on `*`                                   | **Browsers strip background colours when printing unless told not to.** Without this the revenue bars, severity dots and the contents/note/stat panels print blank — anything coloured by `background-color` rather than `color` silently vanishes |
-| `aside:not(.report-doc *), .report-chrome` hidden                    | Removes app chrome. Deliberately **not** a blanket `nav` — the document's own contents page is a `<nav class="report-contents">` and must print                                                                                                    |
-| `.grid:not(.report-doc *) { display: block }`                        | Collapses the page's sidebar/document columns without flattening grids _inside_ the document                                                                                                                                                       |
-| `main`, `main > div` constraints removed                             | Lets the sheet span the page                                                                                                                                                                                                                       |
-| `break-inside: avoid` on sections, items, tables, stats, notes       | Stops a risk or a table splitting across pages                                                                                                                                                                                                     |
-| `.report-print-footer` fixed to the bottom                           | The per-page running footer                                                                                                                                                                                                                        |
+| Rule                                                           | Why                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@page { size: A4; margin: 16mm 14mm }`                        | Page geometry                                                                                                                                                                                                                                      |
+| `print-color-adjust: exact` on `*`                             | **Browsers strip background colours when printing unless told not to.** Without this the revenue bars, severity dots and the contents/note/stat panels print blank — anything coloured by `background-color` rather than `color` silently vanishes |
+| `aside:not(.report-doc *), .report-chrome` hidden              | Removes app chrome. Deliberately **not** a blanket `nav` — the document's own contents page is a `<nav class="report-contents">` and must print                                                                                                    |
+| `.grid:not(.report-doc *) { display: block }`                  | Collapses the page's sidebar/document columns without flattening grids _inside_ the document                                                                                                                                                       |
+| `main`, `main > div` constraints removed                       | Lets the sheet span the page                                                                                                                                                                                                                       |
+| `break-inside: avoid` on sections, items, tables, stats, notes | Stops a risk or a table splitting across pages                                                                                                                                                                                                     |
+| `.report-print-footer` fixed to the bottom                     | The per-page running footer                                                                                                                                                                                                                        |
 
 Two traps to remember if you touch this block:
 
