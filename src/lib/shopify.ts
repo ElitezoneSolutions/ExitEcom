@@ -592,6 +592,14 @@ export const syncShopifyViaConnectionKeyFn = createServerFn({ method: "POST" })
           "That connection key isn't recognised. Copy it again from the ExitEcom Connect page, or reinstall the app on your store.",
         );
       }
+      // 409: the installation is dead (its Shopify refresh token expired or was
+      // revoked). Retrying can't fix it — only reinstalling can — so say that
+      // rather than inviting the merchant to try again.
+      if (res.status === 409) {
+        throw new Error(
+          "Your Shopify connection has expired. Reinstall the ExitEcom app on your store to reconnect it — your data and reports are unaffected.",
+        );
+      }
       if (res.status === 502 || res.status === 503) {
         throw new Error(
           "Shopify didn't respond while we pulled your store. Please try again in a minute.",

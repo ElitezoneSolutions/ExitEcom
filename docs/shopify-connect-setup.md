@@ -49,6 +49,19 @@ Every later refresh — "Sync now", auto-on-stale, `resyncStore` — goes throug
 `syncShopifyViaConnectionKeyFn`, i.e. the **pull** path. That means a failed
 push degrades to "the data arrives on the next sync", never to data loss.
 
+## Token lifecycle
+
+Shopify no longer accepts non-expiring Admin API tokens, so Connect requests an
+**expiring** offline token: a ~1 hour access token plus a ~90 day refresh token
+that rotates on each use. Connect refreshes on demand; the dashboard never sees a
+Shopify token either way.
+
+The consequence to know about: **an installation that goes 90 days without a sync
+must be reinstalled.** `/api/store-data` returns **409** in that case, and
+`syncShopifyViaConnectionKeyFn` surfaces "Your Shopify connection has expired.
+Reinstall the ExitEcom app on your store" — stored data and reports are
+unaffected.
+
 ## Security
 
 - **Both directions are HMAC-signed** with the same shared secret. An unsigned or

@@ -2,6 +2,21 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-19 — Shopify Connect: expiring offline tokens
+
+Shopify stopped accepting non-expiring Admin API tokens, which the OAuth code
+exchange returns by default. Installs appeared to succeed and then every data
+pull failed with `[API] Non-expiring access tokens are no longer accepted`.
+
+- **ExitEcom Connect requests `expiring=1`** and manages the lifecycle: a ~1 hour
+  access token plus a ~90 day refresh token that rotates on every use, refreshed
+  on demand with a 5-minute skew.
+- **A dead installation is a 409, not a 5xx.** `syncShopifyViaConnectionKeyFn`
+  now tells the merchant to reinstall rather than to try again, because retrying
+  cannot fix an expired refresh token.
+- **Admin API version 2024-01 → 2024-10** (2024-01 is long outside Shopify's
+  supported window).
+
 ## 2026-08-19 — Shopify: install an app instead of building one
 
 Connecting Shopify meant building your own custom app and pasting an `shpat_`
