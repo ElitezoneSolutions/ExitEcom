@@ -45,6 +45,15 @@ Connect Shopify therefore offers, in order:
    `postMessage` to wait on. If the row exists but `last_synced_at` is null (a
    partial push), the page pulls the rest itself through the connection key.
 
+5. **Or the dashboard adopts it later.** ExitEcom Connect writes its `shops` row
+   to the **same Supabase project** this app uses, so a finished install is
+   visible here immediately. On opening Connect Shopify, `adoptConnectInstallFn`
+   looks for a `shops` row for this business and pulls the store if it finds one.
+   That makes the link self-healing: a failed push, or a merchant who closed the
+   tab mid-install, no longer leaves the store stranded. `shops` holds Shopify
+   tokens and is RLS-locked with `anon`/`authenticated` revoked, so this lookup is
+   a server function using the service-role client — never a browser query.
+
 Every later refresh — "Sync now", auto-on-stale, `resyncStore` — goes through
 `syncShopifyViaConnectionKeyFn`, i.e. the **pull** path. That means a failed
 push degrades to "the data arrives on the next sync", never to data loss.
@@ -101,6 +110,8 @@ allowed redirect `https://connect.exitecom.com/auth/callback`.
 
 | Symptom | Cause |
 |---|---|
+| `403 [API] This app is not approved to access REST endpoints with protected customer data` | Orders and customers are protected customer data. Declare it in Partner Dashboard → API access requests → Protected customer data access. No review is needed for apps installed only on development stores. The engine uses no customer names or emails, so **Level 1** suffices. |
+| `403 [API] Non-expiring access tokens are no longer accepted` | An install predating the expiring-token flow. Reinstall. |
 | "The ExitEcom Connect app isn't configured on this deployment" | `EXITECOM_LINK_SECRET` is unset here. The other two paths still work. |
 | Install finishes but the dashboard keeps waiting | The push was rejected. Almost always the two secrets don't match — check the Connect service's logs for a 401 from `/api/analytic/ingest`. The merchant can paste their connection key meanwhile. |
 | "That connection key isn't recognised" | The merchant uninstalled the app (which deletes the key) or copied it incompletely. Reinstall. |

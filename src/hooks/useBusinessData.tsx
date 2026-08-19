@@ -19,6 +19,7 @@ import type { DocumentReviewStatus } from "@/components/ex/DocumentStatusBadge";
 import {
   syncShopifyStoreFn,
   syncShopifyViaConnectionKeyFn,
+  adoptConnectInstallFn,
   type RawShopifyStore,
   type RawShopifyOrder,
   type RawShopifyProduct,
@@ -2752,6 +2753,32 @@ function useBusinessDataImpl() {
     );
   };
 
+  /**
+   * Adopt an ExitEcom Connect install that exists but was never linked here.
+   *
+   * ExitEcom Connect writes to the same Supabase project, so a finished install
+   * is visible to us straight away. This closes the gap where the push failed, or
+   * the merchant navigated away before the connect page saw the result: the
+   * dashboard picks the install up by itself.
+   *
+   * Returns the pulled result, or null when there is nothing to adopt. Never
+   * throws — a failed adoption must not break a page that has other work to do.
+   */
+  const adoptConnectInstall = async () => {
+    try {
+      const businessId = await resolveBusinessId(user, business.id, "Shopify");
+      if (!businessId) return null;
+
+      const found = await adoptConnectInstallFn({ data: { businessId } });
+      if (!found) return null;
+
+      return await syncStoreViaConnectionKey(found.connectionKey);
+    } catch (err) {
+      console.warn("[adoptConnectInstall]", err);
+      return null;
+    }
+  };
+
   // Refresh using the stored credentials (manual "Sync now" / auto-on-stale).
   // The access token isn't cached locally, so fetch it from Supabase on demand
   // (only when a sync actually runs) rather than holding it in the browser.
@@ -3760,6 +3787,7 @@ function useBusinessDataImpl() {
     updateBusiness,
     syncStore,
     syncStoreViaConnectionKey,
+    adoptConnectInstall,
     resyncStore,
     disconnectShopify,
     syncMeta,

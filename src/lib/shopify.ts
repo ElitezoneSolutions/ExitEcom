@@ -618,3 +618,46 @@ export const syncShopifyViaConnectionKeyFn = createServerFn({ method: "POST" })
     }
     return result;
   });
+
+/**
+ * Adopt an ExitEcom Connect install that already exists for this business.
+ *
+ * ExitEcom Connect writes its `shops` row to the SAME Supabase project this app
+ * uses, so a completed install is visible here immediately — no push required.
+ * That makes the connection self-healing: if the push failed, or the merchant
+ * closed the tab before the connect page finished polling, the dashboard still
+ * finds the install on its own and pulls the store.
+ *
+ * `shops` holds Shopify tokens, so it is RLS-locked with anon/authenticated
+ * revoked — only the service-role client can read it, which is why this is a
+ * server function and not a browser query.
+ *
+ * Returns null when there is no linked install, so callers can treat "nothing to
+ * adopt" as an ordinary outcome rather than an error.
+ */
+export const adoptConnectInstallFn = createServerFn({ method: "POST" })
+  .inputValidator((input: { businessId: string }) => input)
+  .handler(
+    async ({
+      data,
+    }): Promise<{ connectionKey: string; shopDomain: string } | null> => {
+      if (!data.businessId) return null;
+
+      const { getServiceClient } = await import("./admin/server");
+      const { data: row, error } = await getServiceClient()
+        .from("shops")
+        .select("shop_domain, connection_key")
+        .eq("business_id", data.businessId)
+        .not("connection_key", "is", null)
+        .maybeSingle();
+
+      if (error) {
+        // Never fail a page load over this — the manual paths still work.
+        console.warn("[adoptConnectInstall] lookup failed:", error.message);
+        return null;
+      }
+      if (!row?.connection_key) return null;
+
+      return { connectionKey: row.connection_key, shopDomain: row.shop_domain };
+    },
+  );

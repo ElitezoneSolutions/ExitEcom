@@ -40,7 +40,8 @@ const HANDOFF_TIMEOUT_MS = 5 * 60 * 1000;
 
 function ShopifyConnect() {
   const navigate = useNavigate();
-  const { syncStore, syncStoreViaConnectionKey, refetch } = useBusinessData();
+  const { syncStore, syncStoreViaConnectionKey, adoptConnectInstall, refetch } =
+    useBusinessData();
   const { user } = useAuth();
 
   // Custom-app credentials (Shopify Admin API access token + store domain).
@@ -99,6 +100,31 @@ function ShopifyConnect() {
       toast.error("Connection failed.");
     }
   };
+
+  // On arrival, check whether this business already has a finished ExitEcom
+  // Connect install that was never linked here — the merchant closing the tab
+  // mid-install, or a push that didn't land. ExitEcom Connect shares this Supabase
+  // project, so we can find it and pull it without asking them to do anything.
+  // Runs once, silently: finding nothing is the normal case.
+  const adoptAttempted = useRef(false);
+  useEffect(() => {
+    if (adoptAttempted.current) return;
+    adoptAttempted.current = true;
+
+    let cancelled = false;
+    (async () => {
+      const result = await adoptConnectInstall();
+      if (cancelled || !result) return;
+      setSummary(result);
+      setSyncStatus("success");
+      await refetch();
+      toast.success("Your Shopify store was already connected — data synced.");
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── ExitEcom Connect: automatic handoff ─────────────────────────────────
   //
