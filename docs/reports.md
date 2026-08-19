@@ -33,13 +33,13 @@ Three properties follow from that, and they're the point of the whole design:
 
 There are **five** reports. Four are per-tool; the fifth contains everything.
 
-| Report               | Id             | What it's for                                                            |
-| -------------------- | -------------- | ------------------------------------------------------------------------ |
-| Exit Readiness Score | `exit-score`   | How the business scores across all nine dimensions, and what drives each |
-| Valuation Engine     | `valuation`    | What it's worth now and after optimization, with the full earnings basis |
-| Risk Scanner         | `risk`         | Every risk diligence will surface, and its modelled valuation impact     |
-| Optimization Plan    | `optimization` | Prioritised actions that close the value gap, with steps and £ uplift    |
-| Full Report          | `full`         | All thirteen sections as one document                                    |
+| Report               | Id             | What it's for                                                                                |
+| -------------------- | -------------- | -------------------------------------------------------------------------------------------- |
+| Exit Readiness Score | `exit-score`   | How the business scores across all nine dimensions, what drives each, and the plan to fix it |
+| Valuation Engine     | `valuation`    | What it's worth now and after optimization, with the full earnings basis                     |
+| Risk Scanner         | `risk`         | Every risk diligence will surface, and its modelled valuation impact                         |
+| Optimization Plan    | `optimization` | Prioritised actions that close the value gap, with steps and £ uplift                        |
+| Full Report          | `full`         | All thirteen sections as one document                                                        |
 
 ---
 
@@ -147,21 +147,21 @@ nav can't drift from the reports that exist. Two consequences worth knowing:
 Thirteen sections exist. Each report names the subset it wants, in the order it
 wants them.
 
-| Id            | Title                              | Appears in                    | Gated on              |
-| ------------- | ---------------------------------- | ----------------------------- | --------------------- |
-| `summary`     | Executive Summary                  | all five                      | —                     |
-| `sources`     | Data Sources & Confidence          | all but optimization          | —                     |
-| `overview`    | Business Overview                  | full, exit-score              | —                     |
-| `financials`  | Financial Performance              | full, valuation               | —                     |
-| `customers`   | Customers & Retention              | full, exit-score              | —                     |
-| `products`    | Product Concentration              | full, exit-score              | —                     |
-| `marketing`   | Marketing Efficiency               | full, exit-score              | **`adSpendVerified`** |
-| `traffic`     | Traffic & Acquisition              | full, exit-score              | **`ga4Connected`**    |
-| `score`       | Exit Readiness Score               | full, exit-score              | —                     |
-| `valuation`   | Valuation                          | full, valuation, optimization | —                     |
-| `risks`       | Risk Register                      | full, risk                    | —                     |
-| `plan`        | Optimization Plan                  | full, optimization            | —                     |
-| `methodology` | Methodology & Basis of Preparation | all five                      | —                     |
+| Id            | Title                              | Appears in                     | Gated on              |
+| ------------- | ---------------------------------- | ------------------------------ | --------------------- |
+| `summary`     | Executive Summary                  | all five                       | —                     |
+| `sources`     | Data Sources & Confidence          | all but optimization           | —                     |
+| `overview`    | Business Overview                  | full, exit-score               | —                     |
+| `financials`  | Financial Performance              | full, valuation                | —                     |
+| `customers`   | Customers & Retention              | full, exit-score               | —                     |
+| `products`    | Product Concentration              | full, exit-score               | —                     |
+| `marketing`   | Marketing Efficiency               | full, exit-score               | **`adSpendVerified`** |
+| `traffic`     | Traffic & Acquisition              | full, exit-score               | **`ga4Connected`**    |
+| `score`       | Exit Readiness Score               | full, exit-score               | —                     |
+| `valuation`   | Valuation                          | full, valuation, optimization  | —                     |
+| `risks`       | Risk Register                      | full, risk                     | —                     |
+| `plan`        | Optimization Plan                  | full, optimization, exit-score | —                     |
+| `methodology` | Methodology & Basis of Preparation | all five                       | —                     |
 
 Every report **opens with `summary` and closes with `methodology`** — a test
 enforces this, so a reader always gets the headline and the caveats regardless

@@ -63,7 +63,7 @@ export const REPORT_TYPES: ReportType[] = [
     id: "exit-score",
     name: "Exit Readiness Score",
     description:
-      "How the business scores across all nine buyer-grade dimensions, and what drives each one.",
+      "How the business scores across all nine buyer-grade dimensions, what drives each one, and the plan to fix what holds the score down.",
     sections: [
       "summary",
       "sources",
@@ -73,6 +73,7 @@ export const REPORT_TYPES: ReportType[] = [
       "products",
       "marketing",
       "traffic",
+      "plan",
       "methodology",
     ],
   },
