@@ -20,6 +20,7 @@ function StoreData() {
   const {
     isShopifyConnected,
     storeSource,
+    adoptConnectInstall,
     store,
     orders,
     products,
@@ -35,6 +36,10 @@ function StoreData() {
   const [tab, setTab] = useState<Tab>("orders");
   const [syncing, setSyncing] = useState(false);
   const autoTried = useRef(false);
+  // ExitEcom Connect sends merchants straight here after an install, so this page
+  // is a landing page as well as a data view.
+  const adoptTried = useRef(false);
+  const [adopting, setAdopting] = useState(false);
 
   const money = useMemo(() => {
     const code = store?.currency || "USD";
@@ -106,7 +111,47 @@ function StoreData() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, canResync, lastSyncedAt]);
 
+  // Arriving from ExitEcom Connect, the install is already done but this app may
+  // not have heard about it yet (a push that didn't land, or a tab closed before
+  // the connect page finished). Connect shares this Supabase project, so look for
+  // the install and pull it rather than showing a "connect your store" gate to
+  // someone who just connected their store.
+  useEffect(() => {
+    if (loading || isShopifyConnected || adoptTried.current) return;
+    adoptTried.current = true;
+
+    let cancelled = false;
+    setAdopting(true);
+    (async () => {
+      const result = await adoptConnectInstall();
+      if (cancelled) return;
+      setAdopting(false);
+      if (result) toast.success("Shopify store connected. Data synced.");
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, isShopifyConnected]);
+
   if (!isShopifyConnected) {
+    // Don't flash the gate while we're still checking for an existing install.
+    if (adopting) {
+      return (
+        <>
+          <PageHeader
+            title="Store Data"
+            subtitle="Checking your Shopify connection…"
+          />
+          <div className="card-light p-10 flex flex-col items-center gap-4 text-center">
+            <RefreshCw className="w-7 h-7 text-[var(--accent)] animate-spin" />
+            <p className="text-sm text-[var(--text-muted)]">
+              Finishing your Shopify connection and pulling your store data.
+            </p>
+          </div>
+        </>
+      );
+    }
     return (
       <ConnectShopifyGate
         title="Store Data"
