@@ -9,7 +9,9 @@ import { createServerFn } from "@tanstack/react-start";
 // computed later, on demand, from the stored data (see src/lib/analytics.ts).
 // ---------------------------------------------------------------------------
 
-const API_VERSION = "2024-01";
+// Kept current deliberately: Shopify supports each version ~12 months and falls
+// forward silently for older ones, so a stale value here hides its own staleness.
+const API_VERSION = "2026-07";
 const PAGE_LIMIT = 250;
 const ORDER_CAP = 5000;
 const PRODUCT_CAP = 2000;
