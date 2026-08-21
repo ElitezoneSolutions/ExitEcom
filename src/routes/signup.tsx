@@ -13,7 +13,7 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { RequireGuest, isSafeRedirect } from "@/components/auth/RouteGuards";
@@ -30,6 +30,7 @@ function Signup() {
 
 export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
   const {
+    user,
     signUp,
     signIn,
     signInWithGoogle,
@@ -61,10 +62,28 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
 
   // Where to land once authenticated: the page the user was bounced from, or
   // the dashboard by default.
-  const goToApp = () =>
-    router.history.push(
-      isSafeRedirect(search.redirect) ? search.redirect : "/dashboard",
-    );
+  const goToApp = useCallback(
+    () =>
+      router.history.push(
+        isSafeRedirect(search.redirect) ? search.redirect : "/dashboard",
+      ),
+    [router, search.redirect],
+  );
+
+  // Navigating the instant an auth call resolves is a race: the protected route
+  // is guarded by RequireAuth, which bounces to /login if the context `user` is
+  // still null when it mounts. That's what made the first Sign In click show a
+  // success toast and go nowhere. So the handlers below only *arm* the redirect
+  // and it fires here, once a confirmed user is actually in context.
+  const [redirectArmed, setRedirectArmed] = useState<
+    null | "app" | "onboarding"
+  >(null);
+  useEffect(() => {
+    if (!redirectArmed || !user) return;
+    setRedirectArmed(null);
+    if (redirectArmed === "app") goToApp();
+    else navigate({ to: "/onboarding" });
+  }, [redirectArmed, user, goToApp, navigate]);
 
   // Surface the "session expired" notice once, when redirected here for it.
   const expiredShown = useRef(false);
@@ -114,7 +133,7 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
           if (hasSession) {
             // Email confirmation disabled — session already active.
             toast.success("Account created successfully!");
-            navigate({ to: "/onboarding" });
+            setRedirectArmed("onboarding");
           } else {
             // Email confirmation on — verify with the emailed OTP code.
             toast.success("We emailed you a 6-digit verification code.");
@@ -122,13 +141,18 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
           }
         }
       } else {
-        const { error } = await signIn(email, password);
+        const { error, data } = await signIn(email, password);
         toast.dismiss(loadingToast);
         if (error) {
           toast.error(error.message || "Failed to sign in");
+        } else if (!(data as { session?: unknown } | null)?.session) {
+          // No session on a non-error result would leave the armed redirect
+          // waiting on a `user` that never arrives, with the button stuck
+          // disabled. Surface it instead of hanging.
+          toast.error("Signed in, but no session was returned. Please retry.");
         } else {
           toast.success("Signed in successfully!");
-          goToApp();
+          setRedirectArmed("app");
         }
       }
     } catch (err: unknown) {
@@ -157,7 +181,7 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
         toast.error(error.message || "Invalid or expired code");
       } else {
         toast.success("Email verified!");
-        navigate({ to: "/onboarding" });
+        setRedirectArmed("onboarding");
       }
     } catch (err: unknown) {
       toast.dismiss(loadingToast);
@@ -336,10 +360,10 @@ export function SplitAuth({ mode }: { mode: "signup" | "login" }) {
                 )}
                 <button
                   type="submit"
-                  disabled={loading || googleLoading}
+                  disabled={loading || googleLoading || redirectArmed !== null}
                   className="btn-primary w-full justify-center mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading
+                  {loading || redirectArmed !== null
                     ? mode === "signup"
                       ? "Creating Account..."
                       : "Signing In..."

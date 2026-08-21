@@ -193,6 +193,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
+  /**
+   * Adopt a freshly-issued session into context synchronously.
+   *
+   * Supabase's own `onAuthStateChange` event lands a tick or more after the auth
+   * call resolves, but callers navigate to a protected route the moment it does.
+   * If `user` is still null at that point, RequireAuth bounces them straight
+   * back to /login — the "first click shows a success toast but doesn't
+   * redirect" bug. The listener in the effect above dedupes on access_token and
+   * user id, so the event that follows this is a no-op.
+   */
+  const adoptSession = (session: Session | null | undefined) => {
+    if (!session) return;
+    setSession(session);
+    setUser(session.user);
+    setSessionExpired(false);
+    setLoading(false);
+  };
+
   const signUp = async (email: string, password: string, fullName?: string) => {
     if (isSupabaseConfigured) {
       try {
@@ -222,6 +240,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ?.identities;
         const emailExists =
           Array.isArray(identities) && identities.length === 0;
+
+        // Confirmations off → signUp already returns a live session, and the
+        // caller navigates to /onboarding immediately.
+        if (!emailExists) adoptSession(data?.session);
 
         return { error: null, data, emailExists };
       } catch (err: unknown) {
@@ -253,6 +275,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email,
           password,
         });
+        if (!error) adoptSession(data?.session);
         return { error: error ? new Error(error.message) : null, data };
       } catch (err: unknown) {
         const errorVal = err instanceof Error ? err : new Error(String(err));
@@ -334,6 +357,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           token,
           type: "signup",
         });
+        if (!error) adoptSession(data?.session);
         return { error: error ? new Error(error.message) : null, data };
       } catch (err: unknown) {
         const errorVal = err instanceof Error ? err : new Error(String(err));
