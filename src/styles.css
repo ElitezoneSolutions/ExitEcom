@@ -282,6 +282,119 @@
   color: rgba(255, 255, 255, 0.82);
 }
 
+/* --- Toasts ----------------------------------------------------------------
+   Styling for the sonner toaster (src/components/ui/sonner.tsx).
+
+   Deliberately NOT inside `@layer components`, and deliberately not Tailwind
+   utility classes on the component. Sonner injects its own stylesheet into
+   <head> at runtime, unlayered and after our stylesheet: layered rules lose to
+   it outright, and single utility classes tie on specificity but lose on source
+   order. So the type colours go through sonner's own custom properties (the
+   hook it reads internally) and everything else uses a descendant selector that
+   outranks its `[data-sonner-toast][data-styled]` rules. */
+[data-sonner-toaster] {
+  --normal-bg: var(--bg-surface);
+  --normal-text: var(--text-primary);
+  --normal-border: var(--border-warm);
+  --border-radius: var(--radius-lg);
+}
+
+/* The doubled `[data-sonner-toast]` is not a typo: it lifts specificity to
+   (0,3,0) so these win against sonner's own `[data-sonner-toast][data-styled]`
+   rules, which would otherwise tie and win on source order. */
+[data-sonner-toaster][data-sonner-toaster] {
+  font-family: var(--font-body);
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-sonner-toast] {
+  gap: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-body);
+  /* The type accent is a left rule rather than a wash of colour, so a red error
+     still reads as the same card as everything else in the app. */
+  border-left: 3px solid var(--border-mid);
+}
+
+[data-sonner-toaster] [data-sonner-toast] [data-title][data-title] {
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+[data-sonner-toaster] [data-sonner-toast] [data-description][data-description] {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+[data-sonner-toaster] [data-sonner-toast] [data-icon] {
+  margin-right: 0;
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] {
+  border-left-color: var(--positive);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--positive);
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] {
+  border-left-color: var(--risk-critical);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--risk-critical);
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] {
+  border-left-color: var(--risk-medium);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--risk-medium);
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-type="info"] {
+  border-left-color: var(--accent);
+}
+[data-sonner-toaster] [data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--accent);
+}
+
+[data-sonner-toaster] [data-sonner-toast] [data-button][data-button] {
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  height: 28px;
+  padding: 0 10px;
+}
+[data-sonner-toaster] [data-sonner-toast] [data-action][data-action] {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+[data-sonner-toaster] [data-sonner-toast] [data-cancel][data-cancel] {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast]
+  [data-close-button][data-close-button] {
+  background-color: var(--bg-surface);
+  border-color: var(--border-warm);
+  color: var(--text-muted);
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+[data-sonner-toaster]
+  [data-sonner-toast]
+  [data-close-button][data-close-button]:hover {
+  color: var(--text-primary);
+  border-color: var(--border-mid);
+}
+
 /* --- Exit Readiness Report -------------------------------------------------
    Styles for the full report document (src/components/ex/ReportDocument.tsx).
    Written as plain classes rather than @utility because they are a coherent

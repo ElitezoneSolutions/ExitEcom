@@ -2,6 +2,40 @@
 
 A simplified list of changes made to ExitEcom. Newest first.
 
+## 2026-08-21 — Sign in on the first click, and on-brand toasts
+
+**Signing in took two clicks.** The first showed "Signed in successfully!" and
+went nowhere. `signIn` resolved without putting the session into auth context —
+that only happened when Supabase's `onAuthStateChange` fired a tick later — so
+the navigation to `/dashboard` arrived while `user` was still `null` and
+`RequireAuth` bounced the user straight back to `/login`.
+
+- **`useAuth` adopts the session synchronously.** A new `adoptSession` helper
+  takes the session off the auth call's own result, for `signIn`, `signUp`
+  (confirmations-off returns a live session) and `verifyEmailOtp`. The existing
+  listener dedupes on `access_token` and user id, so the event that follows is a
+  no-op.
+- **The redirect waits for a confirmed user.** `SplitAuth` no longer navigates
+  the instant an auth call resolves; it arms a redirect that an effect fires once
+  `user` is actually in context, so the guard can never see a null user on
+  arrival. The submit button stays disabled until then, and a success with no
+  session reports an error instead of hanging.
+
+**Toasts didn't match the design system.** The `group-[.toaster]:` utilities in
+`ui/sonner.tsx` were inert — they tie with sonner's own
+`[data-sonner-toast][data-styled]` rules on specificity and lose on source order,
+so `richColors` and its off-brand palette were doing all the visible work.
+
+- **`richColors` is off**; type colour now comes from the semantic tokens
+  (`--positive`, `--risk-critical`, `--risk-medium`, `--accent`) as a 3px left
+  rule plus a tinted icon, so an error still reads as the same card as the rest
+  of the app.
+- **Styling moved to a `[data-sonner-toaster]` block in `styles.css`**, outside
+  `@layer` and using doubled attribute selectors, because sonner injects its
+  stylesheet unlayered at runtime and would otherwise win.
+- **Toasts last 5s** (was sonner's 4s default, short for a two-line connector
+  message), stack three deep, and use DM Sans with the app's shadow tokens.
+
 ## 2026-08-19 — Shopify Connect: expiring offline tokens
 
 Shopify stopped accepting non-expiring Admin API tokens, which the OAuth code
@@ -26,7 +60,7 @@ the Shopify token and hands us an opaque connection key.
 
 - **Connect Shopify now offers three paths,** in order: install the ExitEcom app
   (one button, nothing to copy), paste a connection key, or — collapsed under
-  *Advanced* — the original custom-app token form, unchanged.
+  _Advanced_ — the original custom-app token form, unchanged.
 - **Automatic handoff.** `startConnectHandoffFn` signs a 30-minute token naming
   the business; after the merchant approves on Shopify, Connect pushes the whole
   store to `POST /api/analytic/ingest` in signed chunks. The page polls
